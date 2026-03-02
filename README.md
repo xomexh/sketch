@@ -1,44 +1,103 @@
-# Sketch
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/sketch.png" />
+    <source media="(prefers-color-scheme: light)" srcset="assets/sketch-dark.png" />
+    <img alt="Sketch" src="assets/sketch-dark.png" width="120" />
+  </picture>
+</p>
 
-An org-level AI assistant. One deployment, multiple users — each with their own workspace, memory, and tool integrations.
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT License" /></a>
+  <img src="https://img.shields.io/badge/version-0.7.0-green?style=for-the-badge" alt="v0.7.0" />
+  <img src="https://img.shields.io/badge/node-24%2B-brightgreen?style=for-the-badge" alt="Node 24+" />
+  <a href="https://github.com/canvasxai/sketch/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/canvasxai/sketch/ci.yml?style=for-the-badge&label=CI" alt="CI" /></a>
+  <a href="https://github.com/canvasxai/sketch/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge" alt="PRs Welcome" /></a>
+</p>
 
-Think of it as a shared Claude Cowork for teams, accessible through the messaging platforms you already use.
+<p align="center">
+  Org-level AI assistant — one deployment, every team member, any channel.
+</p>
 
-## Why
+---
 
-Personal AI assistants are powerful but isolated. Each person runs their own setup, manages their own context, connects their own tools. There's no shared knowledge, no shared infrastructure, no way for an org to give everyone access to a capable AI assistant without each person becoming a power user.
+## Why Sketch
 
-Sketch bridges this gap. Deploy once for your team. Everyone gets:
+Personal AI assistants are powerful but isolated. Each person manages their own context, connects their own tools, maintains their own setup. There's no shared knowledge, no shared infrastructure.
 
-- **Isolated workspaces** — personal file operations, memory, and sessions that don't leak between users
+Sketch fixes this. Deploy once for your team — everyone gets a capable AI assistant through the platforms they already use.
+
+## Features
+
+- **Isolated workspaces** — personal files, memory, and sessions that don't leak between users
 - **Shared org knowledge** — upload documents once, available to everyone's assistant
-- **Per-user tool auth** — each person connects their own Gmail, GitHub, Jira, etc
 - **Multi-channel access** — Slack and WhatsApp, same assistant everywhere
-
-## How It Works
-
-Sketch runs as a single Node.js process. When a user messages the bot:
-
-1. Resolve who they are (Slack ID → user account)
-2. Route to their isolated workspace (`data/workspaces/{user_id}/`)
-3. Run a Claude agent with workspace-scoped file access and tool permissions
-4. Send the response back in the same channel
+- **Per-user tool auth** — each person connects their own integrations
+- **Cross-session memory** — personal, channel, and org-level memory layers
+- **Web-based admin UI** — onboarding wizard, channel management, team settings
+- **Self-hostable** — single Node.js process, SQLite by default, no external dependencies
 
 ## Quick Start
 
-Requires Node.js 22+ and pnpm.
+Requires **Node.js 24+** and **pnpm**.
 
 ```bash
 git clone https://github.com/canvasxai/sketch.git
 cd sketch
 pnpm install
 cp .env.example .env
-# Edit .env with your API keys and Slack tokens
 pnpm dev
 ```
 
-See `.env.example` for all configuration options including Bedrock, Vertex, and custom provider support.
+Open `http://localhost:3000` — the onboarding wizard walks you through setup.
+
+## Self-Hosting
+
+Sketch runs as a single Node.js process — the API server and web UI are served together. No separate web server or database required.
+
+See the full [Self-Hosting Guide](SELF_HOSTING.md) for production deployment with systemd and Caddy.
+
+## Architecture
+
+```
+  Slack / WhatsApp
+        |
+    Gateway (Bolt / Baileys)
+        |
+    Message Queue (per-channel, sequential)
+        |
+    Agent Runner
+        |
+    Claude Agent SDK
+        |
+    Workspace (scoped files, tools, memory)
+```
+
+Each user gets an isolated workspace at `data/workspaces/{user_id}/`. All tool calls go through `canUseTool` which validates file paths and permissions — no agent can escape its sandbox.
+
+## Supported Channels
+
+| Channel    | Status |
+|------------|--------|
+| Slack      | Stable — DMs, channels, threads |
+| WhatsApp   | Stable — DMs and groups |
+
+## Tech Stack
+
+| Component  | Technology |
+|------------|------------|
+| Runtime    | Node.js 24, TypeScript |
+| Agent      | Claude Agent SDK |
+| Database   | SQLite (Kysely) |
+| HTTP       | Hono |
+| Frontend   | React, Vite |
+| Build      | tsdown, pnpm monorepo |
+| Lint       | Biome |
+| Test       | Vitest |
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, code style, and PR guidelines.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

@@ -7,13 +7,12 @@ import { SkillsEmptyState } from "@/components/skills/skills-empty-state";
 import { SkillsFilterBar } from "@/components/skills/skills-filter-bar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { api } from "@/lib/api";
 import {
-  type ApiSkill,
   CURRENT_USER_ID,
   type Skill,
   type SkillCategory,
   categoryMeta,
-  fromApiSkill,
   getCategoryLabel,
   getSkillSourcesForUser,
   isSkillActiveForUser,
@@ -22,7 +21,7 @@ import {
 } from "@/lib/skills-data";
 import { cn } from "@/lib/utils";
 import { PlusIcon } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createRoute } from "@tanstack/react-router";
 /**
  * Skills page — create, manage, and configure skills (custom agent behaviors).
@@ -64,26 +63,116 @@ export function SkillsPage() {
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [skillToDelete, setSkillToDelete] = useState<Skill | null>(null);
 
+  const queryClient = useQueryClient();
+
   const skillsQuery = useQuery({
     queryKey: ["skills"],
-    queryFn: async () => {
-      const res = await fetch("/api/skills");
-      if (!res.ok) throw new Error(`Failed to load skills (${res.status})`);
-      return (await res.json()) as { skills: ApiSkill[] };
-    },
+    queryFn: () => api.skills.list(),
   });
 
   // Hydrate the local editable state once.
   useEffect(() => {
     if (skills.length > 0) return;
     if (skillsQuery.data?.skills) {
-      setSkills(skillsQuery.data.skills.map(fromApiSkill));
+      setSkills(
+        skillsQuery.data.skills.map((s) => ({
+          id: s.id,
+          name: s.name,
+          description: s.description,
+          body: s.body,
+          category: s.category,
+          status: { org: true, channels: [], individuals: [] },
+          iconBg: categoryMeta[s.category].iconBg,
+          iconEmoji: categoryMeta[s.category].iconEmoji,
+          source: undefined,
+          lastUsedAt: null,
+          createdAt: new Date(),
+        })),
+      );
       return;
     }
     if (skillsQuery.isError) {
       setSkills(mockSkills);
     }
   }, [skills.length, skillsQuery.data, skillsQuery.isError]);
+
+  const createSkillMutation = useMutation({
+    mutationFn: (draft: SkillDraft) =>
+      api.skills.create({
+        name: draft.name,
+        description: draft.description,
+        category: draft.category,
+        body: draft.body,
+      }),
+    onSuccess: async (res) => {
+      await queryClient.invalidateQueries({ queryKey: ["skills"] });
+      const created: Skill = {
+        id: res.skill.id,
+        name: res.skill.name,
+        description: res.skill.description,
+        body: res.skill.body,
+        category: res.skill.category,
+        status: { org: true, channels: [], individuals: [] },
+        iconBg: categoryMeta[res.skill.category].iconBg,
+        iconEmoji: categoryMeta[res.skill.category].iconEmoji,
+        lastUsedAt: null,
+        createdAt: new Date(),
+      };
+      setSkills((prev) => [created, ...prev.filter((s) => s.id !== created.id)]);
+      setSelectedSkillId(created.id);
+      setMode("view");
+      setListingTab("active");
+      toast.success("Skill created");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to create skill");
+    },
+  });
+
+  const updateSkillMutation = useMutation({
+    mutationFn: (args: { id: string; draft: SkillDraft }) =>
+      api.skills.update(args.id, {
+        name: args.draft.name,
+        description: args.draft.description,
+        category: args.draft.category,
+        body: args.draft.body,
+      }),
+    onSuccess: async (res) => {
+      await queryClient.invalidateQueries({ queryKey: ["skills"] });
+      setSkills((prev) =>
+        prev.map((s) =>
+          s.id === res.skill.id
+            ? {
+                ...s,
+                name: res.skill.name,
+                description: res.skill.description,
+                body: res.skill.body,
+                category: res.skill.category,
+                iconBg: categoryMeta[res.skill.category].iconBg,
+                iconEmoji: categoryMeta[res.skill.category].iconEmoji,
+              }
+            : s,
+        ),
+      );
+      setMode("view");
+      setViewOrigin("active");
+      toast.success("Skill updated");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to update skill");
+    },
+  });
+
+  const deleteSkillMutation = useMutation({
+    mutationFn: (id: string) => api.skills.remove(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["skills"] });
+      toast.success("Skill deleted");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to delete skill");
+    },
+  });
 
   // ── Derived data ──────────────────────────────────────────
   const isAdmin = true;
@@ -154,53 +243,14 @@ export function SkillsPage() {
 
   const handleSave = useCallback(
     async (draft: SkillDraft) => {
-      await new Promise((resolve) => setTimeout(resolve, 800));
-
       if (mode === "create") {
-        const newSkill: Skill = {
-          id: `skill-${Date.now()}`,
-          name: draft.name,
-          description: draft.description,
-          body: draft.body,
-          category: draft.category,
-          status: draft.status,
-          iconBg: categoryMeta[draft.category].iconBg,
-          iconEmoji: categoryMeta[draft.category].iconEmoji,
-          lastUsedAt: null,
-          createdAt: new Date(),
-        };
-        setSkills((prev) => [newSkill, ...prev]);
-        setSelectedSkillId(newSkill.id);
-        setMode("view");
-        setListingTab("active");
-        toast.success("Skill created");
+        await createSkillMutation.mutateAsync(draft);
       } else {
-        const wasExplore = viewOrigin === "explore";
-        setSkills((prev) =>
-          prev.map((s) =>
-            s.id === selectedSkillId
-              ? {
-                  ...s,
-                  name: draft.name,
-                  description: draft.description,
-                  body: draft.body,
-                  category: draft.category,
-                  status: draft.status,
-                }
-              : s,
-          ),
-        );
-        setMode("view");
-        setViewOrigin("active");
-        if (wasExplore) {
-          setListingTab("active");
-          toast.success("Skill added");
-        } else {
-          toast.success("Skill updated");
-        }
+        if (!selectedSkillId) return;
+        await updateSkillMutation.mutateAsync({ id: selectedSkillId, draft });
       }
     },
-    [mode, selectedSkillId, viewOrigin],
+    [mode, selectedSkillId, createSkillMutation, updateSkillMutation],
   );
 
   const handleCancelEdit = useCallback(() => {
@@ -263,12 +313,13 @@ export function SkillsPage() {
 
   const handleDeleteConfirm = useCallback(() => {
     if (!skillToDelete) return;
-    setSkills((prev) => prev.filter((s) => s.id !== skillToDelete.id));
-    toast.success("Skill deleted");
+    const id = skillToDelete.id;
+    setSkills((prev) => prev.filter((s) => s.id !== id));
+    deleteSkillMutation.mutate(id);
     setSkillToDelete(null);
     setSelectedSkillId(null);
     setMode("listing");
-  }, [skillToDelete]);
+  }, [skillToDelete, deleteSkillMutation]);
 
   const handleCategoryToggle = useCallback((category: SkillCategory) => {
     setActiveCategories((prev) => (prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category]));
@@ -283,7 +334,7 @@ export function SkillsPage() {
   // ── Loading skeleton ───────────────────────────────────────
   if (skillsQuery.isLoading && skills.length === 0) {
     return (
-      <div className="mx-auto max-w-4xl px-10 py-8">
+      <div className="mx-auto max-w-3xl px-6 py-8">
         <div className="flex items-start justify-between">
           <Skeleton className="h-7 w-24" />
           <Skeleton className="h-8 w-32" />
@@ -305,7 +356,7 @@ export function SkillsPage() {
   // ── Explore-preview mode ───────────────────────────────────
   if (mode === "explore-preview" && selectedSkill) {
     return (
-      <div className="mx-auto max-w-4xl px-10 py-8">
+      <div className="mx-auto max-w-3xl px-6 py-8">
         <SkillDetailView
           skill={selectedSkill}
           isAdmin={isAdmin}
@@ -332,7 +383,7 @@ export function SkillsPage() {
   // ── View mode ──────────────────────────────────────────────
   if (mode === "view" && selectedSkill) {
     return (
-      <div className="mx-auto max-w-4xl px-10 py-8">
+      <div className="mx-auto max-w-3xl px-6 py-8">
         <SkillDetailView
           skill={selectedSkill}
           isAdmin={isAdmin}
@@ -357,7 +408,7 @@ export function SkillsPage() {
   // ── Edit / Create mode ─────────────────────────────────────
   if (mode === "edit" || mode === "create") {
     return (
-      <div className="mx-auto max-w-4xl px-10 py-8">
+      <div className="mx-auto max-w-3xl px-6 py-8">
         <SkillDetailEdit
           skill={mode === "edit" && selectedSkill ? selectedSkill : null}
           activeTab={activeTab}
@@ -390,7 +441,7 @@ export function SkillsPage() {
           : "no-skills";
 
   return (
-    <div className="mx-auto max-w-4xl px-10 py-8">
+    <div className="mx-auto max-w-3xl px-6 py-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

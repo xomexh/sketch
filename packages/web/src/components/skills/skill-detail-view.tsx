@@ -9,7 +9,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import type { Skill } from "@/lib/skills-data";
-import { getActiveChannels, getActiveIndividuals, getChannelMemberDetails, isSkillEnabled } from "@/lib/skills-data";
+import {
+  getActiveChannels,
+  getActiveIndividuals,
+  getCategoryLabel,
+  getChannelMemberDetails,
+  isSkillEnabled,
+} from "@/lib/skills-data";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeftIcon,
@@ -105,7 +111,7 @@ export function SkillDetailView({
       {/* Sticky header */}
       <div
         className={cn(
-          "sticky top-0 z-20 -mx-10 bg-background px-10 pb-4 pt-8 transition-shadow duration-150",
+          "sticky top-0 z-20 -mx-6 bg-background px-6 pb-4 pt-8 transition-shadow duration-150",
           scrolled ? "shadow-[0_1px_4px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_4px_rgba(0,0,0,0.3)]" : "shadow-none",
         )}
       >
@@ -118,8 +124,10 @@ export function SkillDetailView({
           Skills
         </button>
 
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <h1 className="min-w-0 flex-1 truncate text-xl font-bold">{skill.name}</h1>
+        <div className="mt-3 flex flex-wrap items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-xl font-bold">{skill.name}</h1>
+          </div>
           {isExplorePreview ? (
             <Button className="gap-1.5" onClick={onAddSkill}>
               Add Skill
@@ -259,6 +267,13 @@ function DetailsContent({ skill }: { skill: Skill }) {
             <ReactMarkdown>{skill.body}</ReactMarkdown>
           </div>
         </div>
+      </div>
+
+      <div>
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Category</h2>
+        <span className="mt-2 inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+          {getCategoryLabel(skill.category)}
+        </span>
       </div>
 
       {skill.source && (

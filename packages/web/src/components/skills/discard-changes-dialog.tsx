@@ -29,7 +29,7 @@ export function DiscardChangesDialog({ open, onOpenChange, onConfirm, isNewSkill
               : "You have unsaved changes that will be lost."}
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
             Keep editing
           </Button>

@@ -21,7 +21,7 @@ function isLoadedCategory(value: string): value is LoadedSkillCategory {
   return value === "crm" || value === "comms" || value === "research" || value === "ops" || value === "productivity";
 }
 
-function parseFrontMatter(md: string): { frontMatter: FrontMatter; body: string } {
+export function parseFrontMatter(md: string): { frontMatter: FrontMatter; body: string } {
   if (!md.startsWith("---")) return { frontMatter: {}, body: md.trim() };
 
   const end = md.indexOf("\n---", 3);
@@ -45,7 +45,7 @@ function parseFrontMatter(md: string): { frontMatter: FrontMatter; body: string 
   return { frontMatter: fm, body };
 }
 
-function inferNameFromBody(body: string): string | null {
+export function inferNameFromBody(body: string): string | null {
   const lines = body.split("\n");
   for (const line of lines) {
     const m = /^#\s+(.+)$/.exec(line.trim());

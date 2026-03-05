@@ -18,6 +18,7 @@ export interface User {
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
+    credentials: "include",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -49,6 +50,14 @@ export interface SetupStatus {
   slackConnected: boolean;
   llmConnected: boolean;
   llmProvider: "anthropic" | "bedrock" | null;
+}
+
+export interface SkillRecord {
+  id: string;
+  name: string;
+  description: string;
+  category: "crm" | "comms" | "research" | "ops" | "productivity";
+  body: string;
 }
 
 export const api = {
@@ -164,6 +173,29 @@ export const api = {
       return request<{ success: boolean }>(`/api/users/${id}`, {
         method: "DELETE",
       });
+    },
+  },
+  skills: {
+    list() {
+      return request<{ skills: SkillRecord[] }>("/api/skills");
+    },
+    get(id: string) {
+      return request<{ skill: SkillRecord }>(`/api/skills/${id}`);
+    },
+    create(data: { name: string; description: string; category: SkillRecord["category"]; body: string; id?: string }) {
+      return request<{ skill: SkillRecord }>("/api/skills", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+    update(id: string, data: { name: string; description: string; category: SkillRecord["category"]; body: string }) {
+      return request<{ skill: SkillRecord }>(`/api/skills/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      });
+    },
+    remove(id: string) {
+      return request<{ success: true }>(`/api/skills/${id}`, { method: "DELETE" });
     },
   },
 };

@@ -1,4 +1,10 @@
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -10,10 +16,17 @@ import type {
   SkillIndividualEntry,
   SkillStatusConfig,
 } from "@/lib/skills-data";
-import { availableChannels, availableIndividuals, getChannelMemberDetails } from "@/lib/skills-data";
+import {
+  availableChannels,
+  availableIndividuals,
+  getCategoryLabel,
+  getChannelMemberDetails,
+  skillCategories,
+} from "@/lib/skills-data";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeftIcon,
+  CaretDownIcon,
   CaretRightIcon,
   MagnifyingGlassIcon,
   PlusIcon,
@@ -36,7 +49,7 @@ interface SkillDetailEditProps {
   activeTab: "details" | "permissions";
   onTabChange: (tab: "details" | "permissions") => void;
   onBack: () => void;
-  onSave: (draft: SkillDraft) => void;
+  onSave: (draft: SkillDraft) => Promise<void>;
   onCancel: () => void;
   isAddingFromExplore?: boolean;
 }
@@ -76,7 +89,7 @@ export function SkillDetailEdit({ skill, activeTab, onTabChange, onBack, onSave,
   const [name, setName] = useState(skill?.name ?? "");
   const [description, setDescription] = useState(skill?.description ?? "");
   const [body, setBody] = useState(skill?.body ?? "");
-  const [category] = useState<SkillCategory>(skill?.category ?? "productivity");
+  const [category, setCategory] = useState<SkillCategory>(skill?.category ?? "productivity");
 
   const [orgEnabled, setOrgEnabled] = useState(skill?.status.org ?? false);
   const [channels, setChannels] = useState<SkillChannelEntry[]>(skill?.status.channels ?? []);
@@ -122,13 +135,17 @@ export function SkillDetailEdit({ skill, activeTab, onTabChange, onBack, onSave,
     }
     if (hasError) return;
     setSaving(true);
-    onSave({
-      name: name.trim(),
-      description: description.trim(),
-      body: body.trim(),
-      category,
-      status: { org: orgEnabled, channels, individuals },
-    });
+    try {
+      await onSave({
+        name: name.trim(),
+        description: description.trim(),
+        body: body.trim(),
+        category,
+        status: { org: orgEnabled, channels, individuals },
+      });
+    } finally {
+      setSaving(false);
+    }
   }, [name, description, body, category, orgEnabled, channels, individuals, onSave]);
 
   const addChannel = useCallback((channel: SkillChannelEntry) => {
@@ -185,7 +202,7 @@ export function SkillDetailEdit({ skill, activeTab, onTabChange, onBack, onSave,
       {/* Sticky header */}
       <div
         className={cn(
-          "sticky top-0 z-20 -mx-10 bg-background px-10 pb-4 pt-8 transition-shadow duration-150",
+          "sticky top-0 z-20 -mx-6 bg-background px-6 pb-4 pt-8 transition-shadow duration-150",
           scrolled ? "shadow-[0_1px_4px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_4px_rgba(0,0,0,0.3)]" : "shadow-none",
         )}
       >
@@ -292,9 +309,33 @@ export function SkillDetailEdit({ skill, activeTab, onTabChange, onBack, onSave,
                   setBody(e.target.value);
                   if (bodyError) setBodyError(false);
                 }}
-                className={cn("min-h-40 resize-y font-mono text-sm", bodyError && "border-destructive")}
+                className={cn("min-h-[360px] resize-y font-mono text-sm", bodyError && "border-destructive")}
               />
               {bodyError && <p className="text-xs text-destructive">Body is required.</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Category
+              </Label>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80"
+                  >
+                    {getCategoryLabel(category)}
+                    <CaretDownIcon size={12} className="text-muted-foreground/80" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {skillCategories.map((cat) => (
+                    <DropdownMenuItem key={cat.value} onClick={() => setCategory(cat.value)}>
+                      {cat.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             {skill?.source && (

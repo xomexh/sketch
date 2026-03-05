@@ -9,6 +9,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Skill, SkillSourceTag } from "@/lib/skills-data";
 import { getCategoryLabel, isSkillEnabled } from "@/lib/skills-data";
+import { cn } from "@/lib/utils";
 import { DotsThreeIcon } from "@phosphor-icons/react";
 import { Download, Star, Store } from "lucide-react";
 
@@ -61,7 +62,13 @@ export function SkillCard({ skill, sourceTags, onCardClick, onDuplicate, onToggl
   return (
     <button
       type="button"
-      className="cursor-pointer rounded-xl border border-border bg-card p-5 transition-colors hover:border-foreground/20 flex flex-col text-left w-full"
+      className={cn(
+        "cursor-pointer rounded-xl border bg-card p-5 transition-[background-color,border-color] duration-200 ease-in-out flex flex-col text-left w-full",
+        // Light mode (theme-aware)
+        "border-border/70 hover:border-primary/25 hover:bg-accent/30",
+        // Dark mode (as in sketch-frontend diff)
+        "dark:border-[rgba(255,255,255,0.07)] dark:hover:border-[rgba(255,255,255,0.2)] dark:hover:bg-[rgba(107,125,250,0.03)]",
+      )}
       onClick={() => onCardClick(skill.id)}
     >
       {/* Top row: category pill + source tags + overflow */}

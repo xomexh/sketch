@@ -3,6 +3,8 @@
  * All methods throw on non-2xx responses with the standard error shape.
  */
 
+import type { SkillCategory } from "@/lib/skills-data";
+
 export interface ApiError {
   error: { code: string; message: string };
 }
@@ -56,7 +58,7 @@ export interface SkillRecord {
   id: string;
   name: string;
   description: string;
-  category: "crm" | "comms" | "research" | "ops" | "productivity";
+  category: SkillCategory;
   body: string;
 }
 

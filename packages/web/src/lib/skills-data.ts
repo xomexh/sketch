@@ -1,6 +1,26 @@
 // ── Types ──────────────────────────────────────────────────
 
-export type SkillCategory = "crm" | "comms" | "research" | "ops" | "productivity";
+export type SkillCategory =
+  | "crm"
+  | "comms"
+  | "research"
+  | "ops"
+  | "productivity"
+  | "sales"
+  | "marketing"
+  | "finance"
+  | "hr"
+  | "engineering"
+  | "design"
+  | "analytics"
+  | "security"
+  | "legal"
+  | "support"
+  | "onboarding"
+  | "reporting"
+  | "integrations"
+  | "ai"
+  | "workflows";
 
 export interface SkillSource {
   hub: string;
@@ -68,6 +88,21 @@ export const skillCategories: {
   { value: "research", label: "Research" },
   { value: "ops", label: "Ops" },
   { value: "productivity", label: "Productivity" },
+  { value: "sales", label: "Sales" },
+  { value: "marketing", label: "Marketing" },
+  { value: "finance", label: "Finance" },
+  { value: "hr", label: "HR" },
+  { value: "engineering", label: "Engineering" },
+  { value: "design", label: "Design" },
+  { value: "analytics", label: "Analytics" },
+  { value: "security", label: "Security" },
+  { value: "legal", label: "Legal" },
+  { value: "support", label: "Support" },
+  { value: "onboarding", label: "Onboarding" },
+  { value: "reporting", label: "Reporting" },
+  { value: "integrations", label: "Integrations" },
+  { value: "ai", label: "AI" },
+  { value: "workflows", label: "Workflows" },
 ];
 
 export const categoryMeta: Record<SkillCategory, { iconBg: string; iconEmoji: string }> = {
@@ -76,6 +111,21 @@ export const categoryMeta: Record<SkillCategory, { iconBg: string; iconEmoji: st
   research: { iconBg: "bg-purple-500/15", iconEmoji: "🔍" },
   ops: { iconBg: "bg-emerald-500/15", iconEmoji: "⚙️" },
   productivity: { iconBg: "bg-amber-500/15", iconEmoji: "⚡" },
+  sales: { iconBg: "bg-rose-500/15", iconEmoji: "💰" },
+  marketing: { iconBg: "bg-pink-500/15", iconEmoji: "📢" },
+  finance: { iconBg: "bg-green-500/15", iconEmoji: "💵" },
+  hr: { iconBg: "bg-teal-500/15", iconEmoji: "👥" },
+  engineering: { iconBg: "bg-cyan-500/15", iconEmoji: "🛠" },
+  design: { iconBg: "bg-violet-500/15", iconEmoji: "🎨" },
+  analytics: { iconBg: "bg-indigo-500/15", iconEmoji: "📈" },
+  security: { iconBg: "bg-red-500/15", iconEmoji: "🔒" },
+  legal: { iconBg: "bg-slate-500/15", iconEmoji: "⚖️" },
+  support: { iconBg: "bg-sky-500/15", iconEmoji: "🎧" },
+  onboarding: { iconBg: "bg-lime-500/15", iconEmoji: "🚀" },
+  reporting: { iconBg: "bg-yellow-500/15", iconEmoji: "📋" },
+  integrations: { iconBg: "bg-fuchsia-500/15", iconEmoji: "🔗" },
+  ai: { iconBg: "bg-purple-500/15", iconEmoji: "🤖" },
+  workflows: { iconBg: "bg-orange-500/15", iconEmoji: "🔄" },
 };
 
 // ── Mock current user ─────────────────────────────────────

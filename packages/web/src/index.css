@@ -131,3 +131,41 @@
     font-family: var(--font-sans);
   }
 }
+
+@layer components {
+  .markdown-body {
+    @apply text-sm leading-relaxed space-y-2;
+  }
+
+  .markdown-body h1 {
+    @apply text-base font-semibold;
+  }
+
+  .markdown-body h2 {
+    @apply text-sm font-semibold mt-2;
+  }
+
+  .markdown-body h3 {
+    @apply text-sm font-semibold;
+  }
+
+  .markdown-body p {
+    @apply text-sm;
+  }
+
+  .markdown-body ul {
+    @apply list-disc pl-5 space-y-1;
+  }
+
+  .markdown-body ol {
+    @apply list-decimal pl-5 space-y-1;
+  }
+
+  .markdown-body li {
+    @apply text-sm;
+  }
+
+  .markdown-body code {
+    @apply rounded bg-muted px-1 py-0.5 text-xs font-mono;
+  }
+}

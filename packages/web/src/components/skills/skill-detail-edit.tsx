@@ -16,13 +16,7 @@ import type {
   SkillIndividualEntry,
   SkillStatusConfig,
 } from "@/lib/skills-data";
-import {
-  availableChannels,
-  availableIndividuals,
-  getCategoryLabel,
-  getChannelMemberDetails,
-  skillCategories,
-} from "@/lib/skills-data";
+import { getCategoryLabel, skillCategories } from "@/lib/skills-data";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeftIcon,
@@ -181,8 +175,8 @@ export function SkillDetailEdit({ skill, activeTab, onTabChange, onBack, onSave,
 
   const addedChannelIds = new Set(channels.map((c) => c.id));
   const addedIndividualIds = new Set(individuals.map((i) => i.id));
-  const unaddedChannels = availableChannels.filter((c) => !addedChannelIds.has(c.id));
-  const unaddedIndividuals = availableIndividuals.filter((i) => !addedIndividualIds.has(i.id));
+  const unaddedChannels: SkillChannelEntry[] = [];
+  const unaddedIndividuals: SkillIndividualEntry[] = [];
 
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [scrolled, setScrolled] = useState(false);
@@ -453,24 +447,7 @@ export function SkillDetailEdit({ skill, activeTab, onTabChange, onBack, onSave,
                                 <XIcon size={12} />
                               </button>
                             </div>
-                            {expandedChannels.has(ch.id) && (
-                              <div className="relative ml-[7px] border-l border-border pb-1 pl-5">
-                                {getChannelMemberDetails(ch.id).map((member) => (
-                                  <div key={member.id} className="relative">
-                                    <div className="absolute -left-5 top-[11px] h-px w-5 bg-border" />
-                                    <div className="flex items-center justify-between py-1.5">
-                                      <div className="flex items-center gap-1.5">
-                                        <User size={14} strokeWidth={1.75} className="text-muted-foreground/60" />
-                                        <span className="text-[13px] text-muted-foreground">{member.name}</span>
-                                      </div>
-                                      {ch.enabled && (
-                                        <span className="text-[11px] text-muted-foreground/60">Included</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                            {expandedChannels.has(ch.id) && null}
                           </div>
                         ));
                       })()}

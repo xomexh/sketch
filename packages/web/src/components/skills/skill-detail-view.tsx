@@ -9,13 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import type { Skill } from "@/lib/skills-data";
-import {
-  getActiveChannels,
-  getActiveIndividuals,
-  getCategoryLabel,
-  getChannelMemberDetails,
-  isSkillEnabled,
-} from "@/lib/skills-data";
+import { getActiveChannels, getActiveIndividuals, getCategoryLabel, isSkillEnabled } from "@/lib/skills-data";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeftIcon,
@@ -426,22 +420,7 @@ function AdminPermissionsView({
                               </span>
                             )}
                           </div>
-                          {expandedChannels.has(ch.id) && (
-                            <div className="relative ml-[7px] border-l border-border pb-1 pl-5">
-                              {getChannelMemberDetails(ch.id).map((member) => (
-                                <div key={member.id} className="relative">
-                                  <div className="absolute -left-5 top-[11px] h-px w-5 bg-border" />
-                                  <div className="flex items-center justify-between py-1.5">
-                                    <div className="flex items-center gap-1.5">
-                                      <User size={14} strokeWidth={1.75} className="text-muted-foreground/60" />
-                                      <span className="text-[13px] text-muted-foreground">{member.name}</span>
-                                    </div>
-                                    {isActive && <span className="text-[11px] text-muted-foreground/60">Included</span>}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          {expandedChannels.has(ch.id) && null}
                         </div>
                       );
                     })

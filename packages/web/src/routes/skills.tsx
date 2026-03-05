@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import {
-  CURRENT_USER_ID,
   type Skill,
   type SkillCategory,
   categoryMeta,
@@ -17,7 +16,6 @@ import {
   getSkillSourcesForUser,
   isSkillActiveForUser,
   isSkillEnabled,
-  mockSkills,
 } from "@/lib/skills-data";
 import { cn } from "@/lib/utils";
 import { PlusIcon } from "@phosphor-icons/react";
@@ -89,12 +87,8 @@ export function SkillsPage() {
           createdAt: new Date(),
         })),
       );
-      return;
     }
-    if (skillsQuery.isError) {
-      setSkills(mockSkills);
-    }
-  }, [skills.length, skillsQuery.data, skillsQuery.isError]);
+  }, [skills.length, skillsQuery.data]);
 
   const createSkillMutation = useMutation({
     mutationFn: (draft: SkillDraft) =>
@@ -177,13 +171,10 @@ export function SkillsPage() {
   // ── Derived data ──────────────────────────────────────────
   const isAdmin = true;
 
-  const totalActiveCount = useMemo(
-    () => skills.filter((s) => isSkillActiveForUser(s.status, CURRENT_USER_ID)).length,
-    [skills],
-  );
+  const totalActiveCount = useMemo(() => skills.filter((s) => isSkillEnabled(s.status)).length, [skills]);
 
   const activeSkills = useMemo(() => {
-    let result = skills.filter((s) => isSkillActiveForUser(s.status, CURRENT_USER_ID));
+    let result = skills.filter((s) => isSkillEnabled(s.status));
     if (activeCategories.length > 0) {
       result = result.filter((s) => activeCategories.includes(s.category));
     }
@@ -503,8 +494,7 @@ export function SkillsPage() {
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {displayedSkills.map((skill) => {
-              const sourceTags =
-                !isAdmin && listingTab === "active" ? getSkillSourcesForUser(skill.status, CURRENT_USER_ID) : undefined;
+              const sourceTags = undefined;
               return (
                 <SkillCard
                   key={skill.id}

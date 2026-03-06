@@ -84,8 +84,13 @@ describe("createDbAuthState", () => {
     await state.keys.set({ "pre-key": { "1": { data: "test" } as never } });
     await clearCreds();
 
+    const credsRows = await db.selectFrom("whatsapp_creds").selectAll().execute();
+    const keyRows = await db.selectFrom("whatsapp_keys").selectAll().execute();
+    expect(credsRows).toEqual([]);
+    expect(keyRows).toEqual([]);
+
     const { state: state2 } = await createDbAuthState(db);
-    expect(state2.creds.registrationId).not.toBe(state.creds.registrationId);
+    expect(state2.creds).toBeDefined();
     const result = await state2.keys.get("pre-key", ["1"]);
     expect(result["1"]).toBeUndefined();
   });

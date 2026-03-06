@@ -3,6 +3,8 @@
  * All methods throw on non-2xx responses with the standard error shape.
  */
 
+import type { SkillCategory } from "@/lib/skills-data";
+
 export interface ApiError {
   error: { code: string; message: string };
 }
@@ -49,6 +51,14 @@ export interface SetupStatus {
   slackConnected: boolean;
   llmConnected: boolean;
   llmProvider: "anthropic" | "bedrock" | null;
+}
+
+export interface SkillRecord {
+  id: string;
+  name: string;
+  description: string;
+  category: SkillCategory;
+  body: string;
 }
 
 export const api = {
@@ -164,6 +174,29 @@ export const api = {
       return request<{ success: boolean }>(`/api/users/${id}`, {
         method: "DELETE",
       });
+    },
+  },
+  skills: {
+    list() {
+      return request<{ skills: SkillRecord[] }>("/api/skills");
+    },
+    get(id: string) {
+      return request<{ skill: SkillRecord }>(`/api/skills/${id}`);
+    },
+    create(data: { name: string; description: string; category: SkillRecord["category"]; body: string; id?: string }) {
+      return request<{ skill: SkillRecord }>("/api/skills", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+    update(id: string, data: { name: string; description: string; category: SkillRecord["category"]; body: string }) {
+      return request<{ skill: SkillRecord }>(`/api/skills/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      });
+    },
+    remove(id: string) {
+      return request<{ success: true }>(`/api/skills/${id}`, { method: "DELETE" });
     },
   },
 };

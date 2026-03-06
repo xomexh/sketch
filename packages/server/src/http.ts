@@ -13,6 +13,7 @@ import { healthRoutes } from "./api/health";
 import { createAuthMiddleware } from "./api/middleware";
 import { settingsRoutes } from "./api/settings";
 import { setupRoutes } from "./api/setup";
+import { skillsRoutes } from "./api/skills";
 import { userRoutes } from "./api/users";
 import { whatsappRoutes } from "./api/whatsapp";
 import type { Config } from "./config";
@@ -30,7 +31,7 @@ interface AppDeps {
   onLlmSettingsUpdated?: () => Promise<void>;
 }
 
-export function createApp(db: Kysely<DB>, _config: Config, deps?: AppDeps) {
+export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   const app = new Hono();
   const settings = createSettingsRepository(db);
   const users = createUserRepository(db);
@@ -49,6 +50,7 @@ export function createApp(db: Kysely<DB>, _config: Config, deps?: AppDeps) {
     }),
   );
   app.route("/api/settings", settingsRoutes(settings));
+  app.route("/api/skills", skillsRoutes(config));
   app.route("/api/users", userRoutes(users));
   app.route(
     "/api/channels",

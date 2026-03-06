@@ -42,7 +42,7 @@ export function SkillsPermissionsDialog({
   const [isSaving, setIsSaving] = useState(false);
 
   const { data: skillsData } = useQuery({
-    queryKey: ["skills"],
+    queryKey: ["skills", "raw"],
     queryFn: () => api.skills.list(),
     enabled: open,
   });

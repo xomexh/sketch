@@ -14,7 +14,7 @@ import { type SDKUserMessage, query } from "@anthropic-ai/claude-agent-sdk";
 import type { Attachment } from "../files";
 import { buildMultimodalContent, formatAttachmentsForPrompt, isImageAttachment } from "../files";
 import type { Logger } from "../logger";
-import { loadClaudeSkillsFromDir } from "../skills/loader";
+import { loadClaudeSkillsFromDirAsync } from "../skills/loader";
 import { createCanUseTool } from "./permissions";
 import { buildSystemContext } from "./prompt";
 import { getSessionId, saveSessionId } from "./sessions";
@@ -84,7 +84,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
 
   if (hasSkillRestrictions) {
     const orgSkillsDir = join(homedir(), ".claude", "skills");
-    const orgSkills = loadClaudeSkillsFromDir(orgSkillsDir);
+    const orgSkills = await loadClaudeSkillsFromDirAsync(orgSkillsDir);
     const skillMap = new Map(orgSkills.map((s) => [s.id, s]));
     allowedSkillDescriptions = (params.allowedSkills as string[]).map((id) => {
       const skill = skillMap.get(id);

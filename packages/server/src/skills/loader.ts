@@ -1,28 +1,12 @@
 import { type Dirent, readFileSync, readdirSync, statSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { type SkillCategory, skillCategoryValueSet } from "@sketch/shared";
 
-export type LoadedSkillCategory =
-  | "crm"
-  | "comms"
-  | "research"
-  | "ops"
-  | "productivity"
-  | "sales"
-  | "marketing"
-  | "finance"
-  | "hr"
-  | "engineering"
-  | "design"
-  | "analytics"
-  | "security"
-  | "legal"
-  | "support"
-  | "onboarding"
-  | "reporting"
-  | "integrations"
-  | "ai"
-  | "workflows";
+const SKILL_FILE_NAME = "SKILL.md";
+const LEGACY_SKILL_FILE_NAME = "SKILL.MD";
+
+export type LoadedSkillCategory = SkillCategory;
 
 export interface LoadedSkill {
   id: string;
@@ -38,29 +22,28 @@ interface FrontMatter {
   category?: LoadedSkillCategory;
 }
 
+function readSkillMarkdownSync(skillDir: string): string | null {
+  for (const fileName of [SKILL_FILE_NAME, LEGACY_SKILL_FILE_NAME]) {
+    try {
+      return readFileSync(join(skillDir, fileName), "utf-8");
+    } catch {}
+  }
+
+  return null;
+}
+
+async function readSkillMarkdownAsync(skillDir: string): Promise<string | null> {
+  for (const fileName of [SKILL_FILE_NAME, LEGACY_SKILL_FILE_NAME]) {
+    try {
+      return await readFile(join(skillDir, fileName), "utf-8");
+    } catch {}
+  }
+
+  return null;
+}
+
 function isLoadedCategory(value: string): value is LoadedSkillCategory {
-  return (
-    value === "crm" ||
-    value === "comms" ||
-    value === "research" ||
-    value === "ops" ||
-    value === "productivity" ||
-    value === "sales" ||
-    value === "marketing" ||
-    value === "finance" ||
-    value === "hr" ||
-    value === "engineering" ||
-    value === "design" ||
-    value === "analytics" ||
-    value === "security" ||
-    value === "legal" ||
-    value === "support" ||
-    value === "onboarding" ||
-    value === "reporting" ||
-    value === "integrations" ||
-    value === "ai" ||
-    value === "workflows"
-  );
+  return skillCategoryValueSet.has(value);
 }
 
 function parseFrontMatterScalar(value: string): string {
@@ -136,14 +119,8 @@ export function loadClaudeSkillsFromDir(dir: string): LoadedSkill[] {
       continue;
     }
 
-    const mdPath = join(skillDir, "SKILL.MD");
-
-    let md: string;
-    try {
-      md = readFileSync(mdPath, "utf-8");
-    } catch {
-      continue;
-    }
+    const md = readSkillMarkdownSync(skillDir);
+    if (md === null) continue;
 
     const { frontMatter, body } = parseFrontMatter(md);
     const inferredName = frontMatter.name ? null : inferNameFromBody(body);
@@ -172,14 +149,8 @@ export async function loadClaudeSkillsFromDirAsync(dir: string): Promise<LoadedS
     entries
       .filter((entry) => entry.isDirectory())
       .map(async (entry) => {
-        const mdPath = join(dir, entry.name, "SKILL.MD");
-
-        let md: string;
-        try {
-          md = await readFile(mdPath, "utf-8");
-        } catch {
-          return null;
-        }
+        const md = await readSkillMarkdownAsync(join(dir, entry.name));
+        if (md === null) return null;
 
         const { frontMatter, body } = parseFrontMatter(md);
         const inferredName = frontMatter.name ? null : inferNameFromBody(body);
@@ -198,7 +169,7 @@ export async function loadClaudeSkillsFromDirAsync(dir: string): Promise<LoadedS
 }
 
 /**
- * Loads project skills from `{repoRoot}/.claude/skills/<skill>/SKILL.MD`.
+ * Loads project skills from `{repoRoot}/.claude/skills/<skill>/SKILL.md`.
  *
  * This is a thin wrapper around `loadClaudeSkillsFromDir` that preserves the
  * previous API used in tests and any legacy callers.

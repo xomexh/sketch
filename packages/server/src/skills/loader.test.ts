@@ -144,7 +144,7 @@ describe("loadProjectClaudeSkills", () => {
   async function writeSkill(skillId: string, content: string) {
     const skillDir = join(tempDir, ".claude", "skills", skillId);
     await mkdir(skillDir, { recursive: true });
-    await writeFile(join(skillDir, "SKILL.MD"), content, "utf-8");
+    await writeFile(join(skillDir, "SKILL.md"), content, "utf-8");
   }
 
   it("returns empty array when skills directory doesn't exist", async () => {
@@ -171,7 +171,7 @@ describe("loadProjectClaudeSkills", () => {
     expect(result).toEqual([]);
   });
 
-  it("skips directories without SKILL.MD", async () => {
+  it("skips directories without SKILL.md", async () => {
     const skillDir = join(tempDir, ".claude", "skills", "skill1");
     await mkdir(skillDir, { recursive: true });
     const result = loadProjectClaudeSkills(tempDir);
@@ -232,6 +232,20 @@ describe("loadProjectClaudeSkills", () => {
     const result = loadProjectClaudeSkills(tempDir);
     expect(result).toHaveLength(3);
     expect(result.map((s) => s.id)).toEqual(["skill1", "skill2", "skill3"]);
+  });
+
+  it("loads legacy uppercase skill files for compatibility", async () => {
+    const skillDir = join(tempDir, ".claude", "skills", "legacy-skill");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.MD"), "---\nname: Legacy Skill\n---\nLegacy body", "utf-8");
+
+    const result = loadProjectClaudeSkills(tempDir);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: "legacy-skill",
+      name: "Legacy Skill",
+      body: "Legacy body",
+    });
   });
 
   it("async loader matches sync results", async () => {
@@ -296,7 +310,7 @@ describe("loadProjectClaudeSkills", () => {
     expect(result1.length).toBe(2);
   });
 
-  it("handles missing SKILL.MD gracefully (file exists check)", async () => {
+  it("handles missing SKILL.md gracefully (file exists check)", async () => {
     const skillDir = join(tempDir, ".claude", "skills", "no-md");
     await mkdir(skillDir, { recursive: true });
 
@@ -339,7 +353,7 @@ describe("loadClaudeSkillsFromDir", () => {
   async function writeSkillAtRoot(skillId: string, content: string) {
     const skillDir = join(tempDir, skillId);
     await mkdir(skillDir, { recursive: true });
-    await writeFile(join(skillDir, "SKILL.MD"), content, "utf-8");
+    await writeFile(join(skillDir, "SKILL.md"), content, "utf-8");
   }
 
   it("returns empty array when directory does not exist", () => {

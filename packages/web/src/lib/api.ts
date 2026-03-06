@@ -20,7 +20,6 @@ export interface User {
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
-    credentials: "include",
     ...options,
     headers: {
       "Content-Type": "application/json",

@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(import.meta.dirname, "src"),
+      "@sketch/shared": resolve(import.meta.dirname, "../shared/src/index.ts"),
     },
   },
   server: {

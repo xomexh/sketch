@@ -20,6 +20,9 @@ import { cn } from "@/lib/utils";
 import { PlusIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createRoute } from "@tanstack/react-router";
+import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { dashboardRoute } from "./dashboard";
 /**
  * Skills page — create, manage, and configure skills (custom agent behaviors).
  *
@@ -29,9 +32,6 @@ import { createRoute } from "@tanstack/react-router";
  *
  * Page modes: listing → view | explore-preview → edit | create
  */
-import { useCallback, useMemo, useState } from "react";
-import { toast } from "sonner";
-import { dashboardRoute } from "./dashboard";
 
 export const skillsRoute = createRoute({
   getParentRoute: () => dashboardRoute,
@@ -72,6 +72,7 @@ export function SkillsPage() {
   });
 
   const skills = skillsQuery.data?.skills ?? [];
+  const skillsErrorMessage = skillsQuery.error instanceof Error ? skillsQuery.error.message : "Failed to load skills.";
 
   const setSkillsCache = useCallback(
     (updater: (currentSkills: Skill[]) => Skill[]) => {
@@ -308,6 +309,29 @@ export function SkillsPage() {
             // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders
             <Skeleton key={i} className="h-44 rounded-xl" />
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (skillsQuery.isError && skills.length === 0) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 py-8">
+        <div>
+          <h1 className="text-xl font-bold">Skills</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Discover and manage your bot&apos;s capabilities.</p>
+        </div>
+        <div className="mt-6 rounded-xl border border-destructive/20 bg-destructive/5 p-6">
+          <h2 className="text-sm font-semibold text-destructive">Couldn&apos;t load skills</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{skillsErrorMessage}</p>
+          <Button
+            className="mt-4"
+            variant="outline"
+            onClick={() => void skillsQuery.refetch()}
+            disabled={skillsQuery.isFetching}
+          >
+            Try again
+          </Button>
         </div>
       </div>
     );

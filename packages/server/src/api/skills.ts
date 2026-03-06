@@ -65,7 +65,7 @@ function slugify(input: string): string {
 }
 
 function orgSkillMdPath(id: string): string {
-  return join(getOrgSkillsDir(), id, "SKILL.MD");
+  return join(getOrgSkillsDir(), id, "SKILL.md");
 }
 
 function workspaceSkillDir(dataDir: string, workspaceId: string, id: string): string {
@@ -73,7 +73,7 @@ function workspaceSkillDir(dataDir: string, workspaceId: string, id: string): st
 }
 
 function workspaceSkillMdPath(dataDir: string, workspaceId: string, id: string): string {
-  return join(workspaceSkillDir(dataDir, workspaceId, id), "SKILL.MD");
+  return join(workspaceSkillDir(dataDir, workspaceId, id), "SKILL.md");
 }
 
 function renderFrontMatterString(value: string): string {

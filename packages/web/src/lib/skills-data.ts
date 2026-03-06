@@ -1,26 +1,7 @@
-// ── Types ──────────────────────────────────────────────────
+import { type SkillCategory, skillCategoryValues } from "@sketch/shared";
 
-export type SkillCategory =
-  | "crm"
-  | "comms"
-  | "research"
-  | "ops"
-  | "productivity"
-  | "sales"
-  | "marketing"
-  | "finance"
-  | "hr"
-  | "engineering"
-  | "design"
-  | "analytics"
-  | "security"
-  | "legal"
-  | "support"
-  | "onboarding"
-  | "reporting"
-  | "integrations"
-  | "ai"
-  | "workflows";
+// ── Types ──────────────────────────────────────────────────
+export type { SkillCategory } from "@sketch/shared";
 
 export interface SkillSource {
   hub: string;
@@ -79,31 +60,33 @@ export interface ApiSkill {
 
 // ── Category Definitions ───────────────────────────────────
 
-export const skillCategories: {
-  value: SkillCategory;
-  label: string;
-}[] = [
-  { value: "crm", label: "CRM" },
-  { value: "comms", label: "Comms" },
-  { value: "research", label: "Research" },
-  { value: "ops", label: "Ops" },
-  { value: "productivity", label: "Productivity" },
-  { value: "sales", label: "Sales" },
-  { value: "marketing", label: "Marketing" },
-  { value: "finance", label: "Finance" },
-  { value: "hr", label: "HR" },
-  { value: "engineering", label: "Engineering" },
-  { value: "design", label: "Design" },
-  { value: "analytics", label: "Analytics" },
-  { value: "security", label: "Security" },
-  { value: "legal", label: "Legal" },
-  { value: "support", label: "Support" },
-  { value: "onboarding", label: "Onboarding" },
-  { value: "reporting", label: "Reporting" },
-  { value: "integrations", label: "Integrations" },
-  { value: "ai", label: "AI" },
-  { value: "workflows", label: "Workflows" },
-];
+const categoryLabels: Record<SkillCategory, string> = {
+  crm: "CRM",
+  comms: "Comms",
+  research: "Research",
+  ops: "Ops",
+  productivity: "Productivity",
+  sales: "Sales",
+  marketing: "Marketing",
+  finance: "Finance",
+  hr: "HR",
+  engineering: "Engineering",
+  design: "Design",
+  analytics: "Analytics",
+  security: "Security",
+  legal: "Legal",
+  support: "Support",
+  onboarding: "Onboarding",
+  reporting: "Reporting",
+  integrations: "Integrations",
+  ai: "AI",
+  workflows: "Workflows",
+};
+
+export const skillCategories: { value: SkillCategory; label: string }[] = skillCategoryValues.map((value) => ({
+  value,
+  label: categoryLabels[value],
+}));
 
 export const categoryMeta: Record<SkillCategory, { iconBg: string; iconEmoji: string }> = {
   crm: { iconBg: "bg-orange-500/15", iconEmoji: "📊" },
@@ -169,8 +152,7 @@ export function formatRelativeTime(date: Date): string {
 }
 
 export function getCategoryLabel(category: SkillCategory): string {
-  const found = skillCategories.find((c) => c.value === category);
-  return found?.label ?? category;
+  return categoryLabels[category] ?? category;
 }
 
 /** Check if a skill is enabled for anyone */

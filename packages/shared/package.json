@@ -8,6 +8,9 @@
     "build": "tsdown src/index.ts --format esm --out-dir dist --dts",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
   "devDependencies": {
     "tsdown": "^0.14.0"
   }

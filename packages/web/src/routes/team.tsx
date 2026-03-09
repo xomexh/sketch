@@ -40,14 +40,13 @@ import {
   UsersThreeIcon,
   WhatsappLogoIcon,
 } from "@phosphor-icons/react";
+import { emailSchema, whatsappNumberSchema } from "@sketch/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createRoute, useRouteContext } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { dashboardRoute } from "./dashboard";
-
-const whatsappNumberSchema = z.string().min(8).regex(/^\+/);
 
 const addMemberSchema = z.object({
   name: z.string().min(1),
@@ -56,7 +55,7 @@ const addMemberSchema = z.object({
 
 const editMemberSchema = z.object({
   name: z.string().min(1),
-  email: z.union([z.literal(""), z.string().email()]),
+  email: z.union([z.literal(""), emailSchema]),
   whatsappNumber: z.union([z.literal(""), whatsappNumberSchema]),
 });
 

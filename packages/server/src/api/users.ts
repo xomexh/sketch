@@ -3,16 +3,12 @@
  * Primary use case: admin adds WhatsApp users so they can message the bot.
  * Slack users are auto-created on first DM and appear here as read-only.
  */
+import { emailSchema, whatsappNumberSchema } from "@sketch/shared";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { createUserRepository } from "../db/repositories/users";
 
 type UserRepo = ReturnType<typeof createUserRepository>;
-
-const whatsappNumberSchema = z
-  .string()
-  .min(8, "Phone number must be at least 8 characters")
-  .startsWith("+", "Phone number must start with +");
 
 const createUserSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -21,7 +17,7 @@ const createUserSchema = z.object({
 
 const updateUserSchema = z.object({
   name: z.string().min(1, "Name is required").optional(),
-  email: z.string().email("Invalid email address").nullable().optional(),
+  email: emailSchema.nullable().optional(),
   whatsappNumber: whatsappNumberSchema.nullable().optional(),
 });
 

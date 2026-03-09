@@ -21,6 +21,7 @@ const createUserSchema = z.object({
 
 const updateUserSchema = z.object({
   name: z.string().min(1, "Name is required").optional(),
+  email: z.string().email("Invalid email address").nullable().optional(),
   whatsappNumber: whatsappNumberSchema.nullable().optional(),
 });
 
@@ -71,6 +72,7 @@ export function userRoutes(users: UserRepo) {
     try {
       const user = await users.update(id, {
         name: parsed.data.name,
+        email: parsed.data.email,
         whatsappNumber: parsed.data.whatsappNumber,
       });
       return c.json({ user });

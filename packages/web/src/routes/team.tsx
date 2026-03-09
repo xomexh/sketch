@@ -31,6 +31,7 @@ import type { User } from "@/lib/api";
 import { api } from "@/lib/api";
 import {
   DotsThreeIcon,
+  EnvelopeIcon,
   PencilSimpleIcon,
   PlusIcon,
   SlackLogoIcon,
@@ -187,6 +188,12 @@ function MemberRow({
             active={!!user.whatsapp_number}
             tooltip={user.whatsapp_number ? "WhatsApp connected" : "WhatsApp not connected"}
             activeColor="#25D366"
+          />
+          <ChannelBadge
+            icon={<EnvelopeIcon size={16} />}
+            active={!!user.email}
+            tooltip={user.email ? "Email added" : "Email not added"}
+            activeColor="#9CFF7D"
           />
         </div>
       </TooltipProvider>
@@ -387,12 +394,14 @@ function EditMemberDialog({
   onSuccess: () => void;
 }) {
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (user) {
       setName(user.name);
+      setEmail(user.email ?? "");
       setPhone(user.whatsapp_number ?? "");
       setError("");
     }
@@ -402,6 +411,7 @@ function EditMemberDialog({
     mutationFn: () =>
       api.users.update(user?.id ?? "", {
         name: name.trim(),
+        email: email.trim() || null,
         whatsappNumber: phone.trim() || null,
       }),
     onSuccess: () => {
@@ -417,9 +427,16 @@ function EditMemberDialog({
     },
   });
 
-  const isDirty = user && (name.trim() !== user.name || (phone.trim() || null) !== (user.whatsapp_number ?? null));
+  const isDirty =
+    user &&
+    (name.trim() !== user.name ||
+      (email.trim() || null) !== (user.email ?? null) ||
+      (phone.trim() || null) !== (user.whatsapp_number ?? null));
   const canSubmit =
-    isDirty && name.trim().length > 0 && (!phone.trim() || (phone.trim().startsWith("+") && phone.trim().length >= 8));
+    isDirty &&
+    name.trim().length > 0 &&
+    (!email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) &&
+    (!phone.trim() || (phone.trim().startsWith("+") && phone.trim().length >= 8));
 
   return (
     <Dialog open={!!user} onOpenChange={onOpenChange}>
@@ -436,6 +453,18 @@ function EditMemberDialog({
               id="edit-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              disabled={updateMutation.isPending}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-email">Email</Label>
+            <Input
+              id="edit-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@example.com"
               disabled={updateMutation.isPending}
             />
           </div>

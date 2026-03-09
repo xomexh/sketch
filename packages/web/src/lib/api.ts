@@ -164,7 +164,7 @@ export const api = {
         body: JSON.stringify(data),
       });
     },
-    update(id: string, data: { name?: string; whatsappNumber?: string | null }) {
+    update(id: string, data: { name?: string; email?: string | null; whatsappNumber?: string | null }) {
       return request<{ user: User }>(`/api/users/${id}`, {
         method: "PATCH",
         body: JSON.stringify(data),

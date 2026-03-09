@@ -44,7 +44,21 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createRoute, useRouteContext } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 import { dashboardRoute } from "./dashboard";
+
+const whatsappNumberSchema = z.string().min(8).regex(/^\+/);
+
+const addMemberSchema = z.object({
+  name: z.string().min(1),
+  whatsappNumber: whatsappNumberSchema,
+});
+
+const editMemberSchema = z.object({
+  name: z.string().min(1),
+  email: z.union([z.literal(""), z.string().email()]),
+  whatsappNumber: z.union([z.literal(""), whatsappNumberSchema]),
+});
 
 export const teamRoute = createRoute({
   getParentRoute: () => dashboardRoute,
@@ -319,7 +333,7 @@ function AddMemberDialog({
     onOpenChange(false);
   };
 
-  const canSubmit = name.trim().length > 0 && phone.trim().startsWith("+") && phone.trim().length >= 8;
+  const canSubmit = addMemberSchema.safeParse({ name: name.trim(), whatsappNumber: phone.trim() }).success;
 
   return (
     <Dialog
@@ -434,9 +448,7 @@ function EditMemberDialog({
       (phone.trim() || null) !== (user.whatsapp_number ?? null));
   const canSubmit =
     isDirty &&
-    name.trim().length > 0 &&
-    (!email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) &&
-    (!phone.trim() || (phone.trim().startsWith("+") && phone.trim().length >= 8));
+    editMemberSchema.safeParse({ name: name.trim(), email: email.trim(), whatsappNumber: phone.trim() }).success;
 
   return (
     <Dialog open={!!user} onOpenChange={onOpenChange}>

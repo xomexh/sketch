@@ -161,6 +161,27 @@ describe("update()", () => {
     await expect(users.update(other.id, { whatsappNumber: "+14155550001" })).rejects.toThrow();
   });
 
+  it("updates email", async () => {
+    const created = await users.create({ name: "Dave", slackUserId: "U014" });
+    const updated = await users.update(created.id, { email: "dave@example.com" });
+    expect(updated.email).toBe("dave@example.com");
+    expect(updated.name).toBe("Dave");
+  });
+
+  it("clears email when set to null", async () => {
+    const created = await users.create({ name: "Eve", slackUserId: "U015" });
+    await users.update(created.id, { email: "eve@example.com" });
+    const updated = await users.update(created.id, { email: null });
+    expect(updated.email).toBeNull();
+  });
+
+  it("updates email and name together", async () => {
+    const created = await users.create({ name: "Frank", slackUserId: "U016" });
+    const updated = await users.update(created.id, { name: "Franklin", email: "frank@example.com" });
+    expect(updated.name).toBe("Franklin");
+    expect(updated.email).toBe("frank@example.com");
+  });
+
   it("returns unchanged user when no fields provided", async () => {
     const created = await users.create({ name: "Ivy", slackUserId: "U012" });
     const updated = await users.update(created.id, {});

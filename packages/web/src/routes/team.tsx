@@ -181,7 +181,7 @@ function MemberRow({
             icon={<SlackLogoIcon size={16} />}
             active={!!user.slack_user_id}
             tooltip={user.slack_user_id ? "Slack connected" : "Slack not connected"}
-            activeColor="#E01E5A"
+            activeColor="#4A154B"
           />
           <ChannelBadge
             icon={<WhatsappLogoIcon size={16} />}
@@ -193,7 +193,7 @@ function MemberRow({
             icon={<EnvelopeIcon size={16} />}
             active={!!user.email}
             tooltip={user.email ? "Email added" : "Email not added"}
-            activeColor="#9CFF7D"
+            activeColor="#0072FC"
           />
         </div>
       </TooltipProvider>

@@ -8,12 +8,12 @@ import { Hono } from "hono";
 import type { Kysely } from "kysely";
 import type { Logger } from "pino";
 import { z } from "zod";
-import { countRecentTokens, createVerificationToken } from "../auth/email-verify.js";
-import type { Config } from "../config.js";
+import { countRecentTokens, createVerificationToken } from "../auth/email-verify";
+import type { Config } from "../config";
 import type { createSettingsRepository } from "../db/repositories/settings";
 import type { createUserRepository } from "../db/repositories/users";
-import type { DB } from "../db/schema.js";
-import { type SmtpConfig, createEmailTransport, sendVerificationEmail } from "../email.js";
+import type { DB } from "../db/schema";
+import { type SmtpConfig, createEmailTransport, sendVerificationEmail } from "../email";
 
 type UserRepo = ReturnType<typeof createUserRepository>;
 type SettingsRepo = ReturnType<typeof createSettingsRepository>;

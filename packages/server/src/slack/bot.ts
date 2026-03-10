@@ -11,7 +11,7 @@
  * and to filter out our own messages while letting other bots' messages through.
  */
 import { App } from "@slack/bolt";
-import type { Logger } from "../logger.js";
+import type { Logger } from "../logger";
 
 export interface SlackFile {
   name: string;

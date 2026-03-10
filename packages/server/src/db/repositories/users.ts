@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Kysely } from "kysely";
-import type { DB } from "../schema.js";
+import type { DB } from "../schema";
 
 export function createUserRepository(db: Kysely<DB>) {
   return {

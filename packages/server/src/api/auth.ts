@@ -7,11 +7,11 @@ import { randomBytes } from "node:crypto";
 import { type Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Kysely } from "kysely";
-import { verifyEmailToken } from "../auth/email-verify.js";
+import { verifyEmailToken } from "../auth/email-verify";
 import { signJwt, verifyJwt } from "../auth/jwt";
 import { verifyPassword } from "../auth/password";
 import type { createSettingsRepository } from "../db/repositories/settings";
-import type { DB } from "../db/schema.js";
+import type { DB } from "../db/schema";
 
 export const SESSION_COOKIE = "sketch_session";
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds

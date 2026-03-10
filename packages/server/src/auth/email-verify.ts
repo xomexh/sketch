@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { Kysely } from "kysely";
-import type { DB } from "../db/schema.js";
+import type { DB } from "../db/schema";
 
 const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 

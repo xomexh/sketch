@@ -3,6 +3,22 @@ import { cleanup } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { server } from "./msw";
 
+// IntersectionObserver is not available in jsdom — provide a no-op stub so
+// components that use scroll detection don't crash when rendered in tests.
+if (typeof globalThis.IntersectionObserver === "undefined") {
+  globalThis.IntersectionObserver = class IntersectionObserver {
+    readonly root = null;
+    readonly rootMargin = "0px";
+    readonly thresholds = [0];
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords(): IntersectionObserverEntry[] {
+      return [];
+    }
+  } as unknown as typeof IntersectionObserver;
+}
+
 // EventSource is not available in jsdom — provide a no-op stub so components
 // that use SSE (e.g. WhatsAppQR) don't crash when rendered in tests.
 if (typeof globalThis.EventSource === "undefined") {

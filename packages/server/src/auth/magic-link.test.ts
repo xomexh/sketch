@@ -3,12 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createUserRepository } from "../db/repositories/users";
 import type { DB } from "../db/schema";
 import { createTestDb } from "../test-utils";
-import {
-  countRecentMagicLinkTokens,
-  createMagicLinkToken,
-  findVerifiedUserByEmail,
-  verifyMagicLinkToken,
-} from "./magic-link";
+import { createRateLimitedMagicLinkToken, findVerifiedUserByEmail, verifyMagicLinkToken } from "./magic-link";
 
 let db: Kysely<DB>;
 let users: ReturnType<typeof createUserRepository>;
@@ -46,6 +41,12 @@ describe("findVerifiedUserByEmail()", () => {
     expect(result).toEqual({ id: user.id, name: "Test User", email: "test@example.com" });
   });
 
+  it("matches case-insensitively (Postgres-safe)", async () => {
+    const user = await createVerifiedUser("Test@Example.COM");
+    const result = await findVerifiedUserByEmail(db, "test@example.com");
+    expect(result).toEqual({ id: user.id, name: "Test User", email: "Test@Example.COM" });
+  });
+
   it("returns null for unverified email", async () => {
     await createUnverifiedUser("test@example.com");
     const result = await findVerifiedUserByEmail(db, "test@example.com");
@@ -58,18 +59,23 @@ describe("findVerifiedUserByEmail()", () => {
   });
 });
 
-describe("createMagicLinkToken()", () => {
+describe("createRateLimitedMagicLinkToken()", () => {
   it("returns a 64-char hex token", async () => {
     const user = await createVerifiedUser("test@example.com");
-    const token = await createMagicLinkToken(db, user.id);
+    const token = await createRateLimitedMagicLinkToken(db, user.id);
     expect(token).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("stores token in the database", async () => {
     const user = await createVerifiedUser("test@example.com");
-    const token = await createMagicLinkToken(db, user.id);
+    const token = await createRateLimitedMagicLinkToken(db, user.id);
+    expect(token).not.toBeNull();
 
-    const row = await db.selectFrom("magic_link_tokens").selectAll().where("token", "=", token).executeTakeFirst();
+    const row = await db
+      .selectFrom("magic_link_tokens")
+      .selectAll()
+      .where("token", "=", token as string)
+      .executeTakeFirst();
 
     expect(row).toBeDefined();
     expect(row?.user_id).toBe(user.id);
@@ -89,7 +95,7 @@ describe("createMagicLinkToken()", () => {
       })
       .execute();
 
-    await createMagicLinkToken(db, user.id);
+    await createRateLimitedMagicLinkToken(db, user.id);
 
     const expired = await db
       .selectFrom("magic_link_tokens")
@@ -99,27 +105,78 @@ describe("createMagicLinkToken()", () => {
 
     expect(expired).toBeUndefined();
   });
+
+  it("returns null when rate limit (5 per 15 min) is reached", async () => {
+    const user = await createVerifiedUser("test@example.com");
+
+    // Create 5 tokens (at the limit)
+    for (let i = 0; i < 5; i++) {
+      const t = await createRateLimitedMagicLinkToken(db, user.id);
+      expect(t).not.toBeNull();
+    }
+
+    // 6th should be rate-limited
+    const rateLimited = await createRateLimitedMagicLinkToken(db, user.id);
+    expect(rateLimited).toBeNull();
+  });
+
+  it("does not count expired tokens from other users toward rate limit", async () => {
+    const user1 = await createVerifiedUser("user1@example.com");
+    const user2 = await createVerifiedUser("user2@example.com");
+
+    // Fill user2's limit
+    for (let i = 0; i < 5; i++) {
+      await createRateLimitedMagicLinkToken(db, user2.id);
+    }
+
+    // user1 should still be able to create tokens
+    const token = await createRateLimitedMagicLinkToken(db, user1.id);
+    expect(token).not.toBeNull();
+  });
+
+  it("does not count old tokens toward rate limit", async () => {
+    const user = await createVerifiedUser("test@example.com");
+
+    // Insert 5 tokens with old timestamps (>15 min ago)
+    for (let i = 0; i < 5; i++) {
+      await db
+        .insertInto("magic_link_tokens")
+        .values({
+          token: `old-token-${i}`,
+          user_id: user.id,
+          expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+          created_at: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+        })
+        .execute();
+    }
+
+    // Should still be able to create a fresh token
+    const token = await createRateLimitedMagicLinkToken(db, user.id);
+    expect(token).not.toBeNull();
+  });
 });
 
 describe("verifyMagicLinkToken()", () => {
   it("returns userId for a valid token", async () => {
     const user = await createVerifiedUser("test@example.com");
-    const token = await createMagicLinkToken(db, user.id);
+    const token = await createRateLimitedMagicLinkToken(db, user.id);
+    expect(token).not.toBeNull();
 
-    const userId = await verifyMagicLinkToken(db, token);
+    const userId = await verifyMagicLinkToken(db, token as string);
     expect(userId).toBe(user.id);
   });
 
   it("marks token as used (atomic)", async () => {
     const user = await createVerifiedUser("test@example.com");
-    const token = await createMagicLinkToken(db, user.id);
+    const token = await createRateLimitedMagicLinkToken(db, user.id);
+    expect(token).not.toBeNull();
 
-    await verifyMagicLinkToken(db, token);
+    await verifyMagicLinkToken(db, token as string);
 
     const row = await db
       .selectFrom("magic_link_tokens")
       .select("used_at")
-      .where("token", "=", token)
+      .where("token", "=", token as string)
       .executeTakeFirstOrThrow();
 
     expect(row.used_at).not.toBeNull();
@@ -127,10 +184,11 @@ describe("verifyMagicLinkToken()", () => {
 
   it("returns null for already-used token (double-use prevented)", async () => {
     const user = await createVerifiedUser("test@example.com");
-    const token = await createMagicLinkToken(db, user.id);
+    const token = await createRateLimitedMagicLinkToken(db, user.id);
+    expect(token).not.toBeNull();
 
-    const first = await verifyMagicLinkToken(db, token);
-    const second = await verifyMagicLinkToken(db, token);
+    const first = await verifyMagicLinkToken(db, token as string);
+    const second = await verifyMagicLinkToken(db, token as string);
 
     expect(first).toBe(user.id);
     expect(second).toBeNull();
@@ -156,52 +214,5 @@ describe("verifyMagicLinkToken()", () => {
   it("returns null for non-existent token", async () => {
     const result = await verifyMagicLinkToken(db, "nonexistent-token");
     expect(result).toBeNull();
-  });
-});
-
-describe("countRecentMagicLinkTokens()", () => {
-  it("returns 0 when no tokens exist", async () => {
-    const user = await createVerifiedUser("test@example.com");
-    const count = await countRecentMagicLinkTokens(db, user.id);
-    expect(count).toBe(0);
-  });
-
-  it("counts tokens created within the last 15 minutes", async () => {
-    const user = await createVerifiedUser("test@example.com");
-
-    await createMagicLinkToken(db, user.id);
-    await createMagicLinkToken(db, user.id);
-    await createMagicLinkToken(db, user.id);
-
-    const count = await countRecentMagicLinkTokens(db, user.id);
-    expect(count).toBe(3);
-  });
-
-  it("does not count tokens older than 15 minutes", async () => {
-    const user = await createVerifiedUser("test@example.com");
-
-    await db
-      .insertInto("magic_link_tokens")
-      .values({
-        token: "old-token",
-        user_id: user.id,
-        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-        created_at: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
-      })
-      .execute();
-
-    const count = await countRecentMagicLinkTokens(db, user.id);
-    expect(count).toBe(0);
-  });
-
-  it("does not count tokens from other users", async () => {
-    const user1 = await createVerifiedUser("user1@example.com");
-    const user2 = await createVerifiedUser("user2@example.com");
-
-    await createMagicLinkToken(db, user1.id);
-    await createMagicLinkToken(db, user2.id);
-
-    const count = await countRecentMagicLinkTokens(db, user1.id);
-    expect(count).toBe(1);
   });
 });

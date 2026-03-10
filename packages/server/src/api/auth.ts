@@ -10,12 +10,7 @@ import type { Kysely } from "kysely";
 import type { Logger } from "pino";
 import { verifyEmailToken } from "../auth/email-verify";
 import { signJwt, verifyJwt } from "../auth/jwt";
-import {
-  countRecentMagicLinkTokens,
-  createMagicLinkToken,
-  findVerifiedUserByEmail,
-  verifyMagicLinkToken,
-} from "../auth/magic-link";
+import { createRateLimitedMagicLinkToken, findVerifiedUserByEmail, verifyMagicLinkToken } from "../auth/magic-link";
 import { verifyPassword } from "../auth/password";
 import type { Config } from "../config";
 import type { createSettingsRepository } from "../db/repositories/settings";
@@ -162,14 +157,15 @@ export function authRoutes(settings: SettingsRepo, db: Kysely<DB>, deps: { confi
     const user = await findVerifiedUserByEmail(db, email);
     if (!user) return c.json(successResponse);
 
-    // Rate limit: max 5 per 15 minutes
-    const recentCount = await countRecentMagicLinkTokens(db, user.id);
-    if (recentCount >= 5) return c.json(successResponse);
+    // Atomic rate-limit check + token creation in a single transaction
+    const token = await createRateLimitedMagicLinkToken(db, user.id);
+    if (!token) return c.json(successResponse);
 
-    const token = await createMagicLinkToken(db, user.id);
     const baseUrl = resolveBaseUrl(c, deps.config);
     const magicLinkUrl = `${baseUrl}/api/auth/magic-link/verify?token=${token}`;
 
+    // Reuse settings already fetched by the middleware cache path where possible,
+    // but we need SMTP config which requires a fresh read.
     const settingsRow = await settings.get();
     const smtp = settingsRow ? getSmtpConfig(settingsRow) : null;
     if (smtp) {

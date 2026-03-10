@@ -491,6 +491,7 @@ export function SkillsPage() {
               <SkillCard
                 key={skill.id}
                 skill={skill}
+                isAdmin={isAdmin}
                 onCardClick={handleCardClick}
                 onDuplicate={handleDuplicate}
                 onDelete={handleDeleteClick}

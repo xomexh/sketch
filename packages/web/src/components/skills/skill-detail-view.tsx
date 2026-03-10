@@ -91,26 +91,28 @@ export function SkillDetailView({
               Add Skill
             </Button>
           ) : (
-            <>
-              <Button variant="ghost" size="icon" className="size-8" onClick={onEdit}>
-                <PencilSimpleIcon size={16} className="text-muted-foreground" />
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="size-7">
-                    <DotsThreeIcon size={16} className="text-muted-foreground" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => onDuplicate(skill)}>Duplicate</DropdownMenuItem>
-                  {/* TODO: Enable/Disable skill will be implemented later. */}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem variant="destructive" onClick={() => onDelete(skill)}>
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
+            isAdmin && (
+              <>
+                <Button variant="ghost" size="icon" className="size-8" onClick={onEdit}>
+                  <PencilSimpleIcon size={16} className="text-muted-foreground" />
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-7">
+                      <DotsThreeIcon size={16} className="text-muted-foreground" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => onDuplicate(skill)}>Duplicate</DropdownMenuItem>
+                    {/* TODO: Enable/Disable skill will be implemented later. */}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem variant="destructive" onClick={() => onDelete(skill)}>
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            )
           )}
         </div>
       </div>

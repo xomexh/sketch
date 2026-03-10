@@ -30,7 +30,7 @@ sketch/
   data/                 → runtime data (gitignored)
     sketch.db           → SQLite database
     workspaces/{uid}/   → per-user workspace dirs
-  .planning/            → internal dev docs (gitignored)
+  .planning/            → internal dev docs (git submodule: sketch-internal-planning)
     PRODUCT.md          → full product document
     STATE.md            → current state + next steps
     STEEL_THREAD.md     → steel thread implementation plan (done)
@@ -61,6 +61,7 @@ sketch/
 
 ## Conventions
 
+- RESTful API design: resource-oriented URLs (no verbs in paths), correct HTTP methods (GET for reads, POST for creation, PUT for idempotent upserts, PATCH for partial updates, DELETE for removal). Use nouns for resources (e.g. `POST /api/users/:id/verification` not `POST /api/users/:id/send-verification`).
 - Biome for linting and formatting (tabs, 120 line width)
 - Strict TypeScript (`strict: true`)
 - Conventional commits: `feat:`, `fix:`, `chore:`
@@ -86,7 +87,7 @@ sketch/
 
 ## Dev Workflow
 
-Internal planning docs live in `.planning/` (gitignored):
+Internal planning docs live in `.planning/` (git submodule, separate private repo `sketch-internal-planning`):
 
 - **PRODUCT.md** — high-level product document. The "what and why". Evolves slowly.
 - **STATE.md** — current project state, what's done, next steps, current version. Updated at end of every feature implementation and at end of each work session. Quick context resume for new sessions.

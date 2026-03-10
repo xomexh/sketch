@@ -54,7 +54,10 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   );
   app.route("/api/settings", settingsRoutes(settings));
   app.route("/api/skills", skillsRoutes(config));
-  app.route("/api/users", userRoutes(users, { settings, db, logger: deps?.logger ?? (console as unknown as Logger) }));
+  app.route(
+    "/api/users",
+    userRoutes(users, { settings, db, logger: deps?.logger ?? (console as unknown as Logger), config }),
+  );
   app.route(
     "/api/channels",
     channelRoutes({

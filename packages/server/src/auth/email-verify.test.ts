@@ -97,7 +97,7 @@ describe("createVerificationToken()", () => {
     expect(expired).toBeUndefined();
   });
 
-  it("does not clean up non-expired tokens", async () => {
+  it("invalidates previous unused tokens for the same user", async () => {
     const user = await createUser("test@example.com");
     const first = await createVerificationToken(db, user.id, "test@example.com");
     await createVerificationToken(db, user.id, "test@example.com");
@@ -109,6 +109,25 @@ describe("createVerificationToken()", () => {
       .executeTakeFirst();
 
     expect(firstRow).toBeDefined();
+    expect(firstRow?.used_at).not.toBeNull();
+  });
+
+  it("does not invalidate tokens from other users", async () => {
+    const user1 = await createUser("user1@example.com");
+    const user2 = await users.create({ name: "Other User" });
+    await users.update(user2.id, { email: "user2@example.com" });
+
+    const user2Token = await createVerificationToken(db, user2.id, "user2@example.com");
+    await createVerificationToken(db, user1.id, "user1@example.com");
+
+    const row = await db
+      .selectFrom("email_verification_tokens")
+      .selectAll()
+      .where("token", "=", user2Token)
+      .executeTakeFirst();
+
+    expect(row).toBeDefined();
+    expect(row?.used_at).toBeNull();
   });
 });
 

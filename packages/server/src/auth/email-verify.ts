@@ -5,7 +5,14 @@ import type { DB } from "../db/schema.js";
 const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export async function createVerificationToken(db: Kysely<DB>, userId: string, email: string): Promise<string> {
-  // Clean up expired tokens for this user
+  // Invalidate all previous unused tokens and clean up expired ones
+  await db
+    .updateTable("email_verification_tokens")
+    .set({ used_at: new Date().toISOString() })
+    .where("user_id", "=", userId)
+    .where("used_at", "is", null)
+    .execute();
+
   await db
     .deleteFrom("email_verification_tokens")
     .where("user_id", "=", userId)

@@ -21,6 +21,7 @@ export const configSchema = z.object({
   MAX_FILE_SIZE_MB: z.coerce.number().default(20),
 
   // Server
+  BASE_URL: z.string().optional(),
   DATA_DIR: z.string().default("./data"),
   PORT: z.coerce.number().default(3000),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),

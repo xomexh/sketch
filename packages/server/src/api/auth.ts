@@ -37,7 +37,7 @@ export async function createSession(c: Context, email: string, jwtSecret: string
   setSessionCookie(c, token, isSecure(c));
 }
 
-export function authRoutes(settings: SettingsRepo, db?: Kysely<DB>) {
+export function authRoutes(settings: SettingsRepo, db: Kysely<DB>) {
   const routes = new Hono();
 
   routes.post("/login", async (c) => {
@@ -101,10 +101,6 @@ export function authRoutes(settings: SettingsRepo, db?: Kysely<DB>) {
     const token = c.req.query("token");
     if (!token) {
       return c.redirect("/?verification=invalid");
-    }
-
-    if (!db) {
-      return c.redirect("/?verification=error");
     }
 
     const result = await verifyEmailToken(db, token);

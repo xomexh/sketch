@@ -9,6 +9,7 @@ import type { Kysely } from "kysely";
 import type { Logger } from "pino";
 import { z } from "zod";
 import { countRecentTokens, createVerificationToken } from "../auth/email-verify.js";
+import type { Config } from "../config.js";
 import type { createSettingsRepository } from "../db/repositories/settings";
 import type { createUserRepository } from "../db/repositories/users";
 import type { DB } from "../db/schema.js";
@@ -21,6 +22,7 @@ interface UserRoutesDeps {
   settings: SettingsRepo;
   db: Kysely<DB>;
   logger: Logger;
+  config: Config;
 }
 
 const createUserSchema = z.object({
@@ -56,6 +58,13 @@ function getSmtpConfig(settings: {
     password: settings.smtp_password,
     from: settings.smtp_from,
   };
+}
+
+function resolveBaseUrl(deps: UserRoutesDeps, c: { req: { header: (name: string) => string | undefined } }): string {
+  if (deps.config.BASE_URL) return deps.config.BASE_URL.replace(/\/+$/, "");
+  const protocol = c.req.header("x-forwarded-proto") || "http";
+  const host = c.req.header("host") || "localhost:3000";
+  return `${protocol}://${host}`;
 }
 
 async function sendOrLogVerification(
@@ -137,9 +146,7 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
       // Send verification email when email changes to a non-null value
       let verificationSent = false;
       if (emailChanged && user.email) {
-        const protocol = c.req.header("x-forwarded-proto") || "http";
-        const host = c.req.header("host") || "localhost:3000";
-        const baseUrl = `${protocol}://${host}`;
+        const baseUrl = resolveBaseUrl(deps, c);
         const result = await sendOrLogVerification(deps, id, user.email, baseUrl);
         verificationSent = result.sent;
       }
@@ -176,9 +183,7 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
       );
     }
 
-    const protocol = c.req.header("x-forwarded-proto") || "http";
-    const host = c.req.header("host") || "localhost:3000";
-    const baseUrl = `${protocol}://${host}`;
+    const baseUrl = resolveBaseUrl(deps, c);
     const result = await sendOrLogVerification(deps, id, user.email, baseUrl);
 
     return c.json({ success: true, sent: result.sent });

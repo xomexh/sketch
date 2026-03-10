@@ -1,7 +1,9 @@
 import type { Kysely } from "kysely";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { signJwt } from "./auth/jwt";
 import { hashPassword } from "./auth/password";
 import { createSettingsRepository } from "./db/repositories/settings";
+import { createUserRepository } from "./db/repositories/users";
 import type { DB } from "./db/schema";
 import { createApp } from "./http";
 import { createTestConfig, createTestDb } from "./test-utils";
@@ -1599,6 +1601,252 @@ describe("Users API", () => {
         headers: { Cookie: cookie },
       });
       expect(res.status).toBe(404);
+    });
+  });
+});
+
+describe("RBAC", () => {
+  let db: Kysely<DB>;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+  });
+
+  afterEach(async () => {
+    try {
+      await db.destroy();
+    } catch {}
+  });
+
+  /** Seed admin, complete onboarding, return admin cookie + jwt_secret. */
+  async function setupWithAdmin(app: ReturnType<typeof createApp>) {
+    await seedAdmin(db);
+    const settings = createSettingsRepository(db);
+    await settings.update({ onboardingCompletedAt: new Date().toISOString() });
+    const loginRes = await app.request("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@test.com", password: "testpassword123" }),
+    });
+    const adminCookie = loginRes.headers.get("set-cookie") ?? "";
+    const row = await settings.get();
+    const jwtSecret = row?.jwt_secret as string;
+    return { adminCookie, jwtSecret };
+  }
+
+  /** Create a member user and return a member session cookie. */
+  async function createMemberSession(jwtSecret: string) {
+    const users = createUserRepository(db);
+    const user = await users.create({ name: "Member User" });
+    const token = await signJwt(user.id, "member", jwtSecret);
+    return { memberId: user.id, memberCookie: `sketch_session=${token}` };
+  }
+
+  describe("admin-only routes return 403 for members", () => {
+    it("POST /api/users", async () => {
+      const app = createApp(db, config);
+      const { jwtSecret } = await setupWithAdmin(app);
+      const { memberCookie } = await createMemberSession(jwtSecret);
+
+      const res = await app.request("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: memberCookie },
+        body: JSON.stringify({ name: "New User" }),
+      });
+      expect(res.status).toBe(403);
+
+      const body = await res.json();
+      expect(body.error.code).toBe("FORBIDDEN");
+    });
+
+    it("DELETE /api/users/:id", async () => {
+      const app = createApp(db, config);
+      const { jwtSecret } = await setupWithAdmin(app);
+      const { memberCookie } = await createMemberSession(jwtSecret);
+
+      const res = await app.request("/api/users/some-id", {
+        method: "DELETE",
+        headers: { Cookie: memberCookie },
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("DELETE /api/channels/slack", async () => {
+      const app = createApp(db, config);
+      const { jwtSecret } = await setupWithAdmin(app);
+      const { memberCookie } = await createMemberSession(jwtSecret);
+
+      const res = await app.request("/api/channels/slack", {
+        method: "DELETE",
+        headers: { Cookie: memberCookie },
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("PUT /api/channels/email", async () => {
+      const app = createApp(db, config);
+      const { jwtSecret } = await setupWithAdmin(app);
+      const { memberCookie } = await createMemberSession(jwtSecret);
+
+      const res = await app.request("/api/channels/email", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Cookie: memberCookie },
+        body: JSON.stringify({ smtpHost: "mail.example.com" }),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("DELETE /api/channels/email", async () => {
+      const app = createApp(db, config);
+      const { jwtSecret } = await setupWithAdmin(app);
+      const { memberCookie } = await createMemberSession(jwtSecret);
+
+      const res = await app.request("/api/channels/email", {
+        method: "DELETE",
+        headers: { Cookie: memberCookie },
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("POST /api/channels/email/test", async () => {
+      const app = createApp(db, config);
+      const { jwtSecret } = await setupWithAdmin(app);
+      const { memberCookie } = await createMemberSession(jwtSecret);
+
+      const res = await app.request("/api/channels/email/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: memberCookie },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("POST /api/skills", async () => {
+      const app = createApp(db, config);
+      const { jwtSecret } = await setupWithAdmin(app);
+      const { memberCookie } = await createMemberSession(jwtSecret);
+
+      const res = await app.request("/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: memberCookie },
+        body: JSON.stringify({ name: "Test Skill" }),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("PUT /api/skills/:id", async () => {
+      const app = createApp(db, config);
+      const { jwtSecret } = await setupWithAdmin(app);
+      const { memberCookie } = await createMemberSession(jwtSecret);
+
+      const res = await app.request("/api/skills/some-id", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Cookie: memberCookie },
+        body: JSON.stringify({ name: "Updated" }),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("DELETE /api/skills/:id", async () => {
+      const app = createApp(db, config);
+      const { jwtSecret } = await setupWithAdmin(app);
+      const { memberCookie } = await createMemberSession(jwtSecret);
+
+      const res = await app.request("/api/skills/some-id", {
+        method: "DELETE",
+        headers: { Cookie: memberCookie },
+      });
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe("read routes allow members", () => {
+    it("GET /api/users", async () => {
+      const app = createApp(db, config);
+      const { jwtSecret } = await setupWithAdmin(app);
+      const { memberCookie } = await createMemberSession(jwtSecret);
+
+      const res = await app.request("/api/users", { headers: { Cookie: memberCookie } });
+      expect(res.status).toBe(200);
+    });
+
+    it("GET /api/skills", async () => {
+      const app = createApp(db, config);
+      const { jwtSecret } = await setupWithAdmin(app);
+      const { memberCookie } = await createMemberSession(jwtSecret);
+
+      const res = await app.request("/api/skills", { headers: { Cookie: memberCookie } });
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe("member ownership checks", () => {
+    it("PATCH /api/users/:id allows editing own profile", async () => {
+      const app = createApp(db, config);
+      const { jwtSecret } = await setupWithAdmin(app);
+      const { memberId, memberCookie } = await createMemberSession(jwtSecret);
+
+      const res = await app.request(`/api/users/${memberId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Cookie: memberCookie },
+        body: JSON.stringify({ name: "Updated Name" }),
+      });
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.user.name).toBe("Updated Name");
+    });
+
+    it("PATCH /api/users/:id returns 403 for other user's profile", async () => {
+      const app = createApp(db, config);
+      const { jwtSecret } = await setupWithAdmin(app);
+      const { memberCookie } = await createMemberSession(jwtSecret);
+
+      // Create another user
+      const users = createUserRepository(db);
+      const other = await users.create({ name: "Other User" });
+
+      const res = await app.request(`/api/users/${other.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Cookie: memberCookie },
+        body: JSON.stringify({ name: "Hacked" }),
+      });
+      expect(res.status).toBe(403);
+
+      const body = await res.json();
+      expect(body.error.code).toBe("FORBIDDEN");
+    });
+
+    it("PATCH own profile ignores email field for members", async () => {
+      const app = createApp(db, config);
+      const { jwtSecret } = await setupWithAdmin(app);
+      const { memberId, memberCookie } = await createMemberSession(jwtSecret);
+
+      const res = await app.request(`/api/users/${memberId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Cookie: memberCookie },
+        body: JSON.stringify({ name: "Updated", email: "hacker@evil.com" }),
+      });
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.user.name).toBe("Updated");
+      expect(body.user.email).toBeNull();
+    });
+
+    it("POST /api/users/:id/verification returns 403 for other user", async () => {
+      const app = createApp(db, config);
+      const { jwtSecret } = await setupWithAdmin(app);
+      const { memberCookie } = await createMemberSession(jwtSecret);
+
+      const users = createUserRepository(db);
+      const other = await users.create({ name: "Other" });
+
+      const res = await app.request(`/api/users/${other.id}/verification`, {
+        method: "POST",
+        headers: { Cookie: memberCookie },
+      });
+      expect(res.status).toBe(403);
     });
   });
 });

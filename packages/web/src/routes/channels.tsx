@@ -441,8 +441,8 @@ function EmailConfigDialog({
   onOpenChange: (open: boolean) => void;
   onConfigured: () => void;
 }) {
-  const [host, setHost] = useState("");
-  const [port, setPort] = useState("587");
+  const [host, setHost] = useState("smtp.gmail.com");
+  const [port, setPort] = useState("465");
   const [user, setUser] = useState("");
   const [password, setPassword] = useState("");
   const [from, setFrom] = useState("");
@@ -465,8 +465,8 @@ function EmailConfigDialog({
   });
 
   const resetFields = () => {
-    setHost("");
-    setPort("587");
+    setHost("smtp.gmail.com");
+    setPort("465");
     setUser("");
     setPassword("");
     setFrom("");
@@ -487,6 +487,32 @@ function EmailConfigDialog({
           <DialogTitle>Configure Email SMTP</DialogTitle>
           <DialogDescription>Enter your SMTP server details to send verification emails.</DialogDescription>
         </DialogHeader>
+
+        <div className="rounded-md border border-border bg-muted/30 p-3">
+          <p className="mb-2 text-xs font-medium">Gmail App Password setup</p>
+          <ol className="list-inside list-decimal space-y-1.5 text-xs text-muted-foreground">
+            <li>Go to Google Account &rarr; Security</li>
+            <li>Enable 2-Step Verification if not already on</li>
+            <li>Go to App Passwords (search &ldquo;App Passwords&rdquo; in account settings)</li>
+            <li>Enter a name (e.g. &ldquo;Sketch&rdquo;) and click Create</li>
+            <li>Copy the 16-character password &mdash; Google won&rsquo;t show it again</li>
+            <li>Paste it in the Password field below</li>
+          </ol>
+          <div className="mt-2.5 flex items-center gap-1">
+            <Button variant="ghost" size="sm" asChild>
+              <a href="https://myaccount.google.com/signinoptions/twosv" target="_blank" rel="noopener noreferrer">
+                Enable 2-Step Verification
+                <ArrowSquareOutIcon className="size-3.5" />
+              </a>
+            </Button>
+            <Button variant="ghost" size="sm" asChild>
+              <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">
+                App Passwords
+                <ArrowSquareOutIcon className="size-3.5" />
+              </a>
+            </Button>
+          </div>
+        </div>
 
         <div className="space-y-3">
           <div className="space-y-1.5">

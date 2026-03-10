@@ -26,7 +26,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { WhatsAppQR } from "@/components/whatsapp-qr";
 import type { ChannelStatus } from "@/lib/api";
 import { api } from "@/lib/api";
-import type { AuthContext } from "@/routes/dashboard";
+import { useDashboardAuth } from "@/routes/dashboard";
 import {
   ArrowSquareOutIcon,
   CheckIcon,
@@ -39,7 +39,7 @@ import {
   WhatsappLogoIcon,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createRoute, useRouteContext } from "@tanstack/react-router";
+import { createRoute } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { dashboardRoute } from "./dashboard";
@@ -51,7 +51,7 @@ export const channelsRoute = createRoute({
 });
 
 export function ChannelsPage() {
-  const { auth } = useRouteContext({ from: dashboardRoute.id }) as { auth: AuthContext };
+  const auth = useDashboardAuth();
   const readOnly = auth.role === "member";
   const { data, isLoading } = useQuery({
     queryKey: ["channels", "status"],

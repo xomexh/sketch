@@ -30,7 +30,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import type { User } from "@/lib/api";
 import { api } from "@/lib/api";
 import { getInitials } from "@/lib/utils";
-import type { AuthContext } from "@/routes/dashboard";
+import { type AuthContext, useDashboardAuth } from "@/routes/dashboard";
 import {
   CheckCircleIcon,
   ClockIcon,
@@ -46,7 +46,7 @@ import {
 } from "@phosphor-icons/react";
 import { emailSchema, whatsappNumberSchema } from "@sketch/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createRoute, useRouteContext } from "@tanstack/react-router";
+import { createRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -70,7 +70,7 @@ export const teamRoute = createRoute({
 });
 
 export function TeamPage() {
-  const { auth } = useRouteContext({ from: dashboardRoute.id }) as { auth: AuthContext };
+  const auth = useDashboardAuth();
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["users"],

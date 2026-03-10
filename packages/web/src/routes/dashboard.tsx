@@ -43,6 +43,11 @@ async function checkAuth(): Promise<{ auth: AuthContext }> {
   };
 }
 
+export function useDashboardAuth(): AuthContext {
+  const { auth } = useRouteContext({ from: dashboardRoute.id }) as { auth: AuthContext };
+  return auth;
+}
+
 export const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "dashboard",
@@ -53,7 +58,7 @@ export const dashboardRoute = createRoute({
 });
 
 function DashboardLayout() {
-  const { auth } = useRouteContext({ from: dashboardRoute.id });
+  const auth = useDashboardAuth();
 
   return (
     <SidebarProvider>

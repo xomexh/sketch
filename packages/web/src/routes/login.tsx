@@ -27,6 +27,7 @@ export const loginRoute = createRoute({
 function LoginPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState<LoginStep>("choose");
+  const [memberEmail, setMemberEmail] = useState("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -53,8 +54,15 @@ function LoginPage() {
       {step === "admin" && (
         <AdminStep onBack={() => setStep("choose")} onSuccess={() => navigate({ to: "/channels" })} />
       )}
-      {step === "member" && <MemberStep onBack={() => setStep("choose")} onSent={() => setStep("magic-link-sent")} />}
-      {step === "magic-link-sent" && <MagicLinkSentStep onBack={() => setStep("member")} />}
+      {step === "member" && (
+        <MemberStep
+          email={memberEmail}
+          onEmailChange={setMemberEmail}
+          onBack={() => setStep("choose")}
+          onSent={() => setStep("magic-link-sent")}
+        />
+      )}
+      {step === "magic-link-sent" && <MagicLinkSentStep email={memberEmail} onBack={() => setStep("member")} />}
     </div>
   );
 }
@@ -162,9 +170,12 @@ function AdminStep({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =>
   );
 }
 
-function MemberStep({ onBack, onSent }: { onBack: () => void; onSent: () => void }) {
-  const [email, setEmail] = useState("");
-
+function MemberStep({
+  email,
+  onEmailChange,
+  onBack,
+  onSent,
+}: { email: string; onEmailChange: (v: string) => void; onBack: () => void; onSent: () => void }) {
   const magicLinkMutation = useMutation({
     mutationFn: () => api.auth.magicLink.request(email),
     onSuccess: () => onSent(),
@@ -193,7 +204,7 @@ function MemberStep({ onBack, onSent }: { onBack: () => void; onSent: () => void
               type="email"
               placeholder="you@yourorg.com"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => onEmailChange(e.target.value)}
               required
               autoFocus
             />
@@ -215,7 +226,13 @@ function MemberStep({ onBack, onSent }: { onBack: () => void; onSent: () => void
   );
 }
 
-function MagicLinkSentStep({ onBack }: { onBack: () => void }) {
+function MagicLinkSentStep({ email, onBack }: { email: string; onBack: () => void }) {
+  const resendMutation = useMutation({
+    mutationFn: () => api.auth.magicLink.request(email),
+    onSuccess: () => toast.success("Magic link resent!"),
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   return (
     <Card className="w-full max-w-[400px]">
       <CardHeader className="text-center">
@@ -229,14 +246,24 @@ function MagicLinkSentStep({ onBack }: { onBack: () => void }) {
       </CardHeader>
       <CardContent className="text-center">
         <p className="text-xs text-muted-foreground">The link expires in 15 minutes and can only be used once.</p>
-        <button
-          type="button"
-          className="mt-4 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mx-auto"
-          onClick={onBack}
-        >
-          <ArrowLeftIcon size={12} />
-          Try a different email
-        </button>
+        <div className="mt-4 flex flex-col items-center gap-2">
+          <button
+            type="button"
+            className="text-xs text-primary hover:text-primary/80 disabled:opacity-50"
+            onClick={() => resendMutation.mutate()}
+            disabled={resendMutation.isPending}
+          >
+            {resendMutation.isPending ? "Resending..." : "Resend magic link"}
+          </button>
+          <button
+            type="button"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            onClick={onBack}
+          >
+            <ArrowLeftIcon size={12} />
+            Try a different email
+          </button>
+        </div>
       </CardContent>
     </Card>
   );

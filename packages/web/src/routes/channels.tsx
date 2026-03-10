@@ -26,6 +26,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { WhatsAppQR } from "@/components/whatsapp-qr";
 import type { ChannelStatus } from "@/lib/api";
 import { api } from "@/lib/api";
+import type { AuthContext } from "@/routes/dashboard";
 import {
   ArrowSquareOutIcon,
   CheckIcon,
@@ -38,7 +39,7 @@ import {
   WhatsappLogoIcon,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createRoute } from "@tanstack/react-router";
+import { createRoute, useRouteContext } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { dashboardRoute } from "./dashboard";
@@ -50,6 +51,8 @@ export const channelsRoute = createRoute({
 });
 
 export function ChannelsPage() {
+  const { auth } = useRouteContext({ from: dashboardRoute.id }) as { auth: AuthContext };
+  const readOnly = auth.role === "member";
   const { data, isLoading } = useQuery({
     queryKey: ["channels", "status"],
     queryFn: () => api.channels.status(),
@@ -78,24 +81,24 @@ export function ChannelsPage() {
             <Skeleton className="h-32 rounded-lg" />
           </>
         ) : (
-          data?.channels.map((channel) => <PlatformCard key={channel.platform} channel={channel} />)
+          data?.channels.map((channel) => <PlatformCard key={channel.platform} channel={channel} readOnly={readOnly} />)
         )}
       </div>
     </div>
   );
 }
 
-function PlatformCard({ channel }: { channel: ChannelStatus }) {
+function PlatformCard({ channel, readOnly }: { channel: ChannelStatus; readOnly: boolean }) {
   if (channel.platform === "slack") {
-    return <SlackCard channel={channel} />;
+    return <SlackCard channel={channel} readOnly={readOnly} />;
   }
   if (channel.platform === "email") {
-    return <EmailCard channel={channel} />;
+    return <EmailCard channel={channel} readOnly={readOnly} />;
   }
-  return <WhatsAppCard channel={channel} />;
+  return <WhatsAppCard channel={channel} readOnly={readOnly} />;
 }
 
-function SlackCard({ channel }: { channel: ChannelStatus }) {
+function SlackCard({ channel, readOnly }: { channel: ChannelStatus; readOnly: boolean }) {
   const queryClient = useQueryClient();
   const [showConnectDialog, setShowConnectDialog] = useState(false);
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
@@ -136,27 +139,29 @@ function SlackCard({ channel }: { channel: ChannelStatus }) {
             </div>
             <span className="text-sm font-medium">Slack</span>
           </div>
-          <div className="flex items-center gap-2">
-            {!isConfigured && (
-              <Button variant="outline" size="sm" onClick={() => setShowConnectDialog(true)}>
-                Connect
-              </Button>
-            )}
-            {isConfigured && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="size-7">
-                    <DotsThreeIcon size={16} />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem className="text-destructive" onClick={() => setShowDisconnectDialog(true)}>
-                    Disconnect
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </div>
+          {!readOnly && (
+            <div className="flex items-center gap-2">
+              {!isConfigured && (
+                <Button variant="outline" size="sm" onClick={() => setShowConnectDialog(true)}>
+                  Connect
+                </Button>
+              )}
+              {isConfigured && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-7">
+                      <DotsThreeIcon size={16} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem className="text-destructive" onClick={() => setShowDisconnectDialog(true)}>
+                      Disconnect
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="ml-12 mt-2">
@@ -197,7 +202,7 @@ function SlackCard({ channel }: { channel: ChannelStatus }) {
   );
 }
 
-function WhatsAppCard({ channel }: { channel: ChannelStatus }) {
+function WhatsAppCard({ channel, readOnly }: { channel: ChannelStatus; readOnly: boolean }) {
   const queryClient = useQueryClient();
   const [showPairDialog, setShowPairDialog] = useState(false);
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
@@ -237,27 +242,29 @@ function WhatsAppCard({ channel }: { channel: ChannelStatus }) {
             </div>
             <span className="text-sm font-medium">WhatsApp</span>
           </div>
-          <div className="flex items-center gap-2">
-            {!isConnected && (
-              <Button variant="outline" size="sm" onClick={() => setShowPairDialog(true)}>
-                Pair
-              </Button>
-            )}
-            {isConnected && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="size-7">
-                    <DotsThreeIcon size={16} />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem className="text-destructive" onClick={() => setShowDisconnectDialog(true)}>
-                    Disconnect
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </div>
+          {!readOnly && (
+            <div className="flex items-center gap-2">
+              {!isConnected && (
+                <Button variant="outline" size="sm" onClick={() => setShowPairDialog(true)}>
+                  Pair
+                </Button>
+              )}
+              {isConnected && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-7">
+                      <DotsThreeIcon size={16} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem className="text-destructive" onClick={() => setShowDisconnectDialog(true)}>
+                      Disconnect
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="ml-12 mt-2">
@@ -324,7 +331,7 @@ function WhatsAppPairDialog({
   );
 }
 
-function EmailCard({ channel }: { channel: ChannelStatus }) {
+function EmailCard({ channel, readOnly }: { channel: ChannelStatus; readOnly: boolean }) {
   const queryClient = useQueryClient();
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
@@ -369,28 +376,30 @@ function EmailCard({ channel }: { channel: ChannelStatus }) {
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {!isConfigured && (
-              <Button variant="outline" size="sm" onClick={() => setShowConfigDialog(true)}>
-                Configure
-              </Button>
-            )}
-            {isConfigured && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="size-7">
-                    <DotsThreeIcon size={16} />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setShowConfigDialog(true)}>Reconfigure</DropdownMenuItem>
-                  <DropdownMenuItem className="text-destructive" onClick={() => setShowDisconnectDialog(true)}>
-                    Disconnect
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </div>
+          {!readOnly && (
+            <div className="flex items-center gap-2">
+              {!isConfigured && (
+                <Button variant="outline" size="sm" onClick={() => setShowConfigDialog(true)}>
+                  Configure
+                </Button>
+              )}
+              {isConfigured && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-7">
+                      <DotsThreeIcon size={16} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setShowConfigDialog(true)}>Reconfigure</DropdownMenuItem>
+                    <DropdownMenuItem className="text-destructive" onClick={() => setShowDisconnectDialog(true)}>
+                      Disconnect
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="ml-12 mt-2">

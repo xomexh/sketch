@@ -42,3 +42,20 @@ export async function sendVerificationEmail(
 <p>This link expires in 24 hours.</p>`,
   });
 }
+
+export async function sendMagicLinkEmail(
+  transport: nodemailer.Transporter,
+  to: string,
+  magicLinkUrl: string,
+  botName: string,
+  from: string,
+): Promise<void> {
+  await transport.sendMail({
+    from: `${botName} <${from}>`,
+    to,
+    subject: `Sign in to ${botName}`,
+    html: `<p>Click the link below to sign in:</p>
+<p><a href="${magicLinkUrl}">${magicLinkUrl}</a></p>
+<p>This link expires in 15 minutes and can only be used once.</p>`,
+  });
+}

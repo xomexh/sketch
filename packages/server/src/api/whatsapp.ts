@@ -10,6 +10,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { WhatsAppBot } from "../whatsapp/bot";
+import { requireAdmin } from "./middleware";
 
 export function whatsappRoutes(whatsapp: WhatsAppBot) {
   const routes = new Hono();
@@ -23,7 +24,7 @@ export function whatsappRoutes(whatsapp: WhatsAppBot) {
     });
   });
 
-  routes.get("/pair", async (c) => {
+  routes.get("/pair", requireAdmin(), async (c) => {
     if (whatsapp.isConnected) {
       return c.json({ error: { code: "ALREADY_CONNECTED", message: "WhatsApp is already connected" } }, 400);
     }
@@ -53,7 +54,7 @@ export function whatsappRoutes(whatsapp: WhatsAppBot) {
     });
   });
 
-  routes.delete("/pair", async (c) => {
+  routes.delete("/pair", requireAdmin(), async (c) => {
     if (!pairingInProgress) {
       return c.json({ error: { code: "NO_PAIRING", message: "No pairing in progress" } }, 400);
     }
@@ -62,7 +63,7 @@ export function whatsappRoutes(whatsapp: WhatsAppBot) {
     return c.json({ success: true });
   });
 
-  routes.delete("/", async (c) => {
+  routes.delete("/", requireAdmin(), async (c) => {
     if (!whatsapp.isConnected) {
       return c.json({ error: { code: "NOT_CONNECTED", message: "WhatsApp is not connected" } }, 400);
     }

@@ -29,6 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { User } from "@/lib/api";
 import { api } from "@/lib/api";
+import type { AuthContext } from "@/routes/dashboard";
 import {
   CheckCircleIcon,
   ClockIcon,
@@ -68,7 +69,7 @@ export const teamRoute = createRoute({
 });
 
 export function TeamPage() {
-  const { auth } = useRouteContext({ from: dashboardRoute.id });
+  const { auth } = useRouteContext({ from: dashboardRoute.id }) as { auth: AuthContext };
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["users"],
@@ -80,37 +81,47 @@ export function TeamPage() {
   const [removingUser, setRemovingUser] = useState<User | null>(null);
 
   const users = data?.users ?? [];
+  const isMember = auth.role === "member";
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Team</h1>
-        <Button size="sm" onClick={() => setShowAddDialog(true)}>
-          <PlusIcon size={14} weight="bold" />
-          Add member
-        </Button>
+        {!isMember && (
+          <Button size="sm" onClick={() => setShowAddDialog(true)}>
+            <PlusIcon size={14} weight="bold" />
+            Add member
+          </Button>
+        )}
       </div>
 
       <div className="mt-6">
         {isLoading ? (
           <LoadingSkeleton />
         ) : users.length === 0 ? (
-          <EmptyState onAdd={() => setShowAddDialog(true)} />
+          isMember ? (
+            <p className="text-sm text-muted-foreground">No team members yet.</p>
+          ) : (
+            <EmptyState onAdd={() => setShowAddDialog(true)} />
+          )
         ) : (
-          <MemberList users={users} adminEmail={auth.email ?? ""} onEdit={setEditingUser} onRemove={setRemovingUser} />
+          <MemberList users={users} auth={auth} onEdit={setEditingUser} onRemove={setRemovingUser} />
         )}
       </div>
 
-      <AddMemberDialog
-        open={showAddDialog}
-        onOpenChange={setShowAddDialog}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["users"] });
-        }}
-      />
+      {!isMember && (
+        <AddMemberDialog
+          open={showAddDialog}
+          onOpenChange={setShowAddDialog}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["users"] });
+          }}
+        />
+      )}
 
       <EditMemberDialog
         user={editingUser}
+        isMember={isMember}
         onOpenChange={(open) => !open && setEditingUser(null)}
         onSuccess={() => {
           setEditingUser(null);
@@ -118,43 +129,52 @@ export function TeamPage() {
         }}
       />
 
-      <RemoveMemberDialog
-        user={removingUser}
-        onOpenChange={(open) => !open && setRemovingUser(null)}
-        onSuccess={() => {
-          setRemovingUser(null);
-          queryClient.invalidateQueries({ queryKey: ["users"] });
-        }}
-      />
+      {!isMember && (
+        <RemoveMemberDialog
+          user={removingUser}
+          onOpenChange={(open) => !open && setRemovingUser(null)}
+          onSuccess={() => {
+            setRemovingUser(null);
+            queryClient.invalidateQueries({ queryKey: ["users"] });
+          }}
+        />
+      )}
     </div>
   );
 }
 
 function MemberList({
   users,
-  adminEmail,
+  auth,
   onEdit,
   onRemove,
 }: {
   users: User[];
-  adminEmail: string;
+  auth: AuthContext;
   onEdit: (user: User) => void;
   onRemove: (user: User) => void;
 }) {
+  const isMember = auth.role === "member";
+
   return (
     <>
       <p className="mb-3 text-sm font-medium text-muted-foreground">Team members</p>
       <div className="rounded-lg border border-border bg-card">
-        {users.map((user, i) => (
-          <MemberRow
-            key={user.id}
-            user={user}
-            isCurrentAdmin={!!user.email && user.email === adminEmail}
-            isLast={i === users.length - 1}
-            onEdit={() => onEdit(user)}
-            onRemove={() => onRemove(user)}
-          />
-        ))}
+        {users.map((user, i) => {
+          const isCurrentUser = isMember ? user.id === auth.userId : !!user.email && user.email === auth.email;
+
+          return (
+            <MemberRow
+              key={user.id}
+              user={user}
+              isCurrentUser={isCurrentUser}
+              isMember={isMember}
+              isLast={i === users.length - 1}
+              onEdit={() => onEdit(user)}
+              onRemove={() => onRemove(user)}
+            />
+          );
+        })}
       </div>
     </>
   );
@@ -162,18 +182,24 @@ function MemberList({
 
 function MemberRow({
   user,
-  isCurrentAdmin,
+  isCurrentUser,
+  isMember,
   isLast,
   onEdit,
   onRemove,
 }: {
   user: User;
-  isCurrentAdmin: boolean;
+  isCurrentUser: boolean;
+  isMember: boolean;
   isLast: boolean;
   onEdit: () => void;
   onRemove: () => void;
 }) {
   const initials = getInitials(user.name);
+  // Admin sees actions on all rows except their own "You" row.
+  // Member sees edit (no delete) only on their own row.
+  const showActions = isMember ? isCurrentUser : !isCurrentUser;
+  const showDelete = !isMember;
 
   return (
     <div className={`flex items-center gap-4 px-4 py-4 ${isLast ? "" : "border-b border-border"}`}>
@@ -183,7 +209,7 @@ function MemberRow({
 
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="truncate text-sm font-medium">{user.name}</span>
-        {isCurrentAdmin && (
+        {isCurrentUser && (
           <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
             You
           </Badge>
@@ -219,7 +245,7 @@ function MemberRow({
         </div>
       </TooltipProvider>
 
-      {!isCurrentAdmin && (
+      {showActions && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="size-7">
@@ -231,11 +257,15 @@ function MemberRow({
               <PencilSimpleIcon size={14} className="mr-2" />
               Edit
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive" onClick={onRemove}>
-              <UserMinusIcon size={14} className="mr-2" />
-              Remove member
-            </DropdownMenuItem>
+            {showDelete && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-destructive" onClick={onRemove}>
+                  <UserMinusIcon size={14} className="mr-2" />
+                  Remove member
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -407,10 +437,12 @@ function AddMemberDialog({
 
 function EditMemberDialog({
   user,
+  isMember,
   onOpenChange,
   onSuccess,
 }: {
   user: User | null;
+  isMember: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }) {
@@ -432,7 +464,7 @@ function EditMemberDialog({
     mutationFn: () =>
       api.users.update(user?.id ?? "", {
         name: name.trim(),
-        email: email.trim() || null,
+        ...(isMember ? {} : { email: email.trim() || null }),
         whatsappNumber: phone.trim() || null,
       }),
     onSuccess: (data) => {
@@ -500,8 +532,9 @@ function EditMemberDialog({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@example.com"
-              disabled={updateMutation.isPending}
+              disabled={updateMutation.isPending || isMember}
             />
+            {isMember && <p className="text-xs text-muted-foreground">Contact your admin to change your email.</p>}
             {user?.email && email === user.email && (
               <div className="flex items-center gap-1.5">
                 {user.email_verified_at ? (

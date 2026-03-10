@@ -1,5 +1,5 @@
 /**
- * Admin auth routes — DB-backed credentials, JWT session tokens.
+ * Auth routes — admin login (password), member login (magic link), session management.
  * JWTs are signed with a per-deployment secret stored in the settings table,
  * so sessions survive server restarts. Cookie-based with httpOnly, sameSite=lax.
  */
@@ -7,11 +7,21 @@ import { randomBytes } from "node:crypto";
 import { type Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Kysely } from "kysely";
+import type { Logger } from "pino";
 import { verifyEmailToken } from "../auth/email-verify";
 import { signJwt, verifyJwt } from "../auth/jwt";
+import {
+  countRecentMagicLinkTokens,
+  createMagicLinkToken,
+  findVerifiedUserByEmail,
+  verifyMagicLinkToken,
+} from "../auth/magic-link";
 import { verifyPassword } from "../auth/password";
+import type { Config } from "../config";
 import type { createSettingsRepository } from "../db/repositories/settings";
 import type { DB } from "../db/schema";
+import { createEmailTransport, sendMagicLinkEmail } from "../email";
+import { getSmtpConfig, resolveBaseUrl } from "./shared";
 
 export const SESSION_COOKIE = "sketch_session";
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
@@ -32,12 +42,17 @@ function setSessionCookie(c: Context, token: string, secure: boolean) {
   });
 }
 
-export async function createSession(c: Context, email: string, jwtSecret: string): Promise<void> {
-  const token = await signJwt(email, jwtSecret);
+export async function createSession(
+  c: Context,
+  sub: string,
+  role: "admin" | "member",
+  jwtSecret: string,
+): Promise<void> {
+  const token = await signJwt(sub, role, jwtSecret);
   setSessionCookie(c, token, isSecure(c));
 }
 
-export function authRoutes(settings: SettingsRepo, db: Kysely<DB>) {
+export function authRoutes(settings: SettingsRepo, db: Kysely<DB>, deps: { config: Config; logger: Logger }) {
   const routes = new Hono();
 
   routes.post("/login", async (c) => {
@@ -65,7 +80,7 @@ export function authRoutes(settings: SettingsRepo, db: Kysely<DB>) {
       await settings.update({ jwtSecret });
     }
 
-    await createSession(c, row.admin_email, jwtSecret);
+    await createSession(c, row.admin_email, "admin", jwtSecret);
     return c.json({ authenticated: true, email: row.admin_email });
   });
 
@@ -93,8 +108,28 @@ export function authRoutes(settings: SettingsRepo, db: Kysely<DB>) {
     }
 
     // Sliding renewal — issue a fresh JWT to extend the session
-    await createSession(c, payload.email, row.jwt_secret);
-    return c.json({ authenticated: true, email: payload.email });
+    await createSession(c, payload.sub, payload.role, row.jwt_secret);
+
+    if (payload.role === "member") {
+      const user = await db.selectFrom("users").selectAll().where("id", "=", payload.sub).executeTakeFirst();
+      if (!user) {
+        deleteCookie(c, SESSION_COOKIE, { path: "/" });
+        return c.json({ authenticated: false });
+      }
+      return c.json({
+        authenticated: true,
+        role: "member" as const,
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+      });
+    }
+
+    return c.json({
+      authenticated: true,
+      role: "admin" as const,
+      email: payload.sub,
+    });
   });
 
   routes.get("/verify-email", async (c) => {
@@ -109,6 +144,62 @@ export function authRoutes(settings: SettingsRepo, db: Kysely<DB>) {
     }
 
     return c.redirect("/?verification=success");
+  });
+
+  // --- Magic link login ---
+
+  routes.post("/magic-link", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { email?: string };
+    if (!body.email) {
+      return c.json({ error: { code: "BAD_REQUEST", message: "Email required" } }, 400);
+    }
+
+    const email = body.email.toLowerCase().trim();
+
+    // Always return success (prevent email enumeration)
+    const successResponse = { success: true };
+
+    const user = await findVerifiedUserByEmail(db, email);
+    if (!user) return c.json(successResponse);
+
+    // Rate limit: max 5 per 15 minutes
+    const recentCount = await countRecentMagicLinkTokens(db, user.id);
+    if (recentCount >= 5) return c.json(successResponse);
+
+    const token = await createMagicLinkToken(db, user.id);
+    const baseUrl = resolveBaseUrl(c, deps.config);
+    const magicLinkUrl = `${baseUrl}/api/auth/magic-link/verify?token=${token}`;
+
+    const settingsRow = await settings.get();
+    const smtp = settingsRow ? getSmtpConfig(settingsRow) : null;
+    if (smtp) {
+      const transport = createEmailTransport(smtp);
+      await sendMagicLinkEmail(transport, email, magicLinkUrl, settingsRow?.bot_name ?? "Sketch", smtp.from);
+    } else {
+      deps.logger.info({ magicLinkUrl }, "Magic link (SMTP not configured)");
+    }
+
+    return c.json(successResponse);
+  });
+
+  routes.get("/magic-link/verify", async (c) => {
+    const token = c.req.query("token");
+    if (!token) {
+      return c.redirect("/login?error=invalid_link");
+    }
+
+    const userId = await verifyMagicLinkToken(db, token);
+    if (!userId) {
+      return c.redirect("/login?error=expired_link");
+    }
+
+    const settingsRow = await settings.get();
+    if (!settingsRow?.jwt_secret) {
+      return c.redirect("/login?error=server_error");
+    }
+
+    await createSession(c, userId, "member", settingsRow.jwt_secret);
+    return c.redirect("/");
   });
 
   return routes;

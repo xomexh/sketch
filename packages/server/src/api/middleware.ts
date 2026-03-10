@@ -8,7 +8,7 @@
  *   routes are accessible, and non-public setup routes require auth.
  *
  * Auth: when an admin account exists, all non-public API routes require
- * a valid JWT session cookie.
+ * a valid JWT session cookie. Role and subject are set on the Hono context.
  */
 import type { Context, Next } from "hono";
 import { getCookie } from "hono/cookie";
@@ -16,7 +16,21 @@ import { verifyJwt } from "../auth/jwt";
 import type { createSettingsRepository } from "../db/repositories/settings";
 import { SESSION_COOKIE } from "./auth";
 
-const PUBLIC_PATHS = new Set(["/api/auth/login", "/api/auth/session", "/api/auth/verify-email", "/api/health"]);
+declare module "hono" {
+  interface ContextVariableMap {
+    role: "admin" | "member";
+    sub: string;
+  }
+}
+
+const PUBLIC_PATHS = new Set([
+  "/api/auth/login",
+  "/api/auth/session",
+  "/api/auth/verify-email",
+  "/api/auth/magic-link",
+  "/api/auth/magic-link/verify",
+  "/api/health",
+]);
 const SETUP_PATHS_PREFIX = "/api/setup";
 const PUBLIC_SETUP_PATHS = new Set(["/api/setup/status", "/api/setup/account"]);
 const ONBOARDING_PATHS_PREFIX = "/api/channels/whatsapp";
@@ -90,6 +104,19 @@ export function createAuthMiddleware(settings: SettingsRepo) {
       return c.json({ error: { code: "UNAUTHORIZED", message: "Session expired" } }, 401);
     }
 
+    c.set("role", payload.role);
+    c.set("sub", payload.sub);
+
+    return next();
+  };
+}
+
+export function requireAdmin() {
+  return async (c: Context, next: Next) => {
+    const role = c.get("role");
+    if (role !== "admin") {
+      return c.json({ error: { code: "FORBIDDEN", message: "Admin access required" } }, 403);
+    }
     return next();
   };
 }

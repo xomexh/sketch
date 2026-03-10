@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import type { Config } from "../config";
 import { type LoadedSkill, loadClaudeSkillsFromDirAsync } from "../skills/loader";
+import { requireAdmin } from "./middleware";
 
 function getOrgSkillsDir(): string {
   return join(homedir(), ".claude", "skills");
@@ -136,7 +137,7 @@ export function skillsRoutes(config: Pick<Config, "DATA_DIR">) {
     return c.json({ skill });
   });
 
-  routes.post("/", async (c) => {
+  routes.post("/", requireAdmin(), async (c) => {
     const body = (await c.req.json().catch(() => null)) as {
       name?: string;
       description?: string;
@@ -174,7 +175,7 @@ export function skillsRoutes(config: Pick<Config, "DATA_DIR">) {
     return c.json({ skill }, 201);
   });
 
-  routes.put("/:id", async (c) => {
+  routes.put("/:id", requireAdmin(), async (c) => {
     const id = assertSkillId(c.req.param("id"));
     if (!id) return c.json({ error: { code: "BAD_REQUEST", message: "Invalid skill id" } }, 400);
 
@@ -226,7 +227,7 @@ export function skillsRoutes(config: Pick<Config, "DATA_DIR">) {
     return c.json({ skill: updated });
   });
 
-  routes.delete("/:id", async (c) => {
+  routes.delete("/:id", requireAdmin(), async (c) => {
     const id = assertSkillId(c.req.param("id"));
     if (!id) return c.json({ error: { code: "BAD_REQUEST", message: "Invalid skill id" } }, 400);
 

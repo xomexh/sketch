@@ -55,6 +55,14 @@ export interface SetupStatus {
   llmProvider: "anthropic" | "bedrock" | null;
 }
 
+export interface SessionResponse {
+  authenticated: boolean;
+  role?: "admin" | "member";
+  email?: string;
+  userId?: string;
+  name?: string;
+}
+
 export interface SkillRecord {
   id: string;
   name: string;
@@ -129,7 +137,15 @@ export const api = {
       return request<{ authenticated: boolean }>("/api/auth/logout", { method: "POST" });
     },
     session() {
-      return request<{ authenticated: boolean; email?: string }>("/api/auth/session");
+      return request<SessionResponse>("/api/auth/session");
+    },
+    magicLink: {
+      request(email: string) {
+        return request<{ success: boolean }>("/api/auth/magic-link", {
+          method: "POST",
+          body: JSON.stringify({ email }),
+        });
+      },
     },
   },
   channels: {

@@ -13,7 +13,9 @@ import type { Config } from "../config";
 import type { createSettingsRepository } from "../db/repositories/settings";
 import type { createUserRepository } from "../db/repositories/users";
 import type { DB } from "../db/schema";
-import { type SmtpConfig, createEmailTransport, sendVerificationEmail } from "../email";
+import { createEmailTransport, sendVerificationEmail } from "../email";
+import { requireAdmin } from "./middleware";
+import { getSmtpConfig, resolveBaseUrl } from "./shared";
 
 type UserRepo = ReturnType<typeof createUserRepository>;
 type SettingsRepo = ReturnType<typeof createSettingsRepository>;
@@ -36,36 +38,10 @@ const updateUserSchema = z.object({
   whatsappNumber: whatsappNumberSchema.nullable().optional(),
 });
 
-function getSmtpConfig(settings: {
-  smtp_host: string | null;
-  smtp_port: number | null;
-  smtp_user: string | null;
-  smtp_password: string | null;
-  smtp_from: string | null;
-}): SmtpConfig | null {
-  if (
-    !settings.smtp_host ||
-    !settings.smtp_port ||
-    !settings.smtp_user ||
-    !settings.smtp_password ||
-    !settings.smtp_from
-  )
-    return null;
-  return {
-    host: settings.smtp_host,
-    port: settings.smtp_port,
-    user: settings.smtp_user,
-    password: settings.smtp_password,
-    from: settings.smtp_from,
-  };
-}
-
-function resolveBaseUrl(deps: UserRoutesDeps, c: { req: { header: (name: string) => string | undefined } }): string {
-  if (deps.config.BASE_URL) return deps.config.BASE_URL.replace(/\/+$/, "");
-  const protocol = c.req.header("x-forwarded-proto") || "http";
-  const host = c.req.header("host") || "localhost:3000";
-  return `${protocol}://${host}`;
-}
+const memberUpdateSchema = z.object({
+  name: z.string().min(1, "Name is required").optional(),
+  whatsappNumber: whatsappNumberSchema.nullable().optional(),
+});
 
 async function sendOrLogVerification(
   deps: UserRoutesDeps,
@@ -98,7 +74,7 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
     return c.json({ users: list });
   });
 
-  routes.post("/", async (c) => {
+  routes.post("/", requireAdmin(), async (c) => {
     const body = await c.req.json();
     const parsed = createUserSchema.safeParse(body);
     if (!parsed.success) {
@@ -121,32 +97,43 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
   });
 
   routes.patch("/:id", async (c) => {
+    const role = c.get("role");
+    const sub = c.get("sub");
     const id = c.req.param("id");
+
+    // Members can only edit their own profile
+    if (role === "member" && sub !== id) {
+      return c.json({ error: { code: "FORBIDDEN", message: "Cannot edit other members" } }, 403);
+    }
+
     const existing = await users.findById(id);
     if (!existing) {
       return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
     }
 
     const body = await c.req.json();
-    const parsed = updateUserSchema.safeParse(body);
+    // Members cannot change email (would reset email_verified_at and lock them out)
+    const schema = role === "member" ? memberUpdateSchema : updateUserSchema;
+    const parsed = schema.safeParse(body);
     if (!parsed.success) {
       const message = parsed.error.issues[0]?.message ?? "Invalid request";
       return c.json({ error: { code: "VALIDATION_ERROR", message } }, 400);
     }
 
     try {
-      const emailChanged = parsed.data.email !== undefined && parsed.data.email !== (existing.email ?? null);
+      const emailValue = role === "member" ? undefined : (parsed.data as { email?: string | null }).email;
+      const emailChanged = emailValue !== undefined && emailValue !== (existing.email ?? null);
 
       const user = await users.update(id, {
         name: parsed.data.name,
-        email: parsed.data.email,
+        email: emailValue,
         whatsappNumber: parsed.data.whatsappNumber,
       });
 
       // Send verification email when email changes to a non-null value
       let verificationSent = false;
       if (emailChanged && user.email) {
-        const baseUrl = resolveBaseUrl(deps, c);
+        const baseUrl = resolveBaseUrl(c, deps.config);
         const result = await sendOrLogVerification(deps, id, user.email, baseUrl);
         verificationSent = result.sent;
       }
@@ -162,7 +149,15 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
 
   // Resend verification email
   routes.post("/:id/verification", async (c) => {
+    const role = c.get("role");
+    const sub = c.get("sub");
     const id = c.req.param("id");
+
+    // Members can only resend verification for themselves
+    if (role === "member" && sub !== id) {
+      return c.json({ error: { code: "FORBIDDEN", message: "Cannot resend verification for other members" } }, 403);
+    }
+
     const user = await users.findById(id);
     if (!user) {
       return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
@@ -183,13 +178,13 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
       );
     }
 
-    const baseUrl = resolveBaseUrl(deps, c);
+    const baseUrl = resolveBaseUrl(c, deps.config);
     const result = await sendOrLogVerification(deps, id, user.email, baseUrl);
 
     return c.json({ success: true, sent: result.sent });
   });
 
-  routes.delete("/:id", async (c) => {
+  routes.delete("/:id", requireAdmin(), async (c) => {
     const id = c.req.param("id");
     const existing = await users.findById(id);
     if (!existing) {

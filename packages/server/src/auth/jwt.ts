@@ -11,19 +11,23 @@ function secretToKey(secret: string): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
-export async function signJwt(email: string, secret: string): Promise<string> {
-  return new SignJWT({ sub: email })
+export async function signJwt(sub: string, role: "admin" | "member", secret: string): Promise<string> {
+  return new SignJWT({ sub, role })
     .setProtectedHeader({ alg: ALG })
     .setIssuedAt()
     .setExpirationTime(EXPIRY)
     .sign(secretToKey(secret));
 }
 
-export async function verifyJwt(token: string, secret: string): Promise<{ email: string } | null> {
+export async function verifyJwt(
+  token: string,
+  secret: string,
+): Promise<{ sub: string; role: "admin" | "member" } | null> {
   try {
     const { payload } = await jwtVerify(token, secretToKey(secret));
     if (typeof payload.sub !== "string") return null;
-    return { email: payload.sub };
+    const role = payload.role === "member" ? "member" : "admin"; // default to admin for old tokens
+    return { sub: payload.sub, role };
   } catch {
     return null;
   }

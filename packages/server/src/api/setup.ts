@@ -167,7 +167,7 @@ export function setupRoutes(settings: SettingsRepo, deps: SetupDeps = {}) {
     if (!row?.jwt_secret) {
       return c.json({ error: { code: "SERVER_ERROR", message: "JWT secret not available" } }, 500);
     }
-    await createSession(c, parsed.data.email, row.jwt_secret);
+    await createSession(c, parsed.data.email, "admin", row.jwt_secret);
     return c.json({ success: true });
   });
 

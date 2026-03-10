@@ -44,7 +44,8 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
 
   // API routes
   app.route("/api/health", healthRoutes(db));
-  app.route("/api/auth", authRoutes(settings, db));
+  const logger = deps?.logger ?? (console as unknown as Logger);
+  app.route("/api/auth", authRoutes(settings, db, { config, logger }));
   app.route(
     "/api/setup",
     setupRoutes(settings, {
@@ -54,10 +55,7 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   );
   app.route("/api/settings", settingsRoutes(settings));
   app.route("/api/skills", skillsRoutes(config));
-  app.route(
-    "/api/users",
-    userRoutes(users, { settings, db, logger: deps?.logger ?? (console as unknown as Logger), config }),
-  );
+  app.route("/api/users", userRoutes(users, { settings, db, logger, config }));
   app.route(
     "/api/channels",
     channelRoutes({

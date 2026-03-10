@@ -4,31 +4,50 @@ import { api } from "@/lib/api";
 import { Outlet, createRoute, redirect, useRouteContext } from "@tanstack/react-router";
 import { rootRoute } from "./root";
 
+export interface AuthContext {
+  role: "admin" | "member";
+  email?: string;
+  userId?: string;
+  name?: string;
+  displayName: string;
+  displayIdentifier: string;
+}
+
 /**
  * Auth guard: checks setup status first, then session.
  * If setup not complete → /onboarding.
  * If not authenticated → /login.
  */
-async function checkAuth() {
+async function checkAuth(): Promise<{ auth: AuthContext }> {
   const status = await api.setup.status();
   if (!status.completed) {
     throw redirect({ to: "/onboarding" });
   }
 
-  const res = await fetch("/api/auth/session");
-  const data = (await res.json()) as { authenticated: boolean; email?: string };
-  if (!data.authenticated) {
+  const session = await api.auth.session();
+  if (!session.authenticated) {
     throw redirect({ to: "/login" });
   }
-  return data;
+
+  const role = session.role ?? "admin";
+
+  return {
+    auth: {
+      role,
+      email: session.email,
+      userId: session.userId,
+      name: session.name,
+      displayName: role === "admin" ? "Admin" : (session.name ?? "Member"),
+      displayIdentifier: session.email ?? session.name ?? "User",
+    },
+  };
 }
 
 export const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "dashboard",
   beforeLoad: async () => {
-    const auth = await checkAuth();
-    return { auth };
+    return await checkAuth();
   },
   component: DashboardLayout,
 });
@@ -38,7 +57,7 @@ function DashboardLayout() {
 
   return (
     <SidebarProvider>
-      <AppSidebar email={auth.email ?? "admin"} />
+      <AppSidebar displayName={auth.displayName} displayIdentifier={auth.displayIdentifier} role={auth.role} />
       <SidebarInset>
         <SidebarTrigger className="absolute left-3 top-3 z-20" />
         <main className="flex-1 overflow-auto pt-10">

@@ -63,6 +63,14 @@ export interface EmailVerificationTokensTable {
   created_at: Generated<string>;
 }
 
+export interface MagicLinkTokensTable {
+  token: string;
+  user_id: string;
+  expires_at: string;
+  used_at: string | null;
+  created_at: Generated<string>;
+}
+
 export interface DB {
   users: UsersTable;
   channels: ChannelsTable;
@@ -70,4 +78,5 @@ export interface DB {
   whatsapp_keys: WhatsAppKeysTable;
   settings: SettingsTable;
   email_verification_tokens: EmailVerificationTokensTable;
+  magic_link_tokens: MagicLinkTokensTable;
 }

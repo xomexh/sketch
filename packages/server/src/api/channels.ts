@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { createSettingsRepository } from "../db/repositories/settings";
-import { type SmtpConfig, createEmailTransport, verifyEmailTransport } from "../email";
+import { createEmailTransport, verifyEmailTransport } from "../email";
 import type { SlackBot } from "../slack/bot";
 import type { WhatsAppBot } from "../whatsapp/bot";
+import { requireAdmin } from "./middleware";
 
 type SettingsRepo = ReturnType<typeof createSettingsRepository>;
 
@@ -57,7 +58,7 @@ export function channelRoutes(deps: ChannelDeps) {
     return c.json({ channels });
   });
 
-  routes.delete("/slack", async (c) => {
+  routes.delete("/slack", requireAdmin(), async (c) => {
     const slackBot = deps.getSlack?.() ?? null;
     if (!slackBot) {
       return c.json({ error: { code: "NOT_CONFIGURED", message: "Slack is not configured" } }, 400);
@@ -68,7 +69,7 @@ export function channelRoutes(deps: ChannelDeps) {
 
   // --- Email SMTP endpoints ---
 
-  routes.post("/email/test", async (c) => {
+  routes.post("/email/test", requireAdmin(), async (c) => {
     const body = await c.req.json();
     const parsed = smtpConfigSchema.safeParse(body);
     if (!parsed.success) {
@@ -85,7 +86,7 @@ export function channelRoutes(deps: ChannelDeps) {
     return c.json({ success: true });
   });
 
-  routes.put("/email", async (c) => {
+  routes.put("/email", requireAdmin(), async (c) => {
     const body = await c.req.json();
     const parsed = smtpConfigSchema.safeParse(body);
     if (!parsed.success) {
@@ -106,7 +107,7 @@ export function channelRoutes(deps: ChannelDeps) {
     return c.json({ success: true });
   });
 
-  routes.delete("/email", async (c) => {
+  routes.delete("/email", requireAdmin(), async (c) => {
     await deps.settings.update({
       smtpHost: null,
       smtpPort: null,

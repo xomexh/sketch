@@ -27,7 +27,7 @@ import type { Kysely } from "kysely";
 import type { DB } from "../db/schema";
 import type { Logger } from "../logger";
 import { createDbAuthState } from "./auth-store";
-import { chunkText } from "./chunking";
+import { WHATSAPP_TEXT_LIMIT, chunkText } from "./chunking";
 
 const ECHO_TTL_MS = 60_000;
 const COMPOSING_INTERVAL_MS = 5_000;
@@ -277,7 +277,7 @@ export class WhatsAppBot {
 
   async sendText(jid: string, text: string, options?: MiscMessageGenerationOptions): Promise<void> {
     if (!this.sock) return;
-    const chunks = chunkText(text);
+    const chunks = chunkText(text, WHATSAPP_TEXT_LIMIT);
     for (let i = 0; i < chunks.length; i++) {
       // Only apply options (e.g. quoted reply) to the first chunk
       const sent = await this.sock.sendMessage(jid, { text: chunks[i] }, i === 0 ? options : undefined);

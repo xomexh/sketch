@@ -84,4 +84,65 @@ describe("createSlackMessageHandler", () => {
       expect(bot.postThreadReply).toHaveBeenCalledWith("C123", "thread-ts", "Third");
     });
   });
+
+  describe("chunking", () => {
+    it("short message is sent as a single call (no splitting)", async () => {
+      const bot = createMockSlackBot();
+      const handler = createSlackMessageHandler(bot as never, "C123", "thinking-ts", "thread-ts");
+
+      await handler("short message");
+
+      expect(bot.updateMessage).toHaveBeenCalledTimes(1);
+      expect(bot.postThreadReply).not.toHaveBeenCalled();
+    });
+
+    it("oversized first message: first chunk replaces thinking, rest are thread replies", async () => {
+      const bot = createMockSlackBot();
+      const handler = createSlackMessageHandler(bot as never, "C123", "thinking-ts", "thread-ts");
+
+      const part1 = "a".repeat(35_000);
+      const part2 = "b".repeat(10_000);
+      const longText = `${part1}\n${part2}`;
+
+      await handler(longText);
+
+      expect(bot.updateMessage).toHaveBeenCalledTimes(1);
+      expect(bot.postThreadReply).toHaveBeenCalledTimes(1);
+      // First chunk went to updateMessage, second to postThreadReply
+      expect(bot.updateMessage.mock.calls[0][2]).toBe(part1);
+      expect(bot.postThreadReply.mock.calls[0][2]).toBe(part2);
+    });
+
+    it("oversized first message in DM: first chunk replaces thinking, rest are new messages", async () => {
+      const bot = createMockSlackBot();
+      const handler = createSlackMessageHandler(bot as never, "C123", "thinking-ts");
+
+      const part1 = "a".repeat(35_000);
+      const part2 = "b".repeat(10_000);
+      const longText = `${part1}\n${part2}`;
+
+      await handler(longText);
+
+      expect(bot.updateMessage).toHaveBeenCalledTimes(1);
+      expect(bot.postMessage).toHaveBeenCalledTimes(1);
+      expect(bot.updateMessage.mock.calls[0][2]).toBe(part1);
+      expect(bot.postMessage.mock.calls[0][1]).toBe(part2);
+    });
+
+    it("oversized second message: all chunks go to thread replies", async () => {
+      const bot = createMockSlackBot();
+      const handler = createSlackMessageHandler(bot as never, "C123", "thinking-ts", "thread-ts");
+
+      await handler("First");
+
+      const part1 = "c".repeat(35_000);
+      const part2 = "d".repeat(10_000);
+      await handler(`${part1}\n${part2}`);
+
+      expect(bot.updateMessage).toHaveBeenCalledTimes(1);
+      expect(bot.postThreadReply).toHaveBeenCalledTimes(2);
+      expect(bot.postThreadReply.mock.calls[0][2]).toBe(part1);
+      expect(bot.postThreadReply.mock.calls[1][2]).toBe(part2);
+    });
+  });
 });

@@ -3,16 +3,16 @@ import { chunkText } from "./chunking";
 
 describe("chunkText", () => {
   it("returns single-element array for short text", () => {
-    expect(chunkText("hello world")).toEqual(["hello world"]);
+    expect(chunkText("hello world", 4000)).toEqual(["hello world"]);
   });
 
   it("returns single-element array for empty string", () => {
-    expect(chunkText("")).toEqual([""]);
+    expect(chunkText("", 4000)).toEqual([""]);
   });
 
   it("returns single-element array for text exactly at limit", () => {
     const text = "a".repeat(4000);
-    expect(chunkText(text)).toEqual([text]);
+    expect(chunkText(text, 4000)).toEqual([text]);
   });
 
   it("splits at last newline within window", () => {
@@ -20,7 +20,7 @@ describe("chunkText", () => {
     const line2 = "b".repeat(2000);
     const line3 = "c".repeat(100);
     const text = `${line1}\n${line2}\n${line3}`;
-    const chunks = chunkText(text);
+    const chunks = chunkText(text, 4000);
 
     expect(chunks.length).toBe(2);
     expect(chunks[0]).toBe(line1);
@@ -31,7 +31,7 @@ describe("chunkText", () => {
     const word1 = "a".repeat(3000);
     const word2 = "b".repeat(2000);
     const text = `${word1} ${word2}`;
-    const chunks = chunkText(text);
+    const chunks = chunkText(text, 4000);
 
     expect(chunks.length).toBe(2);
     expect(chunks[0]).toBe(word1);
@@ -40,7 +40,7 @@ describe("chunkText", () => {
 
   it("hard cuts when no whitespace in window", () => {
     const text = "a".repeat(5000);
-    const chunks = chunkText(text);
+    const chunks = chunkText(text, 4000);
 
     expect(chunks.length).toBe(2);
     expect(chunks[0]).toBe("a".repeat(4000));
@@ -50,7 +50,7 @@ describe("chunkText", () => {
   it("produces multiple chunks for very long text", () => {
     const lines = Array.from({ length: 10 }, (_, i) => `Line ${i}: ${"x".repeat(800)}`);
     const text = lines.join("\n");
-    const chunks = chunkText(text);
+    const chunks = chunkText(text, 4000);
 
     expect(chunks.length).toBeGreaterThan(1);
     for (const chunk of chunks) {
@@ -64,7 +64,7 @@ describe("chunkText", () => {
   it("keeps list items together when possible", () => {
     const items = Array.from({ length: 5 }, (_, i) => `- Item ${i}: ${"description ".repeat(20)}`);
     const text = items.join("\n");
-    const chunks = chunkText(text);
+    const chunks = chunkText(text, 4000);
 
     for (const chunk of chunks) {
       expect(chunk[0]).not.toBe(" ");
@@ -74,14 +74,14 @@ describe("chunkText", () => {
   it("trims leading and trailing whitespace from chunks", () => {
     const part1 = "a".repeat(3990);
     const text = `${part1}\n   ${"b".repeat(100)}`;
-    const chunks = chunkText(text);
+    const chunks = chunkText(text, 4000);
 
     for (const chunk of chunks) {
       expect(chunk).toBe(chunk.trim());
     }
   });
 
-  it("accepts custom limit parameter", () => {
+  it("works with different limit values", () => {
     const text = "hello world foo bar";
     const chunks = chunkText(text, 10);
     expect(chunks.length).toBeGreaterThan(1);

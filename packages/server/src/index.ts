@@ -567,6 +567,10 @@ const app = createApp(db, config, {
   onLlmSettingsUpdated: async () => {
     await applyLlmEnvFromDb();
   },
+  onSmtpUpdated: async () => {
+    logger.info("SMTP configuration updated");
+  },
+  logger,
 });
 const server = serve({ fetch: app.fetch, port: config.PORT });
 logger.info({ port: config.PORT }, "HTTP server started");

@@ -30,6 +30,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import type { User } from "@/lib/api";
 import { api } from "@/lib/api";
 import {
+  CheckCircleIcon,
+  ClockIcon,
   DotsThreeIcon,
   EnvelopeIcon,
   PencilSimpleIcon,
@@ -205,8 +207,14 @@ function MemberRow({
           <ChannelBadge
             icon={<EnvelopeIcon size={16} />}
             active={!!user.email}
-            tooltip={user.email ? "Email added" : "Email not added"}
-            activeColor="#0072FC"
+            tooltip={
+              user.email
+                ? user.email_verified_at
+                  ? "Email verified"
+                  : "Email pending verification"
+                : "Email not added"
+            }
+            activeColor={user.email ? (user.email_verified_at ? "#0072FC" : "#F59E0B") : "#0072FC"}
           />
         </div>
       </TooltipProvider>
@@ -427,8 +435,12 @@ function EditMemberDialog({
         email: email.trim() || null,
         whatsappNumber: phone.trim() || null,
       }),
-    onSuccess: () => {
-      toast.success("Member updated");
+    onSuccess: (data) => {
+      if (data.verificationSent) {
+        toast.success("Member updated. Verification email sent.");
+      } else {
+        toast.success("Member updated");
+      }
       onSuccess();
     },
     onError: (err: Error) => {
@@ -438,6 +450,18 @@ function EditMemberDialog({
         toast.error(err.message);
       }
     },
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: () => api.users.resendVerification(user?.id ?? ""),
+    onSuccess: (data) => {
+      if (data.sent) {
+        toast.success("Verification email sent");
+      } else {
+        toast.success("Verification link logged to server console (SMTP not configured)");
+      }
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const isDirty =
@@ -478,6 +502,29 @@ function EditMemberDialog({
               placeholder="name@example.com"
               disabled={updateMutation.isPending}
             />
+            {user?.email && email === user.email && (
+              <div className="flex items-center gap-1.5">
+                {user.email_verified_at ? (
+                  <span className="flex items-center gap-1 text-xs text-green-600">
+                    <CheckCircleIcon size={14} weight="fill" />
+                    Verified
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-xs text-amber-600">
+                    <ClockIcon size={14} />
+                    Pending verification
+                    <button
+                      type="button"
+                      className="ml-1 text-xs underline hover:no-underline disabled:opacity-50"
+                      disabled={resendMutation.isPending}
+                      onClick={() => resendMutation.mutate()}
+                    >
+                      {resendMutation.isPending ? "Sending..." : "Resend"}
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {user?.slack_user_id && (

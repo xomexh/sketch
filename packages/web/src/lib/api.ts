@@ -13,6 +13,7 @@ export interface User {
   id: string;
   name: string;
   email: string | null;
+  email_verified_at: string | null;
   slack_user_id: string | null;
   whatsapp_number: string | null;
   created_at: string;
@@ -36,10 +37,11 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export interface ChannelStatus {
-  platform: "slack" | "whatsapp";
+  platform: "slack" | "whatsapp" | "email";
   configured: boolean;
   connected: boolean | null;
-  phoneNumber: string | null;
+  phoneNumber?: string | null;
+  outboundOnly?: boolean;
 }
 
 export interface SetupStatus {
@@ -137,6 +139,21 @@ export const api = {
     disconnectSlack() {
       return request<{ success: boolean }>("/api/channels/slack", { method: "DELETE" });
     },
+    testEmail(config: { host: string; port: number; user: string; password: string; from: string }) {
+      return request<{ success: boolean }>("/api/channels/email/test", {
+        method: "POST",
+        body: JSON.stringify(config),
+      });
+    },
+    saveEmail(config: { host: string; port: number; user: string; password: string; from: string }) {
+      return request<{ success: boolean }>("/api/channels/email", {
+        method: "PUT",
+        body: JSON.stringify(config),
+      });
+    },
+    deleteEmail() {
+      return request<{ success: boolean }>("/api/channels/email", { method: "DELETE" });
+    },
   },
   whatsapp: {
     status() {
@@ -165,9 +182,14 @@ export const api = {
       });
     },
     update(id: string, data: { name?: string; email?: string | null; whatsappNumber?: string | null }) {
-      return request<{ user: User }>(`/api/users/${id}`, {
+      return request<{ user: User; verificationSent?: boolean }>(`/api/users/${id}`, {
         method: "PATCH",
         body: JSON.stringify(data),
+      });
+    },
+    resendVerification(id: string) {
+      return request<{ success: boolean; sent: boolean }>(`/api/users/${id}/verification`, {
+        method: "POST",
       });
     },
     remove(id: string) {

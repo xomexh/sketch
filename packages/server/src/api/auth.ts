@@ -6,9 +6,12 @@
 import { randomBytes } from "node:crypto";
 import { type Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import type { Kysely } from "kysely";
+import { verifyEmailToken } from "../auth/email-verify.js";
 import { signJwt, verifyJwt } from "../auth/jwt";
 import { verifyPassword } from "../auth/password";
 import type { createSettingsRepository } from "../db/repositories/settings";
+import type { DB } from "../db/schema.js";
 
 export const SESSION_COOKIE = "sketch_session";
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
@@ -34,7 +37,7 @@ export async function createSession(c: Context, email: string, jwtSecret: string
   setSessionCookie(c, token, isSecure(c));
 }
 
-export function authRoutes(settings: SettingsRepo) {
+export function authRoutes(settings: SettingsRepo, db?: Kysely<DB>) {
   const routes = new Hono();
 
   routes.post("/login", async (c) => {
@@ -92,6 +95,24 @@ export function authRoutes(settings: SettingsRepo) {
     // Sliding renewal — issue a fresh JWT to extend the session
     await createSession(c, payload.email, row.jwt_secret);
     return c.json({ authenticated: true, email: payload.email });
+  });
+
+  routes.get("/verify-email", async (c) => {
+    const token = c.req.query("token");
+    if (!token) {
+      return c.redirect("/?verification=invalid");
+    }
+
+    if (!db) {
+      return c.redirect("/?verification=error");
+    }
+
+    const result = await verifyEmailToken(db, token);
+    if (!result) {
+      return c.redirect("/?verification=invalid");
+    }
+
+    return c.redirect("/?verification=success");
   });
 
   return routes;

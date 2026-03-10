@@ -1,19 +1,37 @@
 import { Hono } from "hono";
+import { z } from "zod";
+import type { createSettingsRepository } from "../db/repositories/settings";
+import { type SmtpConfig, createEmailTransport, verifyEmailTransport } from "../email";
 import type { SlackBot } from "../slack/bot";
 import type { WhatsAppBot } from "../whatsapp/bot";
+
+type SettingsRepo = ReturnType<typeof createSettingsRepository>;
 
 interface ChannelDeps {
   whatsapp?: WhatsAppBot;
   getSlack?: () => SlackBot | null;
   onSlackDisconnect?: () => Promise<void>;
+  settings: SettingsRepo;
+  onSmtpUpdated?: () => Promise<void>;
 }
+
+const smtpConfigSchema = z.object({
+  host: z.string().min(1),
+  port: z.number().int().min(1).max(65535),
+  user: z.string().min(1),
+  password: z.string().min(1),
+  from: z.string().email(),
+});
 
 export function channelRoutes(deps: ChannelDeps) {
   const routes = new Hono();
 
-  routes.get("/status", (c) => {
+  routes.get("/status", async (c) => {
     const slackBot = deps.getSlack?.() ?? null;
     const slackConfigured = !!slackBot;
+
+    const settingsRow = await deps.settings.get();
+    const emailConfigured = !!(settingsRow?.smtp_host && settingsRow?.smtp_from);
 
     const channels = [
       {
@@ -28,6 +46,12 @@ export function channelRoutes(deps: ChannelDeps) {
         connected: deps.whatsapp?.isConnected ? true : null,
         phoneNumber: deps.whatsapp?.phoneNumber ?? null,
       },
+      {
+        platform: "email" as const,
+        configured: emailConfigured,
+        connected: emailConfigured,
+        outboundOnly: true,
+      },
     ];
 
     return c.json({ channels });
@@ -39,6 +63,60 @@ export function channelRoutes(deps: ChannelDeps) {
       return c.json({ error: { code: "NOT_CONFIGURED", message: "Slack is not configured" } }, 400);
     }
     await deps.onSlackDisconnect?.();
+    return c.json({ success: true });
+  });
+
+  // --- Email SMTP endpoints ---
+
+  routes.post("/email/test", async (c) => {
+    const body = await c.req.json();
+    const parsed = smtpConfigSchema.safeParse(body);
+    if (!parsed.success) {
+      const message = parsed.error.issues[0]?.message ?? "Invalid SMTP config";
+      return c.json({ error: { code: "VALIDATION_ERROR", message } }, 400);
+    }
+
+    const transport = createEmailTransport(parsed.data);
+    const ok = await verifyEmailTransport(transport);
+    if (!ok) {
+      return c.json({ error: { code: "CONNECTION_FAILED", message: "Could not connect to SMTP server" } }, 400);
+    }
+
+    return c.json({ success: true });
+  });
+
+  routes.put("/email", async (c) => {
+    const body = await c.req.json();
+    const parsed = smtpConfigSchema.safeParse(body);
+    if (!parsed.success) {
+      const message = parsed.error.issues[0]?.message ?? "Invalid SMTP config";
+      return c.json({ error: { code: "VALIDATION_ERROR", message } }, 400);
+    }
+
+    await deps.settings.update({
+      smtpHost: parsed.data.host,
+      smtpPort: parsed.data.port,
+      smtpUser: parsed.data.user,
+      smtpPassword: parsed.data.password,
+      smtpFrom: parsed.data.from,
+    });
+
+    await deps.onSmtpUpdated?.();
+
+    return c.json({ success: true });
+  });
+
+  routes.delete("/email", async (c) => {
+    await deps.settings.update({
+      smtpHost: null,
+      smtpPort: null,
+      smtpUser: null,
+      smtpPassword: null,
+      smtpFrom: null,
+    });
+
+    await deps.onSmtpUpdated?.();
+
     return c.json({ success: true });
   });
 

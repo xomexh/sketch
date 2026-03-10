@@ -38,9 +38,14 @@ export function createSettingsRepository(db: Kysely<DB>) {
         awsSecretAccessKey: string | null;
         awsRegion: string | null;
         jwtSecret: string;
+        smtpHost: string | null;
+        smtpPort: number | null;
+        smtpUser: string | null;
+        smtpPassword: string | null;
+        smtpFrom: string | null;
       }>,
     ) {
-      const updates: Record<string, string | null> = {};
+      const updates: Record<string, string | number | null> = {};
       if (data.adminEmail !== undefined) updates.admin_email = data.adminEmail;
       if (data.adminPasswordHash !== undefined) updates.admin_password_hash = data.adminPasswordHash;
       if (data.jwtSecret !== undefined) updates.jwt_secret = data.jwtSecret;
@@ -54,6 +59,11 @@ export function createSettingsRepository(db: Kysely<DB>) {
       if (data.awsAccessKeyId !== undefined) updates.aws_access_key_id = data.awsAccessKeyId;
       if (data.awsSecretAccessKey !== undefined) updates.aws_secret_access_key = data.awsSecretAccessKey;
       if (data.awsRegion !== undefined) updates.aws_region = data.awsRegion;
+      if (data.smtpHost !== undefined) updates.smtp_host = data.smtpHost;
+      if (data.smtpPort !== undefined) updates.smtp_port = data.smtpPort;
+      if (data.smtpUser !== undefined) updates.smtp_user = data.smtpUser;
+      if (data.smtpPassword !== undefined) updates.smtp_password = data.smtpPassword;
+      if (data.smtpFrom !== undefined) updates.smtp_from = data.smtpFrom;
 
       if (Object.keys(updates).length === 0) return;
 

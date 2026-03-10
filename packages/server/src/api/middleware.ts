@@ -16,7 +16,7 @@ import { verifyJwt } from "../auth/jwt";
 import type { createSettingsRepository } from "../db/repositories/settings";
 import { SESSION_COOKIE } from "./auth";
 
-const PUBLIC_PATHS = new Set(["/api/auth/login", "/api/auth/session", "/api/health"]);
+const PUBLIC_PATHS = new Set(["/api/auth/login", "/api/auth/session", "/api/auth/verify-email", "/api/health"]);
 const SETUP_PATHS_PREFIX = "/api/setup";
 const PUBLIC_SETUP_PATHS = new Set(["/api/setup/status", "/api/setup/account"]);
 const ONBOARDING_PATHS_PREFIX = "/api/channels/whatsapp";

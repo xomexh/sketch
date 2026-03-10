@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import type { Kysely } from "kysely";
+import type { Logger } from "pino";
 import { authRoutes } from "./api/auth";
 import { channelRoutes } from "./api/channels";
 import { healthRoutes } from "./api/health";
@@ -29,6 +30,8 @@ interface AppDeps {
   onSlackTokensUpdated?: (tokens?: { botToken: string; appToken: string }) => Promise<void>;
   onSlackDisconnect?: () => Promise<void>;
   onLlmSettingsUpdated?: () => Promise<void>;
+  onSmtpUpdated?: () => Promise<void>;
+  logger?: Logger;
 }
 
 export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
@@ -41,7 +44,7 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
 
   // API routes
   app.route("/api/health", healthRoutes(db));
-  app.route("/api/auth", authRoutes(settings));
+  app.route("/api/auth", authRoutes(settings, db));
   app.route(
     "/api/setup",
     setupRoutes(settings, {
@@ -51,10 +54,16 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   );
   app.route("/api/settings", settingsRoutes(settings));
   app.route("/api/skills", skillsRoutes(config));
-  app.route("/api/users", userRoutes(users));
+  app.route("/api/users", userRoutes(users, { settings, db, logger: deps?.logger ?? (console as unknown as Logger) }));
   app.route(
     "/api/channels",
-    channelRoutes({ whatsapp: deps?.whatsapp, getSlack: deps?.getSlack, onSlackDisconnect: deps?.onSlackDisconnect }),
+    channelRoutes({
+      whatsapp: deps?.whatsapp,
+      getSlack: deps?.getSlack,
+      onSlackDisconnect: deps?.onSlackDisconnect,
+      settings,
+      onSmtpUpdated: deps?.onSmtpUpdated,
+    }),
   );
 
   if (deps?.whatsapp) {

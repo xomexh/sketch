@@ -10,6 +10,8 @@ import * as m003 from "./migrations/003-whatsapp-auth";
 import * as m004 from "./migrations/004-settings";
 import * as m005 from "./migrations/005-settings-slack-llm";
 import * as m006 from "./migrations/006-settings-jwt-secret";
+import * as m007 from "./migrations/007-settings-smtp";
+import * as m008 from "./migrations/008-email-verification";
 import type { DB } from "./schema";
 
 export async function runMigrations(db: Kysely<DB>): Promise<void> {
@@ -24,6 +26,8 @@ export async function runMigrations(db: Kysely<DB>): Promise<void> {
           "004-settings": m004,
           "005-settings-slack-llm": m005,
           "006-settings-jwt-secret": m006,
+          "007-settings-smtp": m007,
+          "008-email-verification": m008,
         };
       },
     },

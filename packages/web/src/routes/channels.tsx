@@ -31,6 +31,7 @@ import {
   CheckIcon,
   CopySimpleIcon,
   DotsThreeIcon,
+  EnvelopeIcon,
   SlackLogoIcon,
   SpinnerGapIcon,
   WarningIcon,
@@ -87,6 +88,9 @@ export function ChannelsPage() {
 function PlatformCard({ channel }: { channel: ChannelStatus }) {
   if (channel.platform === "slack") {
     return <SlackCard channel={channel} />;
+  }
+  if (channel.platform === "email") {
+    return <EmailCard channel={channel} />;
   }
   return <WhatsAppCard channel={channel} />;
 }
@@ -315,6 +319,266 @@ function WhatsAppPairDialog({
           <DialogDescription>Scan this QR code with WhatsApp to connect your number.</DialogDescription>
         </DialogHeader>
         {open && <WhatsAppQR onConnected={onConnected} onCancel={() => onOpenChange(false)} />}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EmailCard({ channel }: { channel: ChannelStatus }) {
+  const queryClient = useQueryClient();
+  const [showConfigDialog, setShowConfigDialog] = useState(false);
+  const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+
+  const isConfigured = channel.configured;
+
+  const handleConfigured = () => {
+    setShowConfigDialog(false);
+    toast.success("Email SMTP configured.");
+    queryClient.invalidateQueries({ queryKey: ["channels", "status"] });
+  };
+
+  const handleDisconnect = async () => {
+    setIsDisconnecting(true);
+    try {
+      await api.channels.deleteEmail();
+      toast.success("Email SMTP disconnected.");
+      queryClient.invalidateQueries({ queryKey: ["channels", "status"] });
+    } catch {
+      toast.error("Failed to disconnect email.");
+    } finally {
+      setIsDisconnecting(false);
+      setShowDisconnectDialog(false);
+    }
+  };
+
+  return (
+    <>
+      <div
+        className={`rounded-lg border p-4 ${isConfigured ? "border-border bg-card" : "border-dashed border-border bg-card"}`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 items-center justify-center rounded-full bg-muted">
+              <EnvelopeIcon size={20} />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">Email</span>
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                Outbound only
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {!isConfigured && (
+              <Button variant="outline" size="sm" onClick={() => setShowConfigDialog(true)}>
+                Configure
+              </Button>
+            )}
+            {isConfigured && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="size-7">
+                    <DotsThreeIcon size={16} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setShowConfigDialog(true)}>Reconfigure</DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive" onClick={() => setShowDisconnectDialog(true)}>
+                    Disconnect
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+        </div>
+
+        <div className="ml-12 mt-2">
+          {isConfigured ? (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <CheckIcon size={14} className="text-success" />
+              <span>SMTP configured</span>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">Not configured</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Configure SMTP to send verification emails to your team
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+
+      <EmailConfigDialog open={showConfigDialog} onOpenChange={setShowConfigDialog} onConfigured={handleConfigured} />
+
+      <AlertDialog open={showDisconnectDialog} onOpenChange={setShowDisconnectDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect Email?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the SMTP configuration. Verification emails will no longer be sent.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDisconnecting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleDisconnect} disabled={isDisconnecting}>
+              {isDisconnecting ? "Disconnecting..." : "Disconnect"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+function EmailConfigDialog({
+  open,
+  onOpenChange,
+  onConfigured,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfigured: () => void;
+}) {
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState("587");
+  const [user, setUser] = useState("");
+  const [password, setPassword] = useState("");
+  const [from, setFrom] = useState("");
+
+  const testMutation = useMutation({
+    mutationFn: () =>
+      api.channels.testEmail({ host: host.trim(), port: Number(port), user: user.trim(), password, from: from.trim() }),
+    onSuccess: () => toast.success("SMTP connection successful!"),
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      api.channels.saveEmail({ host: host.trim(), port: Number(port), user: user.trim(), password, from: from.trim() }),
+    onSuccess: () => {
+      resetFields();
+      onConfigured();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const resetFields = () => {
+    setHost("");
+    setPort("587");
+    setUser("");
+    setPassword("");
+    setFrom("");
+  };
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next) resetFields();
+    onOpenChange(next);
+  };
+
+  const isValid = host.trim() && port && user.trim() && password && from.trim();
+  const isPending = testMutation.isPending || saveMutation.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Configure Email SMTP</DialogTitle>
+          <DialogDescription>Enter your SMTP server details to send verification emails.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="smtp-host" className="text-xs">
+              SMTP Host
+            </Label>
+            <Input
+              id="smtp-host"
+              value={host}
+              onChange={(e) => setHost(e.target.value)}
+              placeholder="smtp.gmail.com"
+              disabled={isPending}
+              className="font-mono text-xs"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="smtp-port" className="text-xs">
+              Port
+            </Label>
+            <Input
+              id="smtp-port"
+              value={port}
+              onChange={(e) => setPort(e.target.value)}
+              placeholder="587"
+              disabled={isPending}
+              className="font-mono text-xs"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="smtp-user" className="text-xs">
+              Username
+            </Label>
+            <Input
+              id="smtp-user"
+              value={user}
+              onChange={(e) => setUser(e.target.value)}
+              placeholder="you@gmail.com"
+              disabled={isPending}
+              className="font-mono text-xs"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="smtp-password" className="text-xs">
+              Password
+            </Label>
+            <Input
+              id="smtp-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="App password"
+              disabled={isPending}
+              className="font-mono text-xs"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="smtp-from" className="text-xs">
+              From address
+            </Label>
+            <Input
+              id="smtp-from"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              placeholder="noreply@yourcompany.com"
+              disabled={isPending}
+              className="font-mono text-xs"
+            />
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <Button variant="outline" size="sm" onClick={() => testMutation.mutate()} disabled={!isValid || isPending}>
+              {testMutation.isPending ? (
+                <>
+                  <SpinnerGapIcon className="size-3.5 animate-spin" />
+                  Testing...
+                </>
+              ) : (
+                "Test Connection"
+              )}
+            </Button>
+            <Button size="sm" onClick={() => saveMutation.mutate()} disabled={!isValid || isPending}>
+              {saveMutation.isPending ? (
+                <>
+                  <SpinnerGapIcon className="size-3.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

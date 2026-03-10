@@ -4,6 +4,7 @@ export interface UsersTable {
   id: string;
   name: string;
   email: string | null;
+  email_verified_at: string | null;
   slack_user_id: string | null;
   whatsapp_number: string | null;
   created_at: Generated<string>;
@@ -43,9 +44,23 @@ export interface SettingsTable {
   aws_secret_access_key: string | null;
   aws_region: string | null;
   jwt_secret: string | null;
+  smtp_host: string | null;
+  smtp_port: number | null;
+  smtp_user: string | null;
+  smtp_password: string | null;
+  smtp_from: string | null;
   onboarding_completed_at: string | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;
+}
+
+export interface EmailVerificationTokensTable {
+  token: string;
+  user_id: string;
+  email: string;
+  expires_at: string;
+  used_at: string | null;
+  created_at: Generated<string>;
 }
 
 export interface DB {
@@ -54,4 +69,5 @@ export interface DB {
   whatsapp_creds: WhatsAppCredsTable;
   whatsapp_keys: WhatsAppKeysTable;
   settings: SettingsTable;
+  email_verification_tokens: EmailVerificationTokensTable;
 }

@@ -3,7 +3,7 @@
  * Persists user preference to localStorage. System mode tracks OS via matchMedia.
  * Default: system.
  */
-import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { type ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 
 type ThemePreference = "dark" | "light" | "system";
 type ResolvedTheme = "dark" | "light";
@@ -12,6 +12,7 @@ interface ThemeContext {
   theme: ThemePreference;
   resolvedTheme: ResolvedTheme;
   setTheme: (t: ThemePreference) => void;
+  logoSrc: string;
 }
 
 const ThemeContext = createContext<ThemeContext | undefined>(undefined);
@@ -66,9 +67,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => mq.removeEventListener("change", onChange);
   }, [theme]);
 
-  const setTheme = useCallback((t: ThemePreference) => setThemeState(t), []);
+  const logoSrc = resolvedTheme === "dark" ? "/sketch.png" : "/sketch-dark.png";
 
-  const value = useMemo(() => ({ theme, resolvedTheme, setTheme }), [theme, resolvedTheme, setTheme]);
+  const value = useMemo(
+    () => ({ theme, resolvedTheme, setTheme: setThemeState, logoSrc }),
+    [theme, resolvedTheme, logoSrc],
+  );
 
   return <ThemeContext value={value}>{children}</ThemeContext>;
 }

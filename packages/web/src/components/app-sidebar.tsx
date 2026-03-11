@@ -67,7 +67,7 @@ export function AppSidebar({
 }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { theme, resolvedTheme, setTheme } = useTheme();
+  const { theme, resolvedTheme, setTheme, logoSrc } = useTheme();
   const queryClient = useQueryClient();
 
   const { data: identity } = useQuery({
@@ -84,7 +84,6 @@ export function AppSidebar({
   });
 
   const initials = getInitials(displayIdentifier);
-  const logoSrc = resolvedTheme === "dark" ? "/sketch.png" : "/sketch-dark.png";
 
   return (
     <Sidebar collapsible="icon">

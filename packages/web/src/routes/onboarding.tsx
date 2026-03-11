@@ -47,7 +47,7 @@ const defaultSetupStatus: SetupStatus = {
 
 export function OnboardingPage({ initialSetupStatus }: { initialSetupStatus?: SetupStatus }) {
   const navigate = useNavigate();
-  const { resolvedTheme } = useTheme();
+  const { logoSrc } = useTheme();
   const setupStatus = initialSetupStatus ?? defaultSetupStatus;
   const initialStep = setupStatus.currentStep > 0 ? setupStatus.currentStep : 1;
 
@@ -287,7 +287,7 @@ export function OnboardingPage({ initialSetupStatus }: { initialSetupStatus?: Se
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 py-8">
       <div className="mb-8 flex flex-col items-center gap-2">
-        <img src={resolvedTheme === "dark" ? "/sketch.png" : "/sketch-dark.png"} alt="Sketch" className="size-8" />
+        <img src={logoSrc} alt="Sketch" className="size-8" />
         <span className="text-lg font-semibold tracking-tight">Sketch</span>
       </div>
 

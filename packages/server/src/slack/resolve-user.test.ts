@@ -67,7 +67,7 @@ describe("resolveSlackUser", () => {
     const result = await resolveSlackUser("U001", deps);
 
     expect(deps.getUserInfo).toHaveBeenCalledWith("U001");
-    expect(deps.users.update).toHaveBeenCalledWith("u1", { email: "alice@example.com" });
+    expect(deps.users.update).toHaveBeenCalledWith("u1", { email: "alice@example.com", emailVerified: true });
     expect(result).toBe(updated);
   });
 
@@ -93,7 +93,7 @@ describe("resolveSlackUser", () => {
     const result = await resolveSlackUser("U001", deps);
 
     expect(deps.users.findByEmail).toHaveBeenCalledWith("alice@example.com");
-    expect(deps.users.update).toHaveBeenCalledWith("u2", { slackUserId: "U001" });
+    expect(deps.users.update).toHaveBeenCalledWith("u2", { slackUserId: "U001", emailVerified: true });
     expect(deps.users.create).not.toHaveBeenCalled();
     expect(result).toBe(linked);
   });
@@ -123,6 +123,7 @@ describe("resolveSlackUser", () => {
       name: "Alice",
       slackUserId: "U001",
       email: "alice@example.com",
+      emailVerified: true,
     });
     expect(result).toBe(created);
   });
@@ -140,6 +141,7 @@ describe("resolveSlackUser", () => {
       name: "Bob",
       slackUserId: "U001",
       email: null,
+      emailVerified: false,
     });
     expect(result).toBe(created);
   });

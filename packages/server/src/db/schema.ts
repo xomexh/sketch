@@ -71,6 +71,18 @@ export interface MagicLinkTokensTable {
   created_at: Generated<string>;
 }
 
+export interface McpServersTable {
+  id: string;
+  type: string | null;
+  slug: string;
+  display_name: string;
+  url: string;
+  api_url: string | null;
+  credentials: string;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
 export interface DB {
   users: UsersTable;
   channels: ChannelsTable;
@@ -79,4 +91,5 @@ export interface DB {
   settings: SettingsTable;
   email_verification_tokens: EmailVerificationTokensTable;
   magic_link_tokens: MagicLinkTokensTable;
+  mcp_servers: McpServersTable;
 }

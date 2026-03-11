@@ -24,10 +24,17 @@ export interface AgentResult {
   pendingUploads: string[];
 }
 
+export interface McpServerConfig {
+  type: "http";
+  url: string;
+  headers?: Record<string, string>;
+}
+
 export interface RunAgentParams {
   userMessage: string;
   workspaceDir: string;
   userName: string;
+  userEmail?: string | null;
   logger: Logger;
   platform: "slack" | "whatsapp";
   onMessage: (text: string) => Promise<void>;
@@ -42,6 +49,7 @@ export interface RunAgentParams {
     groupName: string;
     groupDescription?: string;
   };
+  integrationMcpServers?: Record<string, McpServerConfig>;
 }
 
 /**
@@ -77,6 +85,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
   const systemAppend = buildSystemContext({
     platform: params.platform,
     userName,
+    userEmail: params.userEmail,
     workspaceDir: absWorkspace,
     orgName: params.orgName,
     botName: params.botName,
@@ -138,7 +147,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
       permissionMode: "default" as const,
       allowDangerouslySkipPermissions: false,
       settingSources: ["project", "user"],
-      mcpServers: { sketch: uploadServer },
+      mcpServers: { sketch: uploadServer, ...params.integrationMcpServers },
       stderr: (data) => {
         logger.debug({ stderr: data.trim() }, "Agent subprocess");
       },

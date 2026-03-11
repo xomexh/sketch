@@ -52,15 +52,19 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { dashboardRoute } from "./dashboard";
 
+const optionalEmail = z.literal("").or(emailSchema);
+const optionalPhone = z.literal("").or(whatsappNumberSchema);
+
 const addMemberSchema = z.object({
   name: z.string().min(1),
-  whatsappNumber: whatsappNumberSchema,
+  email: emailSchema,
+  whatsappNumber: optionalPhone,
 });
 
 const editMemberSchema = z.object({
   name: z.string().min(1),
-  email: z.union([z.literal(""), emailSchema]),
-  whatsappNumber: z.union([z.literal(""), whatsappNumberSchema]),
+  email: optionalEmail,
+  whatsappNumber: optionalPhone,
 });
 
 export const teamRoute = createRoute({
@@ -162,7 +166,7 @@ function MemberList({
       <p className="mb-3 text-sm font-medium text-muted-foreground">Team members</p>
       <div className="rounded-lg border border-border bg-card">
         {users.map((user, i) => {
-          const isCurrentUser = isMember ? user.id === auth.userId : !!user.email && user.email === auth.email;
+          const isCurrentUser = isMember && user.id === auth.userId;
 
           return (
             <MemberRow
@@ -223,7 +227,7 @@ function MemberRow({
             icon={<SlackLogoIcon size={16} />}
             active={!!user.slack_user_id}
             tooltip={user.slack_user_id ? "Slack connected" : "Slack not connected"}
-            activeColor="#4A154B"
+            activeColor="#E01E5A"
           />
           <ChannelBadge
             icon={<WhatsappLogoIcon size={16} />}
@@ -345,13 +349,23 @@ function AddMemberDialog({
   onSuccess: () => void;
 }) {
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
 
   const createMutation = useMutation({
-    mutationFn: () => api.users.create({ name: name.trim(), whatsappNumber: phone.trim() }),
-    onSuccess: () => {
-      toast.success("Member added");
+    mutationFn: () =>
+      api.users.create({
+        name: name.trim(),
+        email: email.trim() || null,
+        whatsappNumber: phone.trim() || null,
+      }),
+    onSuccess: (data) => {
+      if (data.verificationSent) {
+        toast.success("Member added. Verification email sent.");
+      } else {
+        toast.success("Member added");
+      }
       resetAndClose();
       onSuccess();
     },
@@ -366,12 +380,17 @@ function AddMemberDialog({
 
   const resetAndClose = () => {
     setName("");
+    setEmail("");
     setPhone("");
     setError("");
     onOpenChange(false);
   };
 
-  const canSubmit = addMemberSchema.safeParse({ name: name.trim(), whatsappNumber: phone.trim() }).success;
+  const canSubmit = addMemberSchema.safeParse({
+    name: name.trim(),
+    email: email.trim(),
+    whatsappNumber: phone.trim(),
+  }).success;
 
   return (
     <Dialog
@@ -384,7 +403,7 @@ function AddMemberDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Add member</DialogTitle>
-          <DialogDescription>This person will be able to message the bot on WhatsApp.</DialogDescription>
+          <DialogDescription>Add a new team member. Name and email are required.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
@@ -395,6 +414,17 @@ function AddMemberDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Full name"
+              disabled={createMutation.isPending}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="add-email">Email</Label>
+            <Input
+              id="add-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@example.com"
               disabled={createMutation.isPending}
             />
           </div>

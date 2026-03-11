@@ -24,7 +24,13 @@ export function createUserRepository(db: Kysely<DB>) {
       return db.selectFrom("users").selectAll().where("id", "=", id).executeTakeFirst();
     },
 
-    async create(data: { name: string; slackUserId?: string; whatsappNumber?: string; email?: string | null }) {
+    async create(data: {
+      name: string;
+      slackUserId?: string;
+      whatsappNumber?: string;
+      email?: string | null;
+      emailVerified?: boolean;
+    }) {
       const id = randomUUID();
       await db
         .insertInto("users")
@@ -34,6 +40,7 @@ export function createUserRepository(db: Kysely<DB>) {
           slack_user_id: data.slackUserId ?? null,
           whatsapp_number: data.whatsappNumber ?? null,
           email: data.email ?? null,
+          email_verified_at: data.email && data.emailVerified ? new Date().toISOString() : null,
         })
         .execute();
 
@@ -42,17 +49,29 @@ export function createUserRepository(db: Kysely<DB>) {
 
     async update(
       id: string,
-      data: { name?: string; email?: string | null; whatsappNumber?: string | null; slackUserId?: string | null },
+      data: {
+        name?: string;
+        email?: string | null;
+        emailVerified?: boolean;
+        whatsappNumber?: string | null;
+        slackUserId?: string | null;
+      },
     ) {
       const values: Record<string, unknown> = {};
       if (data.name !== undefined) values.name = data.name;
       if (data.email !== undefined) {
         values.email = data.email;
-        // Reset verification when email changes
-        const existing = await db.selectFrom("users").select("email").where("id", "=", id).executeTakeFirst();
-        if (existing && existing.email !== data.email) {
-          values.email_verified_at = null;
+        if (data.emailVerified) {
+          values.email_verified_at = new Date().toISOString();
+        } else {
+          // Reset verification when email changes
+          const existing = await db.selectFrom("users").select("email").where("id", "=", id).executeTakeFirst();
+          if (existing && existing.email !== data.email) {
+            values.email_verified_at = null;
+          }
         }
+      } else if (data.emailVerified) {
+        values.email_verified_at = new Date().toISOString();
       }
       if (data.whatsappNumber !== undefined) values.whatsapp_number = data.whatsappNumber;
       if (data.slackUserId !== undefined) values.slack_user_id = data.slackUserId;

@@ -13,6 +13,7 @@ import type { BufferedMessage } from "../slack/thread-buffer";
 export function buildSystemContext(params: {
   platform: "slack" | "whatsapp";
   userName: string;
+  userEmail?: string | null;
   workspaceDir: string;
   orgName?: string | null;
   botName?: string | null;
@@ -91,6 +92,13 @@ export function buildSystemContext(params: {
   }
 
   sections.push(
+    "## About Sketch",
+    "Sketch is an AI assistant platform deployed by organizations.",
+    "Each user has their own workspace, memory, and tool integrations.",
+    "User accounts and emails are managed by the admin from the Sketch dashboard.",
+  );
+
+  sections.push(
     "## Workspace Isolation",
     `Your working directory is ${params.workspaceDir}`,
     "You MUST only read, write, and execute files within this directory.",
@@ -126,7 +134,7 @@ export function buildSystemContext(params: {
   }
 
   if (!params.channelContext && !params.groupContext) {
-    sections.push("## User", `Name: ${params.userName}`);
+    sections.push("## User", `Name: ${params.userName}`, `Email: ${params.userEmail || "not configured"}`);
   }
 
   return sections.join("\n");

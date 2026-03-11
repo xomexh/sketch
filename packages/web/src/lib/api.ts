@@ -4,6 +4,7 @@
  */
 
 import type { SkillCategory } from "@/lib/skills-data";
+import type { IntegrationApp, IntegrationConnection, McpServerRecord, PageInfo } from "@sketch/shared";
 
 export interface ApiError {
   error: { code: string; message: string };
@@ -20,12 +21,13 @@ export interface User {
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = { ...((options?.headers as Record<string, string>) ?? {}) };
+  if (options?.body) {
+    headers["Content-Type"] = "application/json";
+  }
   const res = await fetch(url, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
+    headers,
   });
 
   if (!res.ok) {
@@ -191,8 +193,8 @@ export const api = {
     list() {
       return request<{ users: User[] }>("/api/users");
     },
-    create(data: { name: string; whatsappNumber: string }) {
-      return request<{ user: User }>("/api/users", {
+    create(data: { name: string; email?: string | null; whatsappNumber?: string | null }) {
+      return request<{ user: User; verificationSent?: boolean }>("/api/users", {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -235,6 +237,77 @@ export const api = {
     },
     remove(id: string) {
       return request<{ success: true }>(`/api/skills/${id}`, { method: "DELETE" });
+    },
+  },
+  mcpServers: {
+    async list() {
+      const res = await request<{ servers: McpServerRecord[] }>("/api/mcp-servers");
+      return res.servers;
+    },
+    async add(data: {
+      displayName: string;
+      url: string;
+      apiUrl?: string;
+      credentials: Record<string, unknown>;
+      type?: string;
+    }) {
+      const res = await request<{ server: McpServerRecord }>("/api/mcp-servers", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      return res.server;
+    },
+    update(
+      id: string,
+      data: { displayName?: string; url?: string; apiUrl?: string | null; credentials?: Record<string, unknown> },
+    ) {
+      return request<void>(`/api/mcp-servers/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      });
+    },
+    remove(id: string) {
+      return request<void>(`/api/mcp-servers/${id}`, { method: "DELETE" });
+    },
+    testConnection(url: string, credentials: string) {
+      return request<{ status: "ok" | "error"; toolCount?: number; error?: string }>(
+        "/api/mcp-servers/connection-tests",
+        {
+          method: "POST",
+          body: JSON.stringify({ url, credentials }),
+        },
+      );
+    },
+    testConnectionById(serverId: string) {
+      return request<{ status: "ok" | "error"; toolCount?: number; error?: string }>(
+        `/api/mcp-servers/${serverId}/connection-tests`,
+        { method: "POST" },
+      );
+    },
+    listApps(providerId: string, query?: string, limit?: number, after?: string) {
+      const params = new URLSearchParams();
+      if (query) params.set("q", query);
+      if (limit) params.set("limit", String(limit));
+      if (after) params.set("after", after);
+      const qs = params.toString();
+      return request<{ apps: IntegrationApp[]; pageInfo: PageInfo }>(
+        `/api/mcp-servers/${providerId}/apps${qs ? `?${qs}` : ""}`,
+      );
+    },
+    createConnection(providerId: string, appId: string, callbackUrl?: string) {
+      return request<{ redirectUrl: string }>(`/api/mcp-servers/${providerId}/connections`, {
+        method: "POST",
+        body: JSON.stringify({ appId, callbackUrl }),
+      });
+    },
+    async listConnections(providerId: string) {
+      const res = await request<{ connections: IntegrationConnection[] }>(`/api/mcp-servers/${providerId}/connections`);
+      return res.connections;
+    },
+    removeConnection(providerId: string, connectionId: string) {
+      return request<void>(`/api/mcp-servers/${providerId}/connections/${connectionId}`, {
+        method: "DELETE",
+      });
     },
   },
 };

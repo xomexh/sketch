@@ -29,7 +29,8 @@ interface UserRoutesDeps {
 
 const createUserSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  whatsappNumber: whatsappNumberSchema,
+  email: emailSchema.nullable().optional(),
+  whatsappNumber: whatsappNumberSchema.nullable().optional(),
 });
 
 const updateUserSchema = z.object({
@@ -85,9 +86,19 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
     try {
       const user = await users.create({
         name: parsed.data.name,
-        whatsappNumber: parsed.data.whatsappNumber,
+        email: parsed.data.email ?? undefined,
+        whatsappNumber: parsed.data.whatsappNumber ?? undefined,
       });
-      return c.json({ user }, 201);
+
+      // Send verification email when email is provided
+      let verificationSent = false;
+      if (user.email) {
+        const baseUrl = resolveBaseUrl(c, deps.config);
+        const result = await sendOrLogVerification(deps, user.id, user.email, baseUrl);
+        verificationSent = result.sent;
+      }
+
+      return c.json({ user, verificationSent }, 201);
     } catch (err: unknown) {
       if (err instanceof Error && err.message.includes("UNIQUE constraint failed")) {
         return c.json({ error: { code: "CONFLICT", message: "This number is already linked to another member" } }, 409);

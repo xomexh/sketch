@@ -64,7 +64,6 @@ export function createSettingsRepository(db: Kysely<DB>) {
       if (data.smtpUser !== undefined) updates.smtp_user = data.smtpUser;
       if (data.smtpPassword !== undefined) updates.smtp_password = data.smtpPassword;
       if (data.smtpFrom !== undefined) updates.smtp_from = data.smtpFrom;
-
       if (Object.keys(updates).length === 0) return;
 
       await db.updateTable("settings").set(updates).where("id", "=", "default").execute();

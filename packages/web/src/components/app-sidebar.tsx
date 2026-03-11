@@ -15,7 +15,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { useTheme } from "@/hooks/use-theme";
 import { api } from "@/lib/api";
@@ -28,7 +27,6 @@ import {
   BrainIcon,
   CaretUpDownIcon,
   ChatCircleIcon,
-  GearIcon,
   LinkSimpleIcon,
   MoonIcon,
   SignOutIcon,
@@ -50,11 +48,7 @@ const primaryNav: NavItem[] = [
   { label: "Channels", icon: <ChatCircleIcon size={18} />, href: "/channels" },
   { label: "Team", icon: <UsersThreeIcon size={18} />, href: "/team" },
   { label: "Skills", icon: <BrainIcon size={18} />, href: "/skills" },
-];
-
-const adminNav: NavItem[] = [
-  { label: "Integrations", icon: <LinkSimpleIcon size={18} />, href: "/integrations", disabled: true },
-  { label: "Settings", icon: <GearIcon size={18} />, href: "/settings", disabled: true },
+  { label: "Connections", icon: <LinkSimpleIcon size={18} />, href: "/connections" },
 ];
 
 export function AppSidebar({
@@ -126,32 +120,6 @@ export function AppSidebar({
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-
-        {role === "admin" && (
-          <>
-            <SidebarSeparator />
-
-            <SidebarGroup>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {adminNav.map((item) => (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton
-                        isActive={location.pathname === item.href}
-                        onClick={() => !item.disabled && navigate({ to: item.href })}
-                        disabled={item.disabled}
-                        tooltip={item.label}
-                      >
-                        {item.icon}
-                        <span>{item.label}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </>
-        )}
       </SidebarContent>
 
       <SidebarFooter>

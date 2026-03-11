@@ -3,16 +3,19 @@ import { serve } from "@hono/node-server";
 import { applyLlmEnvFromSettings } from "./agent/llm-env";
 import { formatBufferedContext } from "./agent/prompt";
 import { runAgent } from "./agent/runner";
+import type { McpServerConfig } from "./agent/runner";
 import { getSessionId } from "./agent/sessions";
 import { ensureChannelWorkspace, ensureGroupWorkspace, ensureWorkspace } from "./agent/workspace";
 import { loadConfig, validateConfig } from "./config";
 import { createDatabase } from "./db/index";
 import { runMigrations } from "./db/migrate";
 import { createChannelRepository } from "./db/repositories/channels";
+import { createMcpServerRepository } from "./db/repositories/mcp-servers";
 import { createSettingsRepository } from "./db/repositories/settings";
 import { createUserRepository } from "./db/repositories/users";
 import { type Attachment, downloadSlackFile, downloadWhatsAppMedia, extensionToMime } from "./files";
 import { createApp } from "./http";
+import { buildMcpConfig } from "./integrations/factory";
 import { createLogger } from "./logger";
 import { QueueManager } from "./queue";
 import { slackApiCall } from "./slack/api";
@@ -43,6 +46,7 @@ logger.info("Database ready");
 const users = createUserRepository(db);
 const channels = createChannelRepository(db);
 const settingsRepo = createSettingsRepository(db);
+const mcpServersRepo = createMcpServerRepository(db);
 
 async function applyLlmEnvFromDb() {
   const settingsRow = await settingsRepo.get();
@@ -51,6 +55,24 @@ async function applyLlmEnvFromDb() {
 
 // Apply LLM configuration from DB (if present) so agent runs use DB-stored settings.
 await applyLlmEnvFromDb();
+
+/**
+ * Build MCP server configs for a user's agent run.
+ * Loads all mcp_servers rows (both integration providers and plain MCPs).
+ * Returns empty object if no servers are configured.
+ */
+async function buildMcpServers(userEmail: string | null): Promise<Record<string, McpServerConfig>> {
+  const allServers = await mcpServersRepo.listAll();
+  const servers: Record<string, McpServerConfig> = {};
+  for (const s of allServers) {
+    try {
+      servers[s.slug] = buildMcpConfig(s.url, s.credentials, userEmail, s.type);
+    } catch (err) {
+      logger.warn({ err, serverId: s.id, serverSlug: s.slug }, "Failed to build MCP config for server");
+    }
+  }
+  return servers;
+}
 
 // 5. Queue manager
 const queueManager = new QueueManager();
@@ -75,7 +97,11 @@ function createConfiguredSlackBot(tokens: { botToken: string; appToken: string }
   });
 
   const resolveUser = (slackUserId: string) =>
-    resolveSlackUser(slackUserId, { users, getUserInfo: (id) => slackBot.getUserInfo(id), logger });
+    resolveSlackUser(slackUserId, {
+      users,
+      getUserInfo: (id) => userCache.resolve(id, (uid) => slackBot.getUserInfo(uid)),
+      logger,
+    });
 
   // DM handler
   slackBot.onMessage(async (message) => {
@@ -133,17 +159,21 @@ function createConfiguredSlackBot(tokens: { botToken: string; appToken: string }
       const thinkingTs = await slackBot.postMessage(message.channelId, "_Thinking..._");
       const onMessage = createSlackMessageHandler(slackBot, message.channelId, thinkingTs);
 
+      const integrationMcpServers = await buildMcpServers(user.email);
+
       try {
         const result = await runAgent({
           userMessage: message.text || "See attached files.",
           workspaceDir,
           userName: user.name,
+          userEmail: user.email,
           logger,
           platform: "slack",
           onMessage,
           orgName: settingsRow?.org_name,
           botName: settingsRow?.bot_name,
           attachments: attachments.length > 0 ? attachments : undefined,
+          integrationMcpServers,
         });
 
         for (const filePath of result.pendingUploads) {
@@ -308,6 +338,7 @@ function createConfiguredSlackBot(tokens: { botToken: string; appToken: string }
           userMessage,
           workspaceDir,
           userName: user.name,
+          userEmail: user.email,
           logger,
           platform: "slack",
           onMessage,
@@ -406,16 +437,20 @@ whatsapp.onMessage(async (message) => {
 
         const onMessage = createWhatsAppMessageHandler(whatsapp, message.jid);
 
+        const waIntegrationMcpServers = await buildMcpServers(user.email);
+
         const result = await runAgent({
           userMessage: message.text || "See attached files.",
           workspaceDir,
           userName: user.name,
+          userEmail: user.email,
           logger,
           platform: "whatsapp",
           onMessage,
           orgName: settingsRow?.org_name,
           botName: settingsRow?.bot_name,
           attachments: attachments.length > 0 ? attachments : undefined,
+          integrationMcpServers: waIntegrationMcpServers,
         });
 
         for (const filePath of result.pendingUploads) {

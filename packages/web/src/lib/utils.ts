@@ -12,3 +12,13 @@ export function getInitials(name: string): string {
   }
   return name.slice(0, 2).toUpperCase();
 }
+
+/** Two-letter abbreviation from first letters of each word, e.g. "Google Drive" -> "GD". */
+export function getAbbreviation(name: string): string {
+  return name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}

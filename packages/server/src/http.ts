@@ -11,6 +11,7 @@ import type { Logger } from "pino";
 import { authRoutes } from "./api/auth";
 import { channelRoutes } from "./api/channels";
 import { healthRoutes } from "./api/health";
+import { mcpServerRoutes } from "./api/mcp-servers";
 import { createAuthMiddleware } from "./api/middleware";
 import { settingsRoutes } from "./api/settings";
 import { setupRoutes } from "./api/setup";
@@ -18,6 +19,7 @@ import { skillsRoutes } from "./api/skills";
 import { userRoutes } from "./api/users";
 import { whatsappRoutes } from "./api/whatsapp";
 import type { Config } from "./config";
+import { createMcpServerRepository } from "./db/repositories/mcp-servers";
 import { createSettingsRepository } from "./db/repositories/settings";
 import { createUserRepository } from "./db/repositories/users";
 import type { DB } from "./db/schema";
@@ -38,13 +40,14 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   const app = new Hono();
   const settings = createSettingsRepository(db);
   const users = createUserRepository(db);
+  const mcpServers = createMcpServerRepository(db);
+  const logger = deps?.logger ?? (console as unknown as Logger);
 
   // Auth middleware on all /api/* routes (with setup mode + auth checks)
   app.use("/api/*", createAuthMiddleware(settings));
 
   // API routes
   app.route("/api/health", healthRoutes(db));
-  const logger = deps?.logger ?? (console as unknown as Logger);
   app.route("/api/auth", authRoutes(settings, db, { config, logger }));
   app.route(
     "/api/setup",
@@ -56,6 +59,7 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   app.route("/api/settings", settingsRoutes(settings));
   app.route("/api/skills", skillsRoutes(config));
   app.route("/api/users", userRoutes(users, { settings, db, logger, config }));
+  app.route("/api/mcp-servers", mcpServerRoutes(mcpServers, users));
   app.route(
     "/api/channels",
     channelRoutes({

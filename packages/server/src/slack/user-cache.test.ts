@@ -4,31 +4,31 @@ import { UserCache } from "./user-cache";
 describe("UserCache", () => {
   it("calls fetcher on cache miss and returns result", async () => {
     const cache = new UserCache();
-    const fetcher = vi.fn().mockResolvedValue({ name: "alice", realName: "Alice Smith" });
+    const fetcher = vi.fn().mockResolvedValue({ name: "alice", realName: "Alice Smith", email: "alice@example.com" });
 
     const result = await cache.resolve("U001", fetcher);
 
     expect(fetcher).toHaveBeenCalledWith("U001");
-    expect(result).toEqual({ name: "alice", realName: "Alice Smith" });
+    expect(result).toEqual({ name: "alice", realName: "Alice Smith", email: "alice@example.com" });
   });
 
   it("returns cached result on cache hit without calling fetcher", async () => {
     const cache = new UserCache();
-    const fetcher = vi.fn().mockResolvedValue({ name: "alice", realName: "Alice Smith" });
+    const fetcher = vi.fn().mockResolvedValue({ name: "alice", realName: "Alice Smith", email: "alice@example.com" });
 
     await cache.resolve("U001", fetcher);
     const result = await cache.resolve("U001", fetcher);
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ name: "alice", realName: "Alice Smith" });
+    expect(result).toEqual({ name: "alice", realName: "Alice Smith", email: "alice@example.com" });
   });
 
   it("caches different user IDs independently", async () => {
     const cache = new UserCache();
     const fetcher = vi
       .fn()
-      .mockResolvedValueOnce({ name: "alice", realName: "Alice Smith" })
-      .mockResolvedValueOnce({ name: "bob", realName: "Bob Jones" });
+      .mockResolvedValueOnce({ name: "alice", realName: "Alice Smith", email: "alice@example.com" })
+      .mockResolvedValueOnce({ name: "bob", realName: "Bob Jones", email: "bob@example.com" });
 
     const alice = await cache.resolve("U001", fetcher);
     const bob = await cache.resolve("U002", fetcher);
@@ -50,7 +50,7 @@ describe("UserCache", () => {
     const fetcher = vi
       .fn()
       .mockRejectedValueOnce(new Error("transient"))
-      .mockResolvedValueOnce({ name: "alice", realName: "Alice Smith" });
+      .mockResolvedValueOnce({ name: "alice", realName: "Alice Smith", email: "alice@example.com" });
 
     await expect(cache.resolve("U001", fetcher)).rejects.toThrow("transient");
     const result = await cache.resolve("U001", fetcher);

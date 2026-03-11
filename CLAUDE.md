@@ -62,7 +62,7 @@ sketch/
 ## Conventions
 
 - RESTful API design: resource-oriented URLs (no verbs in paths), correct HTTP methods (GET for reads, POST for creation, PUT for idempotent upserts, PATCH for partial updates, DELETE for removal). Use nouns for resources (e.g. `POST /api/users/:id/verification` not `POST /api/users/:id/send-verification`).
-- Biome for linting and formatting (tabs, 120 line width)
+- Biome for linting and formatting (2-space indent, 120 line width)
 - Strict TypeScript (`strict: true`)
 - Conventional commits: `feat:`, `fix:`, `chore:`
 - pino for structured JSON logging — never log message content

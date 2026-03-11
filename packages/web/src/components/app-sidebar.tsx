@@ -32,7 +32,6 @@ import {
   LinkSimpleIcon,
   MoonIcon,
   SignOutIcon,
-  SparkleIcon,
   SunIcon,
   UsersThreeIcon,
 } from "@phosphor-icons/react";
@@ -92,9 +91,7 @@ export function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" className="pointer-events-none">
-              <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary">
-                <SparkleIcon size={14} weight="fill" className="text-primary-foreground" />
-              </div>
+              <img src="/sketch.png" alt="Sketch" className="size-7 shrink-0" />
               <div className="flex flex-col text-left group-data-[collapsible=icon]:hidden">
                 <span className="text-base font-semibold tracking-tight">{identity?.botName ?? "Sketch"}</span>
                 {identity?.orgName ? (

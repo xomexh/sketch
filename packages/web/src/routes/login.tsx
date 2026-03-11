@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
-import { ArrowLeftIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, ShieldIcon, SparkleIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, ShieldIcon } from "@phosphor-icons/react";
 import { useMutation } from "@tanstack/react-query";
 import { createRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -44,9 +44,7 @@ function LoginPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 py-8">
       <div className="mb-8 flex flex-col items-center gap-2">
-        <div className="flex size-8 items-center justify-center rounded-md bg-primary">
-          <SparkleIcon size={18} weight="fill" className="text-primary-foreground" />
-        </div>
+        <img src="/sketch.png" alt="Sketch" className="size-8" />
         <span className="text-lg font-semibold tracking-tight">Sketch</span>
       </div>
 

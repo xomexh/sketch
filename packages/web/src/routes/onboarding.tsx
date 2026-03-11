@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { type SetupStatus, api } from "@/lib/api";
-import { EyeIcon, EyeSlashIcon, InfoIcon, SparkleIcon } from "@phosphor-icons/react";
+import { EyeIcon, EyeSlashIcon, InfoIcon } from "@phosphor-icons/react";
 import { useMutation } from "@tanstack/react-query";
 import { createRoute, redirect, useNavigate, useRouteContext } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -285,9 +285,7 @@ export function OnboardingPage({ initialSetupStatus }: { initialSetupStatus?: Se
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 py-8">
       <div className="mb-8 flex flex-col items-center gap-2">
-        <div className="flex size-8 items-center justify-center rounded-md bg-primary">
-          <SparkleIcon size={18} weight="fill" className="text-primary-foreground" />
-        </div>
+        <img src="/sketch.png" alt="Sketch" className="size-8" />
         <span className="text-lg font-semibold tracking-tight">Sketch</span>
       </div>
 

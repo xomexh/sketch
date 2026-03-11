@@ -73,6 +73,7 @@ async function downloadSlackFiles(
 
 export function createConfiguredSlackBot(tokens: { botToken: string; appToken: string }, deps: SlackAdapterDeps) {
   const { config, logger, repos, queue, slack: slackDeps, runAgent, buildMcpServers } = deps;
+  const maxFileBytes = config.MAX_FILE_SIZE_MB * 1024 * 1024;
 
   const slackBot = new SlackBot({
     appToken: tokens.appToken,
@@ -114,7 +115,7 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken: s
           "Files received from Slack",
         );
         const attachDir = join(workspaceDir, "attachments");
-        const maxBytes = config.MAX_FILE_SIZE_MB * 1024 * 1024;
+        const maxBytes = maxFileBytes;
         attachments = await downloadSlackFiles(
           message.files,
           settingsRow?.slack_bot_token,
@@ -181,7 +182,7 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken: s
     if (message.files?.length) {
       const workspaceDir = await ensureChannelWorkspace(config, message.channelId);
       const attachDir = join(workspaceDir, "attachments");
-      const maxBytes = config.MAX_FILE_SIZE_MB * 1024 * 1024;
+      const maxBytes = maxFileBytes;
       const settingsRow = await repos.settings.get();
       downloadedAttachments = await downloadSlackFiles(
         message.files,
@@ -248,7 +249,7 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken: s
           "Files received from Slack",
         );
         const attachDir = join(workspaceDir, "attachments");
-        const maxBytes = config.MAX_FILE_SIZE_MB * 1024 * 1024;
+        const maxBytes = maxFileBytes;
         attachments = await downloadSlackFiles(
           message.files,
           settingsRow?.slack_bot_token,

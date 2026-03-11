@@ -24,6 +24,11 @@ export function createTestLogger() {
   return pino({ level: "silent" });
 }
 
+/** Wait for all pending microtasks / async queue work to settle. */
+export function flush() {
+  return new Promise<void>((r) => setTimeout(r, 0));
+}
+
 /** Minimal config for tests — only fields needed by the component under test. */
 export function createTestConfig(overrides: Partial<Config> = {}): Config {
   return {

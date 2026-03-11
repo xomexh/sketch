@@ -1,12 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { QueueManager } from "../queue";
+import { createTestConfig, flush } from "../test-utils";
 import type { WhatsAppAdapterDeps } from "./adapter";
 import { wireWhatsAppHandlers } from "./adapter";
-
-/** Wait for all pending microtasks / async queue work to settle. */
-function flush() {
-  return new Promise<void>((r) => setTimeout(r, 0));
-}
 
 // --- Fixtures ---
 
@@ -45,16 +41,7 @@ function createMockWhatsApp(connected = true) {
 
 function makeDeps(overrides: Partial<WhatsAppAdapterDeps> = {}): WhatsAppAdapterDeps {
   return {
-    config: {
-      DB_TYPE: "sqlite",
-      SQLITE_PATH: ":memory:",
-      DATA_DIR: "/tmp/test-data",
-      PORT: 0,
-      LOG_LEVEL: "error",
-      MAX_FILE_SIZE_MB: 20,
-      SLACK_CHANNEL_HISTORY_LIMIT: 5,
-      SLACK_THREAD_HISTORY_LIMIT: 50,
-    },
+    config: createTestConfig({ DATA_DIR: "/tmp/test-data", PORT: 0, LOG_LEVEL: "error" }),
     logger: {
       info: vi.fn(),
       debug: vi.fn(),

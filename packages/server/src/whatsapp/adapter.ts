@@ -5,6 +5,7 @@
 import { basename, join } from "node:path";
 import type { WAMessage } from "@whiskeysockets/baileys";
 import { formatBufferedContext } from "../agent/prompt";
+import type { BufferedMessage } from "../agent/prompt";
 import type { AgentResult, McpServerConfig, RunAgentParams } from "../agent/runner";
 import { ensureGroupWorkspace, ensureWorkspace } from "../agent/workspace";
 import type { Config } from "../config";
@@ -13,7 +14,6 @@ import type { createUserRepository } from "../db/repositories/users";
 import { type Attachment, downloadWhatsAppMedia, extensionToMime } from "../files";
 import type { Logger } from "../logger";
 import type { QueueManager } from "../queue";
-import type { BufferedMessage } from "../slack/thread-buffer";
 import type { WhatsAppBot } from "./bot";
 import { jidToPhoneNumber } from "./bot";
 import type { GroupBuffer } from "./group-buffer";
@@ -37,6 +37,7 @@ export interface WhatsAppAdapterDeps {
 
 export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapterDeps): void {
   const { config, logger, repos, queue, groupBuffer, runAgent, buildMcpServers } = deps;
+  const maxFileBytes = config.MAX_FILE_SIZE_MB * 1024 * 1024;
 
   whatsapp.onMessage(async (message) => {
     if (message.type === "dm") {
@@ -67,7 +68,7 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
                 message.rawMessage,
                 whatsapp.socket,
                 attachDir,
-                config.MAX_FILE_SIZE_MB * 1024 * 1024,
+                maxFileBytes,
                 logger,
               );
               attachments.push(attachment);
@@ -162,7 +163,7 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
               message.rawMessage,
               whatsapp.socket,
               attachDir,
-              config.MAX_FILE_SIZE_MB * 1024 * 1024,
+              maxFileBytes,
               logger,
             );
             attachments.push(attachment);

@@ -2,7 +2,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -27,6 +32,7 @@ import {
   BrainIcon,
   CaretUpDownIcon,
   ChatCircleIcon,
+  DesktopIcon,
   LinkSimpleIcon,
   MoonIcon,
   SignOutIcon,
@@ -61,7 +67,7 @@ export function AppSidebar({
 }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, resolvedTheme, setTheme, logoSrc } = useTheme();
   const queryClient = useQueryClient();
 
   const { data: identity } = useQuery({
@@ -86,7 +92,7 @@ export function AppSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" className="pointer-events-none hover:bg-transparent active:bg-transparent">
               <div className="flex size-8 shrink-0 items-center justify-center">
-                <img src="/assets/sketch.png" alt="Sketch" className="size-7" />
+                <img src={logoSrc} alt="Sketch" className="size-7" />
               </div>
               <div className="flex min-w-0 flex-col text-left">
                 <span className="truncate text-base font-semibold tracking-tight">{identity?.botName ?? "Sketch"}</span>
@@ -138,11 +144,26 @@ export function AppSidebar({
               <CaretUpDownIcon size={16} className="shrink-0 text-muted-foreground" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="start" className="w-56">
-            <DropdownMenuItem onSelect={toggleTheme}>
-              {theme === "dark" ? <SunIcon size={16} className="mr-2" /> : <MoonIcon size={16} className="mr-2" />}
-              {theme === "dark" ? "Light mode" : "Dark mode"}
-            </DropdownMenuItem>
+          <DropdownMenuContent side="top" align="start" className="w-60">
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                {resolvedTheme === "dark" ? <MoonIcon size={16} /> : <SunIcon size={16} />}
+                Theme
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuRadioGroup value={theme} onValueChange={(v) => setTheme(v as "dark" | "light" | "system")}>
+                  <DropdownMenuRadioItem value="light">
+                    <SunIcon size={16} /> Light
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="dark">
+                    <MoonIcon size={16} /> Dark
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="system">
+                    <DesktopIcon size={16} /> System
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => logoutMutation.mutate()}>
               <SignOutIcon size={16} className="mr-2" />

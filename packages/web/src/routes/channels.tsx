@@ -516,7 +516,7 @@ function EmailConfigDialog({
               </a>
             </Button>
             <Button variant="ghost" size="sm" asChild>
-              <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">
+              <a href="https://myaccount.google.com/u/1/apppasswords" target="_blank" rel="noopener noreferrer">
                 App Passwords
                 <ArrowSquareOutIcon className="size-3.5" />
               </a>

@@ -88,15 +88,21 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <div className="flex h-12 items-center gap-2 overflow-hidden">
-          <img src={logoSrc} alt="Sketch" className="size-7 shrink-0" />
-          <div className="flex min-w-0 flex-col text-left">
-            <span className="truncate text-base font-semibold tracking-tight">{identity?.botName ?? "Sketch"}</span>
-            {identity?.orgName ? (
-              <span className="truncate text-xs text-muted-foreground">{identity.orgName}</span>
-            ) : null}
-          </div>
-        </div>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" className="pointer-events-none hover:bg-transparent active:bg-transparent">
+              <div className="flex size-8 shrink-0 items-center justify-center">
+                <img src={logoSrc} alt="Sketch" className="size-7" />
+              </div>
+              <div className="flex min-w-0 flex-col text-left">
+                <span className="truncate text-base font-semibold tracking-tight">{identity?.botName ?? "Sketch"}</span>
+                {identity?.orgName ? (
+                  <span className="truncate text-xs text-muted-foreground">{identity.orgName}</span>
+                ) : null}
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
 
       <SidebarContent>

@@ -64,21 +64,12 @@ function makeDeps(overrides: Partial<WhatsAppAdapterDeps> = {}): WhatsAppAdapter
     repos: {
       users: {
         findByWhatsappNumber: vi.fn().mockResolvedValue(makeUser()),
-        findBySlackId: vi.fn().mockResolvedValue(undefined),
-        findByEmail: vi.fn().mockResolvedValue(undefined),
-        findById: vi.fn().mockResolvedValue(undefined),
-        list: vi.fn().mockResolvedValue([]),
-        create: vi.fn(),
-        update: vi.fn(),
-        remove: vi.fn(),
       } as unknown as WhatsAppAdapterDeps["repos"]["users"],
       settings: {
         get: vi.fn().mockResolvedValue({
           org_name: "TestOrg",
           bot_name: "TestBot",
         }),
-        create: vi.fn(),
-        update: vi.fn(),
       } as unknown as WhatsAppAdapterDeps["repos"]["settings"],
     },
     queue: new QueueManager(),

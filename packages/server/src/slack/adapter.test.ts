@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { QueueManager } from "../queue";
 import type { SlackAdapterDeps } from "./adapter";
 import { createConfiguredSlackBot, validateSlackTokens } from "./adapter";
@@ -58,10 +58,6 @@ function makeDeps(overrides: Partial<SlackAdapterDeps> = {}): SlackAdapterDeps {
         findByEmail: vi.fn().mockResolvedValue(undefined),
         create: vi.fn().mockImplementation(async (data) => makeUser({ id: "new-u", ...data })),
         update: vi.fn().mockImplementation(async (id, data) => makeUser({ id, ...data })),
-        list: vi.fn().mockResolvedValue([]),
-        findByWhatsappNumber: vi.fn().mockResolvedValue(undefined),
-        findById: vi.fn().mockResolvedValue(undefined),
-        remove: vi.fn().mockResolvedValue([]),
       } as unknown as SlackAdapterDeps["repos"]["users"],
       channels: {
         findBySlackChannelId: vi.fn().mockResolvedValue(undefined),
@@ -75,8 +71,6 @@ function makeDeps(overrides: Partial<SlackAdapterDeps> = {}): SlackAdapterDeps {
           org_name: "TestOrg",
           bot_name: "TestBot",
         }),
-        create: vi.fn(),
-        update: vi.fn(),
       } as unknown as SlackAdapterDeps["repos"]["settings"],
     },
     queue: new QueueManager(),
@@ -177,9 +171,12 @@ function getHandlers() {
 }
 
 describe("slack/adapter", () => {
+  beforeEach(() => {
+    mockBotInstance = freshMockBot();
+  });
+
   describe("createConfiguredSlackBot", () => {
     it("registers DM, thread, and channel mention handlers", () => {
-      mockBotInstance = freshMockBot();
       const deps = makeDeps();
       createConfiguredSlackBot({ botToken: "xoxb-test", appToken: "xapp-test" }, deps);
 
@@ -191,7 +188,6 @@ describe("slack/adapter", () => {
 
   describe("DM handler", () => {
     it("resolves user, runs agent, and posts response", async () => {
-      mockBotInstance = freshMockBot();
       const deps = makeDeps();
       createConfiguredSlackBot({ botToken: "xoxb-test", appToken: "xapp-test" }, deps);
       const { dm } = getHandlers();
@@ -207,7 +203,6 @@ describe("slack/adapter", () => {
     });
 
     it("uploads pending files after agent run", async () => {
-      mockBotInstance = freshMockBot();
       const deps = makeDeps({
         runAgent: vi.fn().mockResolvedValue({
           messageSent: true,
@@ -226,7 +221,6 @@ describe("slack/adapter", () => {
     });
 
     it("updates thinking message on agent error", async () => {
-      mockBotInstance = freshMockBot();
       const deps = makeDeps({
         runAgent: vi.fn().mockRejectedValue(new Error("boom")),
       });
@@ -244,7 +238,6 @@ describe("slack/adapter", () => {
     });
 
     it("shows _No response_ when agent sends nothing", async () => {
-      mockBotInstance = freshMockBot();
       const deps = makeDeps({
         runAgent: vi.fn().mockResolvedValue({
           messageSent: false,
@@ -263,7 +256,6 @@ describe("slack/adapter", () => {
     });
 
     it("passes MCP servers to agent for DMs", async () => {
-      mockBotInstance = freshMockBot();
       const mcpServers = { canvas: { type: "http" as const, url: "https://mcp.test" } };
       const deps = makeDeps({
         buildMcpServers: vi.fn().mockResolvedValue(mcpServers),
@@ -281,7 +273,6 @@ describe("slack/adapter", () => {
 
   describe("thread handler", () => {
     it("ignores messages for unregistered threads", async () => {
-      mockBotInstance = freshMockBot();
       const deps = makeDeps();
       createConfiguredSlackBot({ botToken: "xoxb-test", appToken: "xapp-test" }, deps);
       const { thread } = getHandlers();
@@ -292,7 +283,6 @@ describe("slack/adapter", () => {
     });
 
     it("buffers messages for registered threads", async () => {
-      mockBotInstance = freshMockBot();
       const deps = makeDeps();
       vi.mocked(deps.slack.threadBuffer.hasThread).mockReturnValue(true);
       createConfiguredSlackBot({ botToken: "xoxb-test", appToken: "xapp-test" }, deps);
@@ -310,7 +300,6 @@ describe("slack/adapter", () => {
 
   describe("channel mention handler", () => {
     it("creates channel if not found, runs agent with channel context", async () => {
-      mockBotInstance = freshMockBot();
       const deps = makeDeps();
       createConfiguredSlackBot({ botToken: "xoxb-test", appToken: "xapp-test" }, deps);
       const { mention } = getHandlers();
@@ -325,7 +314,6 @@ describe("slack/adapter", () => {
     });
 
     it("reuses existing channel", async () => {
-      mockBotInstance = freshMockBot();
       const deps = makeDeps();
       vi.mocked(deps.repos.channels.findBySlackChannelId).mockResolvedValue(makeChannel());
       createConfiguredSlackBot({ botToken: "xoxb-test", appToken: "xapp-test" }, deps);
@@ -338,7 +326,6 @@ describe("slack/adapter", () => {
     });
 
     it("registers thread in buffer on mention", async () => {
-      mockBotInstance = freshMockBot();
       const deps = makeDeps();
       createConfiguredSlackBot({ botToken: "xoxb-test", appToken: "xapp-test" }, deps);
       const { mention } = getHandlers();
@@ -350,7 +337,6 @@ describe("slack/adapter", () => {
     });
 
     it("posts thread reply with thinking indicator", async () => {
-      mockBotInstance = freshMockBot();
       const deps = makeDeps();
       createConfiguredSlackBot({ botToken: "xoxb-test", appToken: "xapp-test" }, deps);
       const { mention } = getHandlers();

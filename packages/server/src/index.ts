@@ -6,5 +6,10 @@ validateConfig(config);
 
 const handle = await createServer(config);
 
-process.on("SIGINT", handle.shutdown);
-process.on("SIGTERM", handle.shutdown);
+async function shutdown() {
+  await handle.shutdown();
+  process.exit(0);
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);

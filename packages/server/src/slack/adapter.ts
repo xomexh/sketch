@@ -54,6 +54,7 @@ async function downloadSlackFiles(
   attachDir: string,
   maxBytes: number,
   logger: Logger,
+  failureLogMessage = "Failed to download file",
 ): Promise<Attachment[]> {
   const attachments: Attachment[] = [];
   for (const file of files) {
@@ -64,7 +65,7 @@ async function downloadSlackFiles(
       const downloaded = await downloadSlackFile(file.urlPrivate, botToken, attachDir, maxBytes, logger);
       attachments.push(downloaded);
     } catch (err) {
-      logger.warn({ err, fileName: file.name }, "Failed to download file");
+      logger.warn({ err, fileName: file.name }, failureLogMessage);
     }
   }
   return attachments;
@@ -188,6 +189,7 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken: s
         attachDir,
         maxBytes,
         logger,
+        "Failed to download passive thread file",
       );
     }
 

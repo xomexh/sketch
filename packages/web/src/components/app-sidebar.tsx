@@ -88,19 +88,15 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" className="pointer-events-none">
-              <img src="/sketch.png" alt="Sketch" className="size-7 shrink-0" />
-              <div className="flex flex-col text-left group-data-[collapsible=icon]:hidden">
-                <span className="text-base font-semibold tracking-tight">{identity?.botName ?? "Sketch"}</span>
-                {identity?.orgName ? (
-                  <span className="text-xs text-muted-foreground truncate">{identity.orgName}</span>
-                ) : null}
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <div className="flex h-12 items-center gap-2 overflow-hidden">
+          <img src="/sketch.png" alt="Sketch" className="size-7 shrink-0" />
+          <div className="flex min-w-0 flex-col text-left">
+            <span className="truncate text-base font-semibold tracking-tight">{identity?.botName ?? "Sketch"}</span>
+            {identity?.orgName ? (
+              <span className="truncate text-xs text-muted-foreground">{identity.orgName}</span>
+            ) : null}
+          </div>
+        </div>
       </SidebarHeader>
 
       <SidebarContent>
@@ -152,38 +148,34 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton size="lg">
-                  <div className="flex size-7 items-center justify-center rounded-full bg-primary/15 text-xs font-medium text-primary">
-                    {initials}
-                  </div>
-                  <div className="flex flex-col text-left text-xs leading-tight group-data-[collapsible=icon]:hidden">
-                    <span className="font-medium">{displayName}</span>
-                    <span className="text-muted-foreground">{displayIdentifier}</span>
-                  </div>
-                  <CaretUpDownIcon
-                    size={16}
-                    className="ml-auto text-muted-foreground group-data-[collapsible=icon]:hidden"
-                  />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="start" className="w-56">
-                <DropdownMenuItem onSelect={toggleTheme}>
-                  {theme === "dark" ? <SunIcon size={16} className="mr-2" /> : <MoonIcon size={16} className="mr-2" />}
-                  {theme === "dark" ? "Light mode" : "Dark mode"}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => logoutMutation.mutate()}>
-                  <SignOutIcon size={16} className="mr-2" />
-                  Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="flex h-12 w-full items-center gap-2 overflow-hidden rounded-md text-left text-sm outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground"
+            >
+              <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-medium text-primary">
+                {initials}
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col text-left text-xs leading-tight">
+                <span className="truncate font-medium">{displayName}</span>
+                <span className="truncate text-muted-foreground">{displayIdentifier}</span>
+              </div>
+              <CaretUpDownIcon size={16} className="shrink-0 text-muted-foreground" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="w-56">
+            <DropdownMenuItem onSelect={toggleTheme}>
+              {theme === "dark" ? <SunIcon size={16} className="mr-2" /> : <MoonIcon size={16} className="mr-2" />}
+              {theme === "dark" ? "Light mode" : "Dark mode"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => logoutMutation.mutate()}>
+              <SignOutIcon size={16} className="mr-2" />
+              Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </SidebarFooter>
     </Sidebar>
   );

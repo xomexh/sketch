@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useTheme } from "@/hooks/use-theme";
 import { api } from "@/lib/api";
 import { ArrowLeftIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, ShieldIcon } from "@phosphor-icons/react";
 import { useMutation } from "@tanstack/react-query";
@@ -26,6 +27,7 @@ export const loginRoute = createRoute({
 
 function LoginPage() {
   const navigate = useNavigate();
+  const { resolvedTheme } = useTheme();
   const [step, setStep] = useState<LoginStep>("choose");
   const [memberEmail, setMemberEmail] = useState("");
 
@@ -44,7 +46,7 @@ function LoginPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 py-8">
       <div className="mb-8 flex flex-col items-center gap-2">
-        <img src="/sketch.png" alt="Sketch" className="size-8" />
+        <img src={resolvedTheme === "dark" ? "/sketch.png" : "/sketch-dark.png"} alt="Sketch" className="size-8" />
         <span className="text-lg font-semibold tracking-tight">Sketch</span>
       </div>
 

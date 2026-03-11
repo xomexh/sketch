@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useTheme } from "@/hooks/use-theme";
 import { type SetupStatus, api } from "@/lib/api";
 import { EyeIcon, EyeSlashIcon, InfoIcon } from "@phosphor-icons/react";
 import { useMutation } from "@tanstack/react-query";
@@ -46,6 +47,7 @@ const defaultSetupStatus: SetupStatus = {
 
 export function OnboardingPage({ initialSetupStatus }: { initialSetupStatus?: SetupStatus }) {
   const navigate = useNavigate();
+  const { resolvedTheme } = useTheme();
   const setupStatus = initialSetupStatus ?? defaultSetupStatus;
   const initialStep = setupStatus.currentStep > 0 ? setupStatus.currentStep : 1;
 
@@ -285,7 +287,7 @@ export function OnboardingPage({ initialSetupStatus }: { initialSetupStatus?: Se
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 py-8">
       <div className="mb-8 flex flex-col items-center gap-2">
-        <img src="/sketch.png" alt="Sketch" className="size-8" />
+        <img src={resolvedTheme === "dark" ? "/sketch.png" : "/sketch-dark.png"} alt="Sketch" className="size-8" />
         <span className="text-lg font-semibold tracking-tight">Sketch</span>
       </div>
 

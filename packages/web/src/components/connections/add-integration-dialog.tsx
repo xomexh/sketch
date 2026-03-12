@@ -49,6 +49,17 @@ export function AddIntegrationDialog({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const oauthWindowRef = useRef<Window | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
+  const cancelledRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      cancelledRef.current = true;
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
 
   const loadApps = useCallback(
     async (query: string, cursor: string | null, append: boolean) => {
@@ -108,6 +119,11 @@ export function AddIntegrationDialog({
   }, [hasMore, isLoadingApps, search, endCursor, step.kind, loadApps]);
 
   const resetAndClose = () => {
+    cancelledRef.current = true;
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = undefined;
+    }
     setStep({ kind: "search" });
     setSearch("");
     setApps([]);
@@ -135,14 +151,44 @@ export function AddIntegrationDialog({
       }
 
       oauthWindowRef.current = popup;
+      cancelledRef.current = false;
 
-      const pollInterval = setInterval(() => {
+      const verifyConnection = async () => {
+        const RETRY_DELAY_MS = 1500;
+        const check = async () => {
+          const connections = await api.mcpServers.listConnections(providerId);
+          return connections.some((c) => c.appId === app.id);
+        };
+
+        try {
+          let connected = await check();
+          if (!connected) {
+            await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+            if (cancelledRef.current) return;
+            connected = await check();
+          }
+          if (cancelledRef.current) return;
+          if (connected) {
+            toast.success("App connected successfully!");
+            onSuccess();
+            resetAndClose();
+          } else {
+            toast.error("App connection cancelled");
+            setStep({ kind: "oauth_cancelled", app });
+          }
+        } catch {
+          if (cancelledRef.current) return;
+          toast.error("Could not verify connection status");
+          setStep({ kind: "oauth_cancelled", app });
+        }
+      };
+
+      pollIntervalRef.current = setInterval(() => {
         if (popup.closed) {
-          clearInterval(pollInterval);
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = undefined;
           oauthWindowRef.current = null;
-          toast.success("App connected successfully!");
-          onSuccess();
-          resetAndClose();
+          verifyConnection();
         }
       }, 500);
     } catch (err) {
@@ -250,7 +296,13 @@ export function AddIntegrationDialog({
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={resetAndClose}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  toast.error("App connection cancelled");
+                  resetAndClose();
+                }}
+              >
                 Cancel
               </Button>
             </DialogFooter>

@@ -19,6 +19,8 @@ import type { IntegrationApp } from "@sketch/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+type OAuthResultMessage = { type: "oauth-result"; status: "success" };
+
 type AddIntegrationStep =
   | { kind: "search" }
   | { kind: "oauth"; app: IntegrationApp }
@@ -49,6 +51,17 @@ export function AddIntegrationDialog({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const oauthWindowRef = useRef<Window | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
+  const oauthCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      oauthCleanupRef.current?.();
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
 
   const loadApps = useCallback(
     async (query: string, cursor: string | null, append: boolean) => {
@@ -108,6 +121,12 @@ export function AddIntegrationDialog({
   }, [hasMore, isLoadingApps, search, endCursor, step.kind, loadApps]);
 
   const resetAndClose = () => {
+    oauthCleanupRef.current?.();
+    oauthCleanupRef.current = null;
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = undefined;
+    }
     setStep({ kind: "search" });
     setSearch("");
     setApps([]);
@@ -135,14 +154,35 @@ export function AddIntegrationDialog({
       }
 
       oauthWindowRef.current = popup;
+      let oauthResolved = false;
 
-      const pollInterval = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(pollInterval);
+      const cleanup = () => {
+        window.removeEventListener("message", onMessage);
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = undefined;
+        }
+      };
+
+      const onMessage = (e: MessageEvent<OAuthResultMessage>) => {
+        if (e.origin !== window.location.origin || e.data?.type !== "oauth-result") return;
+        oauthResolved = true;
+        cleanup();
+        oauthWindowRef.current = null;
+        toast.success("App connected successfully!");
+        onSuccess();
+        resetAndClose();
+      };
+
+      window.addEventListener("message", onMessage);
+      oauthCleanupRef.current = cleanup;
+
+      pollIntervalRef.current = setInterval(() => {
+        if (popup.closed && !oauthResolved) {
+          cleanup();
           oauthWindowRef.current = null;
-          toast.success("App connected successfully!");
-          onSuccess();
-          resetAndClose();
+          toast.error("App connection cancelled");
+          setStep({ kind: "oauth_cancelled", app });
         }
       }, 500);
     } catch (err) {
@@ -250,7 +290,13 @@ export function AddIntegrationDialog({
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={resetAndClose}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  toast.error("App connection cancelled");
+                  resetAndClose();
+                }}
+              >
                 Cancel
               </Button>
             </DialogFooter>

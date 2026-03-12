@@ -7,6 +7,7 @@ export interface McpServerRecord {
   url: string;
   apiUrl: string | null;
   credentials: string;
+  mode: string;
   createdAt: string;
   updatedAt: string;
 }

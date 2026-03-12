@@ -71,6 +71,7 @@ function makeDeps(overrides: Partial<WhatsAppAdapterDeps> = {}): WhatsAppAdapter
       pendingUploads: [],
     }),
     buildMcpServers: vi.fn().mockResolvedValue({}),
+    findIntegrationProvider: vi.fn().mockResolvedValue(null),
     ...overrides,
   };
 }

@@ -15,7 +15,7 @@ import type { Logger } from "../logger";
 import { createCanUseTool } from "./permissions";
 import { buildSystemContext } from "./prompt";
 import { getSessionId, saveSessionId } from "./sessions";
-import { UploadCollector, createUploadMcpServer } from "./upload-tool";
+import { UploadCollector, createSketchMcpServer } from "./sketch-tools";
 
 export interface AgentResult {
   messageSent: boolean;
@@ -50,6 +50,7 @@ export interface RunAgentParams {
     groupDescription?: string;
   };
   integrationMcpServers?: Record<string, McpServerConfig>;
+  findIntegrationProvider?: () => Promise<{ type: string; credentials: string } | null>;
 }
 
 /**
@@ -131,7 +132,11 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
   }
 
   const uploadCollector = new UploadCollector();
-  const uploadServer = createUploadMcpServer(uploadCollector, absWorkspace);
+  const sketchServer = createSketchMcpServer({
+    uploadCollector,
+    workspaceDir: absWorkspace,
+    findIntegrationProvider: params.findIntegrationProvider,
+  });
 
   const run = query({
     prompt,
@@ -147,7 +152,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
       permissionMode: "default" as const,
       allowDangerouslySkipPermissions: false,
       settingSources: ["project", "user"],
-      mcpServers: { sketch: uploadServer, ...params.integrationMcpServers },
+      mcpServers: { sketch: sketchServer, ...params.integrationMcpServers },
       stderr: (data) => {
         logger.debug({ stderr: data.trim() }, "Agent subprocess");
       },

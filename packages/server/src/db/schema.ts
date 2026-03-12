@@ -79,6 +79,7 @@ export interface McpServersTable {
   url: string;
   api_url: string | null;
   credentials: string;
+  mode: Generated<string>;
   created_at: Generated<string>;
   updated_at: Generated<string>;
 }

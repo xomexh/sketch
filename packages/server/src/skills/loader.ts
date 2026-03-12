@@ -14,12 +14,14 @@ export interface LoadedSkill {
   description: string;
   body: string;
   category: LoadedSkillCategory;
+  providerType?: string;
 }
 
 interface FrontMatter {
   name?: string;
   description?: string;
   category?: LoadedSkillCategory;
+  providerType?: string;
 }
 
 function readSkillMarkdownSync(skillDir: string): string | null {
@@ -78,6 +80,7 @@ export function parseFrontMatter(md: string): { frontMatter: FrontMatter; body: 
     if (key === "name") fm.name = value;
     if (key === "description") fm.description = value;
     if (key === "category" && isLoadedCategory(value)) fm.category = value;
+    if (key === "provider-type") fm.providerType = value;
   }
 
   return { frontMatter: fm, body };
@@ -130,6 +133,7 @@ export function loadClaudeSkillsFromDir(dir: string): LoadedSkill[] {
       name: frontMatter.name ?? inferredName ?? entry,
       description: frontMatter.description ?? "",
       category: frontMatter.category ?? "productivity",
+      providerType: frontMatter.providerType,
       body,
     });
   }
@@ -155,13 +159,15 @@ export async function loadClaudeSkillsFromDirAsync(dir: string): Promise<LoadedS
         const { frontMatter, body } = parseFrontMatter(md);
         const inferredName = frontMatter.name ? null : inferNameFromBody(body);
 
-        return {
+        const skill: LoadedSkill = {
           id: entry.name,
           name: frontMatter.name ?? inferredName ?? entry.name,
           description: frontMatter.description ?? "",
           category: frontMatter.category ?? "productivity",
+          providerType: frontMatter.providerType,
           body,
-        } satisfies LoadedSkill;
+        };
+        return skill;
       }),
   );
 

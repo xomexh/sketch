@@ -18,6 +18,7 @@ import { createApp } from "./http";
 import { buildMcpConfig } from "./integrations/factory";
 import { createLogger } from "./logger";
 import { QueueManager } from "./queue";
+import { syncFeaturedSkills } from "./skills/sync";
 import { createConfiguredSlackBot, validateSlackTokens } from "./slack/adapter";
 import type { SlackBot } from "./slack/bot";
 import { createSlackStartupManager } from "./slack/startup";
@@ -52,6 +53,9 @@ export async function createServer(config: Config, options?: CreateServerOptions
   await runMigrations(db);
   logger.info("Database ready");
 
+  // 2.5. Sync featured skills
+  await syncFeaturedSkills(logger);
+
   // 3. Repositories
   const users = createUserRepository(db);
   const channels = createChannelRepository(db);
@@ -70,6 +74,8 @@ export async function createServer(config: Config, options?: CreateServerOptions
     const allServers = await mcpServersRepo.listAll();
     const servers: Record<string, McpServerConfig> = {};
     for (const s of allServers) {
+      // Skip integration providers in skill mode (agent uses the skill's CLI instead)
+      if (s.type != null && s.mode === "skill") continue;
       try {
         servers[s.slug] = buildMcpConfig(s.url, s.credentials, userEmail, s.type);
       } catch (err) {
@@ -95,6 +101,11 @@ export async function createServer(config: Config, options?: CreateServerOptions
     slack: { threadBuffer, userCache },
     runAgent,
     buildMcpServers,
+    findIntegrationProvider: async () => {
+      const row = await mcpServersRepo.findIntegrationProvider();
+      if (!row || row.type == null) return null;
+      return { type: row.type, credentials: row.credentials };
+    },
   };
 
   const startSlackBotIfConfigured = createSlackStartupManager({
@@ -130,6 +141,11 @@ export async function createServer(config: Config, options?: CreateServerOptions
     groupBuffer,
     runAgent,
     buildMcpServers,
+    findIntegrationProvider: async () => {
+      const row = await mcpServersRepo.findIntegrationProvider();
+      if (!row || row.type == null) return null;
+      return { type: row.type, credentials: row.credentials };
+    },
   });
 
   // 9. HTTP server

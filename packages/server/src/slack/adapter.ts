@@ -41,6 +41,7 @@ export interface SlackAdapterDeps {
   };
   runAgent: (params: RunAgentParams) => Promise<AgentResult>;
   buildMcpServers: (email: string | null) => Promise<Record<string, McpServerConfig>>;
+  findIntegrationProvider: () => Promise<{ type: string; credentials: string } | null>;
 }
 
 export async function validateSlackTokens(botToken: string, appToken: string) {
@@ -72,7 +73,7 @@ async function downloadSlackFiles(
 }
 
 export function createConfiguredSlackBot(tokens: { botToken: string; appToken: string }, deps: SlackAdapterDeps) {
-  const { config, logger, repos, queue, slack: slackDeps, runAgent, buildMcpServers } = deps;
+  const { config, logger, repos, queue, slack: slackDeps, runAgent, buildMcpServers, findIntegrationProvider } = deps;
   const maxFileBytes = config.MAX_FILE_SIZE_MB * 1024 * 1024;
 
   const slackBot = new SlackBot({
@@ -151,6 +152,7 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken: s
           botName: settingsRow?.bot_name,
           attachments: attachments.length > 0 ? attachments : undefined,
           integrationMcpServers,
+          findIntegrationProvider,
         });
 
         for (const filePath of result.pendingUploads) {
@@ -315,6 +317,7 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken: s
           channelContext: {
             channelName: channel.name,
           },
+          findIntegrationProvider,
         });
 
         for (const filePath of result.pendingUploads) {

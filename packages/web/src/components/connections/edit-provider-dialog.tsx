@@ -31,6 +31,7 @@ export function EditProviderDialog({
   const [mcpUrl, setMcpUrl] = useState("");
   const [apiUrl, setApiUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [mode, setMode] = useState<"mcp" | "skill">("mcp");
   const test = useConnectionTest();
 
   const [lastServerId, setLastServerId] = useState<string | null>(null);
@@ -39,6 +40,7 @@ export function EditProviderDialog({
     setMcpUrl(server.url);
     setApiUrl(server.apiUrl ?? "");
     setApiKey("");
+    setMode((server.mode as "mcp" | "skill") ?? "mcp");
     test.reset();
     setLastServerId(server.id);
   }
@@ -53,6 +55,7 @@ export function EditProviderDialog({
       if (mcpUrl.trim() !== server?.url) data.url = mcpUrl.trim();
       if (apiUrl.trim() !== (server?.apiUrl ?? "")) data.apiUrl = apiUrl.trim() || null;
       if (apiKey.trim()) data.credentials = { apiKey: apiKey.trim() };
+      if (mode !== (server?.mode ?? "mcp")) data.mode = mode;
       return api.mcpServers.update(server?.id ?? "", data);
     },
     onSuccess: () => {
@@ -77,7 +80,8 @@ export function EditProviderDialog({
     (name.trim() !== server.displayName ||
       mcpUrl.trim() !== server.url ||
       apiUrl.trim() !== (server.apiUrl ?? "") ||
-      apiKey.trim() !== "");
+      apiKey.trim() !== "" ||
+      mode !== (server.mode ?? "mcp"));
 
   return (
     <Dialog open={!!server} onOpenChange={onOpenChange}>
@@ -141,6 +145,39 @@ export function EditProviderDialog({
               disabled={updateMutation.isPending}
               className="font-mono text-xs"
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Tool Access Mode</Label>
+            <div className="flex rounded-lg border border-border">
+              <button
+                type="button"
+                className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-l-lg transition-colors ${
+                  mode === "skill"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setMode("skill")}
+                disabled={updateMutation.isPending}
+              >
+                Skill
+              </button>
+              <button
+                type="button"
+                className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-r-lg transition-colors ${
+                  mode === "mcp" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setMode("mcp")}
+                disabled={updateMutation.isPending}
+              >
+                MCP
+              </button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {mode === "skill"
+                ? "Agent uses the Canvas skill with CLI. Recommended."
+                : "Tools injected directly into agent runs."}
+            </p>
           </div>
 
           <ConnectionTestSection

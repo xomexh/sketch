@@ -79,6 +79,7 @@ function makeDeps(overrides: Partial<SlackAdapterDeps> = {}): SlackAdapterDeps {
       pendingUploads: [],
     }),
     buildMcpServers: vi.fn().mockResolvedValue({}),
+    findIntegrationProvider: vi.fn().mockResolvedValue(null),
     ...overrides,
   };
 }

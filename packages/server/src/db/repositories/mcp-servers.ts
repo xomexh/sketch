@@ -62,6 +62,7 @@ export function createMcpServerRepository(db: Kysely<DB>) {
       url: string;
       apiUrl?: string | null;
       credentials: string;
+      mode?: string;
     }) {
       const id = randomUUID();
       const slug = await uniqueSlug(data.displayName);
@@ -76,6 +77,7 @@ export function createMcpServerRepository(db: Kysely<DB>) {
           url: data.url,
           api_url: data.apiUrl ?? null,
           credentials: data.credentials,
+          mode: data.mode ?? "mcp",
         })
         .execute();
 
@@ -84,13 +86,14 @@ export function createMcpServerRepository(db: Kysely<DB>) {
 
     async update(
       id: string,
-      data: Partial<{ displayName: string; url: string; apiUrl: string | null; credentials: string }>,
+      data: Partial<{ displayName: string; url: string; apiUrl: string | null; credentials: string; mode: string }>,
     ) {
       const updates: Record<string, string | null> = {};
       if (data.displayName !== undefined) updates.display_name = data.displayName;
       if (data.url !== undefined) updates.url = data.url;
       if (data.apiUrl !== undefined) updates.api_url = data.apiUrl;
       if (data.credentials !== undefined) updates.credentials = data.credentials;
+      if (data.mode !== undefined) updates.mode = data.mode;
 
       if (Object.keys(updates).length === 0) return;
 

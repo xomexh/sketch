@@ -178,6 +178,7 @@ export function AddProviderDialog({
   const [mcpUrl, setMcpUrl] = useState("");
   const [apiUrl, setApiUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [mode, setMode] = useState<"mcp" | "skill">("skill");
   const test = useConnectionTest();
 
   const addMutation = useMutation({
@@ -188,6 +189,7 @@ export function AddProviderDialog({
         apiUrl: apiUrl.trim(),
         credentials: { apiKey: apiKey.trim() },
         type: "canvas",
+        mode,
       }),
     onSuccess: (server) => {
       toast.success(`${server.displayName} connected`);
@@ -202,6 +204,7 @@ export function AddProviderDialog({
     setMcpUrl("");
     setApiUrl("");
     setApiKey("");
+    setMode("skill");
     test.reset();
     onOpenChange(false);
   };
@@ -324,6 +327,39 @@ export function AddProviderDialog({
               disabled={addMutation.isPending}
               className="font-mono text-xs"
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Tool Access Mode</Label>
+            <div className="flex rounded-lg border border-border">
+              <button
+                type="button"
+                className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-l-lg transition-colors ${
+                  mode === "skill"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setMode("skill")}
+                disabled={addMutation.isPending}
+              >
+                Skill
+              </button>
+              <button
+                type="button"
+                className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-r-lg transition-colors ${
+                  mode === "mcp" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setMode("mcp")}
+                disabled={addMutation.isPending}
+              >
+                MCP
+              </button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {mode === "skill"
+                ? "Agent uses the Canvas skill with CLI. Recommended."
+                : "Tools injected directly into agent runs."}
+            </p>
           </div>
 
           <ConnectionTestSection

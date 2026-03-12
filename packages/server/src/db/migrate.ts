@@ -14,6 +14,7 @@ import * as m007 from "./migrations/007-settings-smtp";
 import * as m008 from "./migrations/008-email-verification";
 import * as m009 from "./migrations/009-magic-link-tokens";
 import * as m010 from "./migrations/010-mcp-servers";
+import * as m011 from "./migrations/011-mcp-server-mode";
 import type { DB } from "./schema";
 
 export async function runMigrations(db: Kysely<DB>): Promise<void> {
@@ -32,6 +33,7 @@ export async function runMigrations(db: Kysely<DB>): Promise<void> {
           "008-email-verification": m008,
           "009-magic-link-tokens": m009,
           "010-mcp-servers": m010,
+          "011-mcp-server-mode": m011,
         };
       },
     },

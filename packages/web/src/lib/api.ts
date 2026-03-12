@@ -250,6 +250,7 @@ export const api = {
       apiUrl?: string;
       credentials: Record<string, unknown>;
       type?: string;
+      mode?: "mcp" | "skill";
     }) {
       const res = await request<{ server: McpServerRecord }>("/api/mcp-servers", {
         method: "POST",
@@ -259,7 +260,13 @@ export const api = {
     },
     update(
       id: string,
-      data: { displayName?: string; url?: string; apiUrl?: string | null; credentials?: Record<string, unknown> },
+      data: {
+        displayName?: string;
+        url?: string;
+        apiUrl?: string | null;
+        credentials?: Record<string, unknown>;
+        mode?: "mcp" | "skill";
+      },
     ) {
       return request<void>(`/api/mcp-servers/${id}`, {
         method: "PATCH",

@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { UploadCollector, createUploadMcpServer } from "./upload-tool";
+import { UploadCollector, createSketchMcpServer } from "./sketch-tools";
 
 describe("UploadCollector", () => {
   it("stores file paths via collect()", () => {
@@ -25,7 +25,7 @@ describe("UploadCollector", () => {
   });
 });
 
-describe("createUploadMcpServer", () => {
+describe("createSketchMcpServer", () => {
   let tmpDir: string;
 
   beforeEach(async () => {
@@ -38,7 +38,7 @@ describe("createUploadMcpServer", () => {
 
   it("returns a valid MCP server config", () => {
     const collector = new UploadCollector();
-    const server = createUploadMcpServer(collector, tmpDir);
+    const server = createSketchMcpServer({ uploadCollector: collector, workspaceDir: tmpDir });
     expect(server.type).toBe("sdk");
     expect(server.name).toBe("sketch");
     expect(server.instance).toBeDefined();
@@ -46,7 +46,7 @@ describe("createUploadMcpServer", () => {
 
   it("has a SendFileToChat tool registered", () => {
     const collector = new UploadCollector();
-    const server = createUploadMcpServer(collector, tmpDir);
+    const server = createSketchMcpServer({ uploadCollector: collector, workspaceDir: tmpDir });
     // The McpServer instance should have the tool registered
     // We verify this indirectly by checking the server was created successfully
     expect(server.instance).toBeDefined();

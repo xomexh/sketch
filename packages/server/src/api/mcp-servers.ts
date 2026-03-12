@@ -44,6 +44,7 @@ const addServerSchema = z.object({
   apiUrl: z.string().url().optional(),
   credentials: z.record(z.string(), z.unknown()),
   type: z.string().min(1).optional(),
+  mode: z.enum(["mcp", "skill"]).optional(),
 });
 
 const updateServerSchema = z.object({
@@ -51,6 +52,7 @@ const updateServerSchema = z.object({
   url: z.string().min(1).optional(),
   apiUrl: z.string().url().nullable().optional(),
   credentials: z.record(z.string(), z.unknown()).optional(),
+  mode: z.enum(["mcp", "skill"]).optional(),
 });
 
 const connectionTestSchema = z.object({
@@ -178,6 +180,7 @@ function serializeServer(row: {
   url: string;
   api_url: string | null;
   credentials: string;
+  mode: string;
   created_at: string;
   updated_at: string;
 }) {
@@ -189,6 +192,7 @@ function serializeServer(row: {
     url: row.url,
     apiUrl: row.api_url,
     credentials: maskCredentials(row.credentials),
+    mode: row.mode,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -212,7 +216,7 @@ export function mcpServerRoutes(mcpServers: McpServerRepo, users: UserRepo) {
       return c.json({ error: { code: "VALIDATION_ERROR", message } }, 400);
     }
 
-    const { displayName, url, apiUrl, credentials, type } = parsed.data;
+    const { displayName, url, apiUrl, credentials, type, mode } = parsed.data;
 
     if (type) {
       const credParsed = canvasCredentialsSchema.safeParse(credentials);
@@ -234,6 +238,7 @@ export function mcpServerRoutes(mcpServers: McpServerRepo, users: UserRepo) {
         url,
         apiUrl: apiUrl ?? null,
         credentials: JSON.stringify(credentials),
+        mode: mode ?? "mcp",
       });
       return c.json({ server: serializeServer(server) }, 201);
     } catch (err: unknown) {
@@ -263,6 +268,7 @@ export function mcpServerRoutes(mcpServers: McpServerRepo, users: UserRepo) {
     if (parsed.data.url !== undefined) updates.url = parsed.data.url;
     if (parsed.data.apiUrl !== undefined) updates.apiUrl = parsed.data.apiUrl;
     if (parsed.data.credentials !== undefined) updates.credentials = JSON.stringify(parsed.data.credentials);
+    if (parsed.data.mode !== undefined) updates.mode = parsed.data.mode;
 
     await mcpServers.update(id, updates);
     const updated = await mcpServers.getById(id);

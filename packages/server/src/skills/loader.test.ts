@@ -92,6 +92,24 @@ describe("parseFrontMatter", () => {
     expect(result.frontMatter.name).toBe('Quoted "Skill"');
     expect(result.frontMatter.description).toBe("First line\nSecond line");
   });
+
+  it("parses provider-type from frontmatter", () => {
+    const input = "---\nname: Canvas\nprovider-type: canvas\n---\nBody";
+    const result = parseFrontMatter(input);
+    expect(result.frontMatter.providerType).toBe("canvas");
+  });
+
+  it("leaves providerType undefined when not present", () => {
+    const input = "---\nname: Test\n---\nBody";
+    const result = parseFrontMatter(input);
+    expect(result.frontMatter.providerType).toBeUndefined();
+  });
+
+  it("handles quoted provider-type value", () => {
+    const input = '---\nprovider-type: "canvas"\n---\nBody';
+    const result = parseFrontMatter(input);
+    expect(result.frontMatter.providerType).toBe("canvas");
+  });
 });
 
 describe("inferNameFromBody", () => {
@@ -334,6 +352,18 @@ More content`;
     const result = loadProjectClaudeSkills(tempDir);
     expect(result[0].body).toContain("## Section 1");
     expect(result[0].body).toContain("Content here");
+  });
+
+  it("includes providerType on loaded skill with frontmatter", async () => {
+    await writeSkill("canvas", "---\nname: Canvas\nprovider-type: canvas\n---\nCanvas body");
+    const result = loadProjectClaudeSkills(tempDir);
+    expect(result[0].providerType).toBe("canvas");
+  });
+
+  it("returns undefined providerType for skill without the field", async () => {
+    await writeSkill("basic", "---\nname: Basic\n---\nBody");
+    const result = loadProjectClaudeSkills(tempDir);
+    expect(result[0].providerType).toBeUndefined();
   });
 });
 

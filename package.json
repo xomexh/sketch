@@ -6,11 +6,13 @@
     "lint": "biome check .",
     "format": "biome format . --write",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
     "concurrently": "^9.2.1",
+    "husky": "^9.1.7",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   },

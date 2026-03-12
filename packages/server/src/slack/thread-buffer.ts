@@ -7,14 +7,9 @@
  * context of what happened since its last response — without re-fetching from Slack.
  */
 
-import type { Attachment } from "../files";
+import type { BufferedMessage } from "../agent/prompt";
 
-export interface BufferedMessage {
-  userName: string;
-  text: string;
-  ts: string;
-  attachments?: Attachment[];
-}
+export type { BufferedMessage };
 
 export class ThreadBuffer {
   private buffers = new Map<string, BufferedMessage[]>();

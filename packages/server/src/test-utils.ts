@@ -24,6 +24,16 @@ export function createTestLogger() {
   return pino({ level: "silent" });
 }
 
+/**
+ * Wait for all pending microtasks / async queue work to settle.
+ * Works for single-depth async (handler → enqueue → async work). If handlers
+ * ever gain nested async patterns (async work that itself enqueues more async
+ * work), call flush() multiple times or replace with a drain loop.
+ */
+export function flush() {
+  return new Promise<void>((r) => setTimeout(r, 0));
+}
+
 /** Minimal config for tests — only fields needed by the component under test. */
 export function createTestConfig(overrides: Partial<Config> = {}): Config {
   return {

@@ -1,5 +1,12 @@
+import type { Attachment } from "../files";
 import { formatAttachmentsForPrompt } from "../files";
-import type { BufferedMessage } from "../slack/thread-buffer";
+
+export interface BufferedMessage {
+  userName: string;
+  text: string;
+  ts: string;
+  attachments?: Attachment[];
+}
 
 /**
  * Build the system context appended to the Claude Code preset.

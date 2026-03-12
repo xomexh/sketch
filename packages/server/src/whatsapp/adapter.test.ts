@@ -41,6 +41,7 @@ function createMockWhatsApp(connected = true) {
 
 function makeDeps(overrides: Partial<WhatsAppAdapterDeps> = {}): WhatsAppAdapterDeps {
   return {
+    db: {} as WhatsAppAdapterDeps["db"],
     config: createTestConfig({ DATA_DIR: "/tmp/test-data", PORT: 0, LOG_LEVEL: "error" }),
     logger: {
       info: vi.fn(),

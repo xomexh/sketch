@@ -94,6 +94,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
   let slack: SlackBot | null = null;
 
   const slackAdapterDeps = {
+    db,
     config,
     logger,
     repos: { users, channels, settings: settingsRepo },
@@ -134,6 +135,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
   const groupBuffer = new GroupBuffer();
 
   wireWhatsAppHandlers(whatsapp, {
+    db,
     config,
     logger,
     repos: { users, settings: settingsRepo },

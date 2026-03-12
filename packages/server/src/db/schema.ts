@@ -84,6 +84,14 @@ export interface McpServersTable {
   updated_at: Generated<string>;
 }
 
+export interface ChatSessionsTable {
+  id: Generated<number>;
+  workspace_key: string;
+  thread_key: string | null;
+  session_id: string;
+  updated_at: Generated<string>;
+}
+
 export interface DB {
   users: UsersTable;
   channels: ChannelsTable;
@@ -93,4 +101,5 @@ export interface DB {
   email_verification_tokens: EmailVerificationTokensTable;
   magic_link_tokens: MagicLinkTokensTable;
   mcp_servers: McpServersTable;
+  chat_sessions: ChatSessionsTable;
 }

@@ -4,6 +4,7 @@
  */
 import { basename, join } from "node:path";
 import type { WAMessage } from "@whiskeysockets/baileys";
+import type { Kysely } from "kysely";
 import { formatBufferedContext } from "../agent/prompt";
 import type { BufferedMessage } from "../agent/prompt";
 import type { AgentResult, McpServerConfig, RunAgentParams } from "../agent/runner";
@@ -11,6 +12,7 @@ import { ensureGroupWorkspace, ensureWorkspace } from "../agent/workspace";
 import type { Config } from "../config";
 import type { createSettingsRepository } from "../db/repositories/settings";
 import type { createUserRepository } from "../db/repositories/users";
+import type { DB } from "../db/schema";
 import { type Attachment, downloadWhatsAppMedia, extensionToMime } from "../files";
 import type { Logger } from "../logger";
 import type { QueueManager } from "../queue";
@@ -23,6 +25,7 @@ type UserRepository = ReturnType<typeof createUserRepository>;
 type SettingsRepository = ReturnType<typeof createSettingsRepository>;
 
 export interface WhatsAppAdapterDeps {
+  db: Kysely<DB>;
   config: Config;
   logger: Logger;
   repos: {
@@ -37,7 +40,7 @@ export interface WhatsAppAdapterDeps {
 }
 
 export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapterDeps): void {
-  const { config, logger, repos, queue, groupBuffer, runAgent, buildMcpServers, findIntegrationProvider } = deps;
+  const { db, config, logger, repos, queue, groupBuffer, runAgent, buildMcpServers, findIntegrationProvider } = deps;
   const maxFileBytes = config.MAX_FILE_SIZE_MB * 1024 * 1024;
 
   whatsapp.onMessage(async (message) => {
@@ -83,6 +86,8 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
           const waIntegrationMcpServers = await buildMcpServers(user.email);
 
           const result = await runAgent({
+            db,
+            workspaceKey: user.id,
             userMessage: message.text || "See attached files.",
             workspaceDir,
             userName: user.name,
@@ -187,6 +192,8 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
         const integrationMcpServers = await buildMcpServers(user?.email ?? null);
 
         const result = await runAgent({
+          db,
+          workspaceKey: `wa-group-${groupJid}`,
           userMessage,
           workspaceDir,
           userName,

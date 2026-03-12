@@ -9,6 +9,8 @@
  */
 import { resolve } from "node:path";
 import { type SDKUserMessage, query } from "@anthropic-ai/claude-agent-sdk";
+import type { Kysely } from "kysely";
+import type { DB } from "../db/schema";
 import type { Attachment } from "../files";
 import { buildMultimodalContent, formatAttachmentsForPrompt, isImageAttachment } from "../files";
 import type { Logger } from "../logger";
@@ -31,6 +33,8 @@ export interface McpServerConfig {
 }
 
 export interface RunAgentParams {
+  db: Kysely<DB>;
+  workspaceKey: string;
   userMessage: string;
   workspaceDir: string;
   userName: string;
@@ -80,7 +84,7 @@ export function extractAssistantText(message: unknown): string | null {
 
 export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
   const { userMessage, workspaceDir, userName, logger } = params;
-  const existingSessionId = await getSessionId(workspaceDir, params.threadTs);
+  const existingSessionId = await getSessionId(params.db, params.workspaceKey, params.threadTs);
   const absWorkspace = resolve(workspaceDir);
 
   const systemAppend = buildSystemContext({
@@ -182,7 +186,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
   }
 
   if (sessionId) {
-    await saveSessionId(workspaceDir, sessionId, params.threadTs);
+    await saveSessionId(params.db, params.workspaceKey, sessionId, params.threadTs);
   }
 
   const pendingUploads = uploadCollector.drain();

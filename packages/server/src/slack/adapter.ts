@@ -4,6 +4,7 @@
  * createConfiguredSlackBot() and passes the result to the startup manager.
  */
 import { join } from "node:path";
+import type { Kysely } from "kysely";
 import { formatBufferedContext } from "../agent/prompt";
 import type { AgentResult, McpServerConfig, RunAgentParams } from "../agent/runner";
 import { getSessionId } from "../agent/sessions";
@@ -12,6 +13,7 @@ import type { Config } from "../config";
 import type { createChannelRepository } from "../db/repositories/channels";
 import type { createSettingsRepository } from "../db/repositories/settings";
 import type { createUserRepository } from "../db/repositories/users";
+import type { DB } from "../db/schema";
 import { type Attachment, downloadSlackFile } from "../files";
 import type { Logger } from "../logger";
 import type { QueueManager } from "../queue";
@@ -27,6 +29,7 @@ type ChannelRepository = ReturnType<typeof createChannelRepository>;
 type SettingsRepository = ReturnType<typeof createSettingsRepository>;
 
 export interface SlackAdapterDeps {
+  db: Kysely<DB>;
   config: Config;
   logger: Logger;
   repos: {
@@ -73,7 +76,17 @@ async function downloadSlackFiles(
 }
 
 export function createConfiguredSlackBot(tokens: { botToken: string; appToken: string }, deps: SlackAdapterDeps) {
-  const { config, logger, repos, queue, slack: slackDeps, runAgent, buildMcpServers, findIntegrationProvider } = deps;
+  const {
+    db,
+    config,
+    logger,
+    repos,
+    queue,
+    slack: slackDeps,
+    runAgent,
+    buildMcpServers,
+    findIntegrationProvider,
+  } = deps;
   const maxFileBytes = config.MAX_FILE_SIZE_MB * 1024 * 1024;
 
   const slackBot = new SlackBot({
@@ -141,6 +154,8 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken: s
 
       try {
         const result = await runAgent({
+          db,
+          workspaceKey: user.id,
           userMessage: message.text || "See attached files.",
           workspaceDir,
           userName: user.name,
@@ -268,7 +283,8 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken: s
         );
       }
 
-      const existingSession = await getSessionId(workspaceDir, threadTs);
+      const channelWorkspaceKey = `channel-${message.channelId}`;
+      const existingSession = await getSessionId(db, channelWorkspaceKey, threadTs);
       let userMessage = message.text || "See attached files.";
 
       if (existingSession) {
@@ -305,6 +321,8 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken: s
 
       try {
         const result = await runAgent({
+          db,
+          workspaceKey: channelWorkspaceKey,
           userMessage,
           workspaceDir,
           userName: user.name,

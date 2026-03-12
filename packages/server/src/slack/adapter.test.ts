@@ -32,6 +32,7 @@ function makeChannel(overrides: Record<string, unknown> = {}) {
 
 function makeDeps(overrides: Partial<SlackAdapterDeps> = {}): SlackAdapterDeps {
   return {
+    db: {} as SlackAdapterDeps["db"],
     config: createTestConfig({ DATA_DIR: "/tmp/test-data", PORT: 0, LOG_LEVEL: "error" }),
     logger: {
       info: vi.fn(),

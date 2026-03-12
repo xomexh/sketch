@@ -19,6 +19,8 @@ import type { IntegrationApp } from "@sketch/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+type OAuthResultMessage = { type: "oauth-result"; status: "success" };
+
 type AddIntegrationStep =
   | { kind: "search" }
   | { kind: "oauth"; app: IntegrationApp }
@@ -50,11 +52,11 @@ export function AddIntegrationDialog({
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const oauthWindowRef = useRef<Window | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
-  const cancelledRef = useRef(false);
+  const oauthCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     return () => {
-      cancelledRef.current = true;
+      oauthCleanupRef.current?.();
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
       }
@@ -119,7 +121,8 @@ export function AddIntegrationDialog({
   }, [hasMore, isLoadingApps, search, endCursor, step.kind, loadApps]);
 
   const resetAndClose = () => {
-    cancelledRef.current = true;
+    oauthCleanupRef.current?.();
+    oauthCleanupRef.current = null;
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = undefined;
@@ -151,44 +154,35 @@ export function AddIntegrationDialog({
       }
 
       oauthWindowRef.current = popup;
-      cancelledRef.current = false;
+      let oauthResolved = false;
 
-      const verifyConnection = async () => {
-        const RETRY_DELAY_MS = 1500;
-        const check = async () => {
-          const connections = await api.mcpServers.listConnections(providerId);
-          return connections.some((c) => c.appId === app.id);
-        };
-
-        try {
-          let connected = await check();
-          if (!connected) {
-            await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
-            if (cancelledRef.current) return;
-            connected = await check();
-          }
-          if (cancelledRef.current) return;
-          if (connected) {
-            toast.success("App connected successfully!");
-            onSuccess();
-            resetAndClose();
-          } else {
-            toast.error("App connection cancelled");
-            setStep({ kind: "oauth_cancelled", app });
-          }
-        } catch {
-          if (cancelledRef.current) return;
-          toast.error("Could not verify connection status");
-          setStep({ kind: "oauth_cancelled", app });
+      const cleanup = () => {
+        window.removeEventListener("message", onMessage);
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = undefined;
         }
       };
 
+      const onMessage = (e: MessageEvent<OAuthResultMessage>) => {
+        if (e.origin !== window.location.origin || e.data?.type !== "oauth-result") return;
+        oauthResolved = true;
+        cleanup();
+        oauthWindowRef.current = null;
+        toast.success("App connected successfully!");
+        onSuccess();
+        resetAndClose();
+      };
+
+      window.addEventListener("message", onMessage);
+      oauthCleanupRef.current = cleanup;
+
       pollIntervalRef.current = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(pollIntervalRef.current);
-          pollIntervalRef.current = undefined;
+        if (popup.closed && !oauthResolved) {
+          cleanup();
           oauthWindowRef.current = null;
-          verifyConnection();
+          toast.error("App connection cancelled");
+          setStep({ kind: "oauth_cancelled", app });
         }
       }, 500);
     } catch (err) {

@@ -71,12 +71,24 @@ export function parseFrontMatter(md: string): { frontMatter: FrontMatter; body: 
   const body = md.slice(end + 4).trim();
 
   const fm: FrontMatter = {};
-  for (const line of raw.split("\n")) {
-    const idx = line.indexOf(":");
+  const lines = raw.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const idx = lines[i].indexOf(":");
     if (idx === -1) continue;
-    const key = line.slice(0, idx).trim();
-    const value = parseFrontMatterScalar(line.slice(idx + 1).trim());
+    const key = lines[i].slice(0, idx).trim();
     if (!key) continue;
+    let value = parseFrontMatterScalar(lines[i].slice(idx + 1).trim());
+
+    if (value === ">" || value === "|") {
+      const fold = value === ">";
+      const parts: string[] = [];
+      while (i + 1 < lines.length && /^\s+/.test(lines[i + 1])) {
+        i++;
+        parts.push(lines[i].trim());
+      }
+      value = fold ? parts.join(" ") : parts.join("\n");
+    }
+
     if (key === "name") fm.name = value;
     if (key === "description") fm.description = value;
     if (key === "category" && isLoadedCategory(value)) fm.category = value;

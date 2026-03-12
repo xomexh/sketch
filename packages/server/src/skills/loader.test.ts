@@ -110,6 +110,27 @@ describe("parseFrontMatter", () => {
     const result = parseFrontMatter(input);
     expect(result.frontMatter.providerType).toBe("canvas");
   });
+
+  it("parses YAML folded block scalar (>) for description", () => {
+    const input = "---\nname: icp-discovery\ndescription: >\n  ICP discovery and market validation.\n  Use when user wants to find customers.\n---\nBody";
+    const result = parseFrontMatter(input);
+    expect(result.frontMatter.name).toBe("icp-discovery");
+    expect(result.frontMatter.description).toBe("ICP discovery and market validation. Use when user wants to find customers.");
+    expect(result.body).toBe("Body");
+  });
+
+  it("parses YAML literal block scalar (|) for description", () => {
+    const input = "---\nname: test\ndescription: |\n  Line one.\n  Line two.\n---\nBody";
+    const result = parseFrontMatter(input);
+    expect(result.frontMatter.description).toBe("Line one.\nLine two.");
+  });
+
+  it("handles multiline description followed by another field", () => {
+    const input = "---\nname: test\ndescription: >\n  Multi-line description\n  continues here.\ncategory: research\n---\nBody";
+    const result = parseFrontMatter(input);
+    expect(result.frontMatter.description).toBe("Multi-line description continues here.");
+    expect(result.frontMatter.category).toBe("research");
+  });
 });
 
 describe("inferNameFromBody", () => {

@@ -174,14 +174,23 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
           }
         }
 
-        const userMessage = formatBufferedContext(contextMessages, userName, message.text || "See attached files.");
+        const userMessage = formatBufferedContext(
+          contextMessages,
+          userName,
+          message.text || "See attached files.",
+          undefined,
+          user?.email ?? null,
+        );
 
         const onMessage = createWhatsAppMessageHandler(whatsapp, groupJid, message.rawMessage as WAMessage);
+
+        const integrationMcpServers = await buildMcpServers(user?.email ?? null);
 
         const result = await runAgent({
           userMessage,
           workspaceDir,
           userName,
+          userEmail: user?.email,
           logger,
           platform: "whatsapp",
           onMessage,
@@ -189,6 +198,7 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
           botName: settingsRow?.bot_name,
           attachments: attachments.length > 0 ? attachments : undefined,
           groupContext: { groupName, groupDescription },
+          integrationMcpServers,
           findIntegrationProvider,
         });
 

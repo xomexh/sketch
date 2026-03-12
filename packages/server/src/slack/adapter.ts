@@ -274,7 +274,7 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken: s
       if (existingSession) {
         const buffered = slackDeps.threadBuffer.drain(message.channelId, threadTs);
         logger.debug({ threadTs, bufferedCount: buffered.length }, "Draining thread buffer for subsequent mention");
-        userMessage = formatBufferedContext(buffered, user.name, userMessage);
+        userMessage = formatBufferedContext(buffered, user.name, userMessage, undefined, user.email);
       } else {
         const history = message.threadTs
           ? await slackBot.getThreadReplies(message.channelId, message.threadTs, config.SLACK_THREAD_HISTORY_LIMIT)
@@ -295,11 +295,13 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken: s
         const header = message.threadTs
           ? "[Thread context before you joined]"
           : "[Recent channel messages for context]";
-        userMessage = formatBufferedContext(bootstrapMessages, user.name, userMessage, header);
+        userMessage = formatBufferedContext(bootstrapMessages, user.name, userMessage, header, user.email);
       }
 
       const thinkingTs = await slackBot.postThreadReply(message.channelId, threadTs, "_Thinking..._");
       const onMessage = createSlackMessageHandler(slackBot, message.channelId, thinkingTs, threadTs);
+
+      const integrationMcpServers = await buildMcpServers(user.email);
 
       try {
         const result = await runAgent({
@@ -317,6 +319,7 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken: s
           channelContext: {
             channelName: channel.name,
           },
+          integrationMcpServers,
           findIntegrationProvider,
         });
 

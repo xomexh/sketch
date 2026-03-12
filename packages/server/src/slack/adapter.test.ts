@@ -324,6 +324,34 @@ describe("slack/adapter", () => {
       expect(deps.slack.threadBuffer.register).toHaveBeenCalledWith("C1", "1");
     });
 
+    it("passes MCP servers to agent for channel mentions", async () => {
+      const mcpServers = { canvas: { type: "http" as const, url: "https://mcp.test" } };
+      const deps = makeDeps({
+        buildMcpServers: vi.fn().mockResolvedValue(mcpServers),
+      });
+      createConfiguredSlackBot({ botToken: "xoxb-test", appToken: "xapp-test" }, deps);
+      const { mention } = getHandlers();
+
+      await mention({ text: "help", userId: "S1", channelId: "C1", ts: "1", type: "channel_mention" });
+      await flush();
+
+      expect(deps.buildMcpServers).toHaveBeenCalledWith("alice@test.com");
+      const agentCall = vi.mocked(deps.runAgent).mock.calls[0][0];
+      expect(agentCall.integrationMcpServers).toEqual(mcpServers);
+    });
+
+    it("includes user email in channel mention message", async () => {
+      const deps = makeDeps();
+      createConfiguredSlackBot({ botToken: "xoxb-test", appToken: "xapp-test" }, deps);
+      const { mention } = getHandlers();
+
+      await mention({ text: "help", userId: "S1", channelId: "C1", ts: "1", type: "channel_mention" });
+      await flush();
+
+      const agentCall = vi.mocked(deps.runAgent).mock.calls[0][0];
+      expect(agentCall.userMessage).toContain("[Alice | alice@test.com]:");
+    });
+
     it("posts thread reply with thinking indicator", async () => {
       const deps = makeDeps();
       createConfiguredSlackBot({ botToken: "xoxb-test", appToken: "xapp-test" }, deps);

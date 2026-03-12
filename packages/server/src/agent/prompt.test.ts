@@ -395,6 +395,29 @@ describe("formatBufferedContext", () => {
     expect(attachIdx).toBeLessThan(currentIdx);
   });
 
+  it("includes email in current user attribution when provided", () => {
+    const result = formatBufferedContext([], "Alice", "hello", undefined, "alice@test.com");
+    expect(result).toBe("[Alice | alice@test.com]: hello");
+  });
+
+  it("includes email in current user attribution with buffered messages", () => {
+    const messages = [{ userName: "Bob", text: "hey", ts: "1111.0001" }];
+    const result = formatBufferedContext(messages, "Alice", "hello", undefined, "alice@test.com");
+
+    expect(result).toContain("[Bob]: hey");
+    expect(result).toContain("[Alice | alice@test.com]: hello");
+  });
+
+  it("omits email from attribution when null", () => {
+    const result = formatBufferedContext([], "Alice", "hello", undefined, null);
+    expect(result).toBe("[Alice]: hello");
+  });
+
+  it("omits email from attribution when not provided", () => {
+    const result = formatBufferedContext([], "Alice", "hello");
+    expect(result).toBe("[Alice]: hello");
+  });
+
   it("preserves message order", () => {
     const messages = [
       { userName: "Alice", text: "first", ts: "1111.0001" },

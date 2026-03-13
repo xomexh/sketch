@@ -3,7 +3,7 @@
  *
  * Create: pnpm worktree:create <branch>
  *   - Creates ../sketch-<branch> worktree on a new branch tracking origin/main
- *   - Symlinks .env and .planning from main repo
+ *   - Symlinks .env from main repo, inits .planning submodule (skips if no access)
  *   - Installs dependencies
  *
  * Remove: pnpm worktree:remove <branch>
@@ -37,7 +37,11 @@ function create(branch: string) {
   symlinkSync(resolve(MAIN_REPO, ".env"), resolve(worktreeDir, ".env"));
 
   console.log("Initializing .planning submodule...");
-  run("git submodule update --init .planning", worktreeDir);
+  try {
+    run("git submodule update --init .planning", worktreeDir);
+  } catch {
+    console.log("Skipping .planning (private repo, no access). Worktree will work without it.");
+  }
 
   console.log("\nInstalling dependencies...");
   run("pnpm install", worktreeDir);
@@ -57,7 +61,11 @@ function remove(branch: string) {
   console.log(`Removing worktree at ${worktreeDir}...\n`);
 
   console.log("Cleaning up submodule...");
-  run("git submodule deinit --force .planning", worktreeDir);
+  try {
+    run("git submodule deinit --force .planning", worktreeDir);
+  } catch {
+    // Submodule was never initialized, nothing to clean up
+  }
 
   run(`git worktree remove --force ${worktreeDir}`);
   run(`git branch -d ${branch}`);

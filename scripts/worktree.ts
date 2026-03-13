@@ -8,6 +8,9 @@
  *
  * Remove: pnpm worktree:remove <branch>
  *   - Removes the worktree and deletes the local branch
+ *
+ * List: pnpm worktree:list
+ *   - Lists all active worktrees
  */
 
 import { execSync } from "node:child_process";
@@ -73,19 +76,22 @@ function remove(branch: string) {
   console.log("\nDone!");
 }
 
+function list() {
+  run("git worktree list");
+}
+
 const action = process.argv[2];
 const branch = process.argv[3];
 
-if (!branch) {
-  console.error("Usage: pnpm worktree:create <branch> | pnpm worktree:remove <branch>");
-  process.exit(1);
-}
-
-if (action === "create") {
-  create(branch);
-} else if (action === "remove") {
-  remove(branch);
+if (action === "list") {
+  list();
+} else if (action === "create" || action === "remove") {
+  if (!branch) {
+    console.error(`Usage: pnpm worktree:${action} <branch>`);
+    process.exit(1);
+  }
+  action === "create" ? create(branch) : remove(branch);
 } else {
-  console.error(`Unknown action: ${action}`);
+  console.error("Usage: pnpm worktree:create <branch> | pnpm worktree:remove <branch> | pnpm worktree:list");
   process.exit(1);
 }

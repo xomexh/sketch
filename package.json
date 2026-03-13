@@ -9,6 +9,7 @@
     "test": "pnpm -r test",
     "worktree:create": "tsx scripts/worktree.ts create",
     "worktree:remove": "tsx scripts/worktree.ts remove",
+    "worktree:list": "tsx scripts/worktree.ts list",
     "prepare": "husky"
   },
   "devDependencies": {

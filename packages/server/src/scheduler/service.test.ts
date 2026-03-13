@@ -20,6 +20,7 @@ import { TaskScheduler } from "./service";
 
 interface MockCronInstance {
   stopped: boolean;
+  pattern: string | Date;
   nextRun: () => Date | null;
   stop: () => void;
 }
@@ -30,9 +31,11 @@ let cronCallCount = 0;
 vi.mock("croner", () => {
   class MockCron {
     stopped = false;
+    pattern: string | Date;
     _nextRun = new Date(Date.now() + 60_000);
 
-    constructor(_pattern: string, _opts: unknown, _callback?: () => void) {
+    constructor(pattern: string | Date, _opts: unknown, _callback?: () => void) {
+      this.pattern = pattern;
       cronCallCount++;
       mockCronInstances.push(this);
     }
@@ -733,5 +736,158 @@ describe("executeTask() run timestamps", () => {
     expect(typeof updated?.last_run_at).toBe("string");
 
     vi.restoreAllMocks();
+  });
+});
+
+describe("scheduleTask() with once type", () => {
+  it("creates a croner instance using a Date pattern", async () => {
+    const deps = buildDeps(db);
+    const scheduler = new TaskScheduler(deps as never);
+
+    const futureDate = new Date(Date.now() + 3_600_000).toISOString();
+    const row = await repo.add({
+      ...baseTaskFields,
+      schedule_type: "once",
+      schedule_value: futureDate,
+    });
+
+    await scheduler.scheduleTask(row as ScheduledTaskRow);
+
+    expect(cronCallCount).toBe(1);
+    expect(mockCronInstances[0].pattern).toBeInstanceOf(Date);
+    expect((mockCronInstances[0].pattern as Date).toISOString()).toBe(futureDate);
+  });
+
+  it("marks task as completed immediately when the datetime has already passed", async () => {
+    const deps = buildDeps(db);
+    const scheduler = new TaskScheduler(deps as never);
+
+    const pastDate = new Date(Date.now() - 3_600_000).toISOString();
+    const row = await repo.add({
+      ...baseTaskFields,
+      schedule_type: "once",
+      schedule_value: pastDate,
+    });
+
+    await scheduler.scheduleTask(row as ScheduledTaskRow);
+
+    expect(cronCallCount).toBe(0);
+
+    const updated = await repo.getById(row.id);
+    expect(updated?.status).toBe("completed");
+    expect(updated?.next_run_at).toBeNull();
+  });
+});
+
+describe("executeTask() with once type", () => {
+  beforeEach(async () => {
+    const workspaceMod = await import("../agent/workspace");
+    vi.spyOn(workspaceMod, "ensureWorkspace").mockResolvedValue("/tmp/ws/user");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sets status to completed after execution", async () => {
+    const deps = buildDeps(db);
+    const scheduler = new TaskScheduler(deps as never);
+
+    const futureDate = new Date(Date.now() + 3_600_000).toISOString();
+    const row = await repo.add({
+      ...baseTaskFields,
+      schedule_type: "once",
+      schedule_value: futureDate,
+    });
+
+    await scheduler.scheduleTask(row as ScheduledTaskRow);
+    await scheduler.executeTask(row as ScheduledTaskRow);
+
+    await new Promise<void>((r) => setTimeout(r, 10));
+
+    const updated = await repo.getById(row.id);
+    expect(updated?.status).toBe("completed");
+  });
+
+  it("unschedules the cron instance after execution", async () => {
+    const deps = buildDeps(db);
+    const scheduler = new TaskScheduler(deps as never);
+
+    const futureDate = new Date(Date.now() + 3_600_000).toISOString();
+    const row = await repo.add({
+      ...baseTaskFields,
+      schedule_type: "once",
+      schedule_value: futureDate,
+    });
+
+    await scheduler.scheduleTask(row as ScheduledTaskRow);
+    expect(mockCronInstances).toHaveLength(1);
+
+    await scheduler.executeTask(row as ScheduledTaskRow);
+
+    await new Promise<void>((r) => setTimeout(r, 10));
+
+    expect(mockCronInstances[0].stopped).toBe(true);
+  });
+
+  it("sets next_run_at to null after execution", async () => {
+    const deps = buildDeps(db);
+    const scheduler = new TaskScheduler(deps as never);
+
+    const futureDate = new Date(Date.now() + 3_600_000).toISOString();
+    const row = await repo.add({
+      ...baseTaskFields,
+      schedule_type: "once",
+      schedule_value: futureDate,
+    });
+
+    await scheduler.scheduleTask(row as ScheduledTaskRow);
+    await scheduler.executeTask(row as ScheduledTaskRow);
+
+    await new Promise<void>((r) => setTimeout(r, 10));
+
+    const updated = await repo.getById(row.id);
+    expect(updated?.next_run_at).toBeNull();
+  });
+});
+
+describe("start() with completed tasks", () => {
+  it("skips completed tasks and only loads active ones", async () => {
+    await repo.add({ ...baseTaskFields, prompt: "Active task", status: "active" });
+    const completedRow = await repo.add({ ...baseTaskFields, prompt: "Completed once task", status: "active" });
+    await repo.updateStatus(completedRow.id, "completed");
+
+    const deps = buildDeps(db);
+    const scheduler = new TaskScheduler(deps as never);
+    await scheduler.start();
+
+    expect(cronCallCount).toBe(1);
+  });
+});
+
+describe("addTask() with once schedule type", () => {
+  it("persists and schedules a once task correctly", async () => {
+    const deps = buildDeps(db);
+    const scheduler = new TaskScheduler(deps as never);
+
+    const futureDate = new Date(Date.now() + 7_200_000).toISOString();
+    const task = await scheduler.addTask({
+      platform: "slack",
+      contextType: "dm",
+      deliveryTarget: "U_USER1",
+      prompt: "One-time reminder",
+      scheduleType: "once",
+      scheduleValue: futureDate,
+      createdBy: "U_USER1",
+    });
+
+    expect(task.scheduleType).toBe("once");
+    expect(task.scheduleValue).toBe(futureDate);
+    expect(task.status).toBe("active");
+    expect(cronCallCount).toBe(1);
+    expect(mockCronInstances[0].pattern).toBeInstanceOf(Date);
+
+    const dbRow = await repo.getById(task.id);
+    expect(dbRow?.schedule_type).toBe("once");
   });
 });

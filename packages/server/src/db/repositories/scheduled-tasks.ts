@@ -87,7 +87,7 @@ export function createScheduledTaskRepository(db: Kysely<DB>) {
         .execute();
     },
 
-    async updateStatus(id: string, status: "active" | "paused"): Promise<void> {
+    async updateStatus(id: string, status: "active" | "paused" | "completed"): Promise<void> {
       await db.updateTable("scheduled_tasks").set({ status }).where("id", "=", id).execute();
     },
 

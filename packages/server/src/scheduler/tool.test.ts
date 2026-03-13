@@ -343,3 +343,41 @@ describe("handleManageScheduledTasks — resume", () => {
     expect(result.content[0].text).toContain("resumed");
   });
 });
+
+describe("handleManageScheduledTasks — add with once schedule type", () => {
+  it("succeeds with a valid future ISO datetime", async () => {
+    const futureDate = new Date(Date.now() + 3_600_000).toISOString();
+    const task = makeTask({ scheduleType: "once", scheduleValue: futureDate });
+    const scheduler = makeMockScheduler({ addTask: vi.fn().mockResolvedValue(task) });
+    const result = await handleManageScheduledTasks(
+      { action: "add", prompt: "Do it once", schedule_type: "once", schedule_value: futureDate },
+      { scheduler, taskContext: dmContext },
+    );
+    expect(result.content[0].text).not.toContain("Error:");
+    expect(result.content[0].text).toContain("Task created:");
+    expect(scheduler.addTask).toHaveBeenCalledWith(expect.objectContaining({ scheduleType: "once" }));
+  });
+
+  it("returns validation error for a past datetime", async () => {
+    const pastDate = new Date(Date.now() - 3_600_000).toISOString();
+    const scheduler = makeMockScheduler();
+    const result = await handleManageScheduledTasks(
+      { action: "add", prompt: "Too late", schedule_type: "once", schedule_value: pastDate },
+      { scheduler, taskContext: dmContext },
+    );
+    expect(result.content[0].text).toContain("Error:");
+    expect(result.content[0].text).toContain("past");
+    expect(scheduler.addTask).not.toHaveBeenCalled();
+  });
+
+  it("returns validation error for an invalid (non-ISO) string", async () => {
+    const scheduler = makeMockScheduler();
+    const result = await handleManageScheduledTasks(
+      { action: "add", prompt: "Bad date", schedule_type: "once", schedule_value: "not-a-date" },
+      { scheduler, taskContext: dmContext },
+    );
+    expect(result.content[0].text).toContain("Error:");
+    expect(result.content[0].text).toContain("ISO 8601");
+    expect(scheduler.addTask).not.toHaveBeenCalled();
+  });
+});

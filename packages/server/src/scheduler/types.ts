@@ -14,13 +14,13 @@ export interface ScheduledTask {
   deliveryTarget: string;
   threadTs: string | null;
   prompt: string;
-  scheduleType: "cron" | "interval";
+  scheduleType: "cron" | "interval" | "once";
   scheduleValue: string;
   timezone: string;
   sessionMode: "fresh" | "persistent" | "chat";
   nextRunAt: string | null;
   lastRunAt: string | null;
-  status: "active" | "paused";
+  status: "active" | "paused" | "completed";
   createdBy: string | null;
   createdAt: string;
 }

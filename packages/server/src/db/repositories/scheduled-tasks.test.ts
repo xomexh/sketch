@@ -149,6 +149,17 @@ describe("listActive()", () => {
     const results = await repo.listActive();
     expect(results).toEqual([]);
   });
+
+  it("excludes completed tasks", async () => {
+    await repo.add({ ...baseTask, status: "active", prompt: "Still running" });
+    const completed = await repo.add({ ...baseTask, status: "active", prompt: "One-shot" });
+    await repo.updateStatus(completed.id, "completed");
+
+    const results = await repo.listActive();
+    expect(results).toHaveLength(1);
+    expect(results[0].prompt).toBe("Still running");
+    expect(results.find((r) => r.id === completed.id)).toBeUndefined();
+  });
 });
 
 describe("update()", () => {
@@ -219,6 +230,14 @@ describe("updateStatus()", () => {
 
     const fetched = await repo.getById(created.id);
     expect(fetched?.status).toBe("active");
+  });
+
+  it("sets status to completed", async () => {
+    const created = await repo.add({ ...baseTask, status: "active" });
+    await repo.updateStatus(created.id, "completed");
+
+    const fetched = await repo.getById(created.id);
+    expect(fetched?.status).toBe("completed");
   });
 });
 

@@ -77,6 +77,22 @@ export class TaskScheduler {
       this.cronInstances.delete(task.id);
     }
 
+    if (task.schedule_type === "once") {
+      const runAt = new Date(task.schedule_value);
+      if (runAt.getTime() <= Date.now()) {
+        await this.repo.updateStatus(task.id, "completed");
+        await this.repo.update(task.id, { next_run_at: null });
+        this.deps.logger.warn({ taskId: task.id }, "TaskScheduler: once task datetime has passed, marking completed");
+        return;
+      }
+      const cron = new Cron(runAt, { timezone: task.timezone }, () => this.executeTask(task));
+      this.cronInstances.set(task.id, cron);
+      const nextRun = cron.nextRun()?.toISOString() ?? null;
+      await this.repo.update(task.id, { next_run_at: nextRun });
+      this.deps.logger.debug({ taskId: task.id, nextRun }, "TaskScheduler: scheduled once task");
+      return;
+    }
+
     let cronExpr: string;
     if (task.schedule_type === "interval") {
       const seconds = Number.parseInt(task.schedule_value, 10);
@@ -217,6 +233,13 @@ export class TaskScheduler {
     const cron = this.cronInstances.get(task.id);
     const nextRun = cron?.nextRun()?.toISOString() ?? null;
     await this.repo.updateRunTimestamps(task.id, now, nextRun);
+
+    if (task.schedule_type === "once") {
+      await this.repo.updateStatus(task.id, "completed");
+      await this.repo.update(task.id, { next_run_at: null });
+      this.unscheduleTask(task.id);
+      this.deps.logger.debug({ taskId: task.id }, "TaskScheduler: once task completed, unscheduled");
+    }
   }
 
   async addTask(params: {
@@ -225,7 +248,7 @@ export class TaskScheduler {
     deliveryTarget: string;
     threadTs?: string | null;
     prompt: string;
-    scheduleType: "cron" | "interval";
+    scheduleType: "cron" | "interval" | "once";
     scheduleValue: string;
     timezone?: string;
     sessionMode?: "fresh" | "persistent" | "chat";
@@ -257,7 +280,7 @@ export class TaskScheduler {
     id: string,
     params: {
       prompt?: string;
-      scheduleType?: "cron" | "interval";
+      scheduleType?: "cron" | "interval" | "once";
       scheduleValue?: string;
       timezone?: string;
       sessionMode?: "fresh" | "persistent" | "chat";
@@ -321,13 +344,13 @@ export class TaskScheduler {
       deliveryTarget: row.delivery_target,
       threadTs: row.thread_ts,
       prompt: row.prompt,
-      scheduleType: row.schedule_type as "cron" | "interval",
+      scheduleType: row.schedule_type as "cron" | "interval" | "once",
       scheduleValue: row.schedule_value,
       timezone: row.timezone,
       sessionMode: row.session_mode as "fresh" | "persistent" | "chat",
       nextRunAt: row.next_run_at,
       lastRunAt: row.last_run_at,
-      status: row.status as "active" | "paused",
+      status: row.status as "active" | "paused" | "completed",
       createdBy: row.created_by,
       createdAt: row.created_at,
     };

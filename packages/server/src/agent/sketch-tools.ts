@@ -54,15 +54,16 @@ const manageScheduledTasksSchema = {
     .optional()
     .describe("The instruction the agent executes each run. Be specific and self-contained."),
   schedule_type: z
-    .enum(["cron", "interval"])
+    .enum(["cron", "interval", "once"])
     .optional()
-    .describe("'cron' for cron expressions, 'interval' for fixed second intervals."),
+    .describe("'cron' for cron expressions, 'interval' for fixed second intervals, 'once' for a one-time run."),
   schedule_value: z
     .string()
     .optional()
     .describe(
       `For cron: standard 5-field expression (minute hour day-of-month month day-of-week). Always use 5-field, never 6-field. Examples: '*/2 * * * *' (every 2 min), '0 9 * * 1-5' (weekdays 9am), '0 */6 * * *' (every 6 hours).
-For interval: number of seconds as a plain string, minimum 60. Examples: '120' (every 2 min), '3600' (every hour). Do not use duration strings like '2m' or '1h'.`,
+For interval: number of seconds as a plain string, minimum 60. Examples: '120' (every 2 min), '3600' (every hour). Do not use duration strings like '2m' or '1h'.
+For once: ISO 8601 datetime string (e.g. '2026-03-14T15:00:00'). The task runs once at this time then auto-completes.`,
     ),
   timezone: z.string().optional().describe("IANA timezone (e.g. 'America/New_York', 'Asia/Kolkata'). Defaults to UTC."),
   session_mode: z
@@ -80,7 +81,7 @@ For interval: number of seconds as a plain string, minimum 60. Examples: '120' (
 type ManageScheduledTasksParams = {
   action: "list" | "add" | "update" | "remove" | "pause" | "resume";
   prompt?: string;
-  schedule_type?: "cron" | "interval";
+  schedule_type?: "cron" | "interval" | "once";
   schedule_value?: string;
   timezone?: string;
   session_mode?: "fresh" | "persistent" | "chat";
@@ -116,6 +117,18 @@ export async function handleManageScheduledTasks(
           return text(
             "Error: interval schedule_value must be a number of seconds (at least 60). Example: '120' for every 2 minutes.",
           );
+        }
+      }
+
+      if (params.schedule_type === "once") {
+        const runAt = new Date(params.schedule_value);
+        if (Number.isNaN(runAt.getTime())) {
+          return text(
+            "Error: once schedule_value must be a valid ISO 8601 datetime string (e.g. '2026-03-14T15:00:00').",
+          );
+        }
+        if (runAt.getTime() <= Date.now()) {
+          return text("Error: once schedule_value must be a future datetime. The provided time is in the past.");
         }
       }
 

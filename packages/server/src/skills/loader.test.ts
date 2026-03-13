@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -176,7 +176,7 @@ describe("loadProjectClaudeSkills", () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = (await mkdir(join(tmpdir(), `sketch-skills-test-${Date.now()}`), { recursive: true })) as string;
+    tempDir = await mkdtemp(join(tmpdir(), "sketch-skills-test-"));
   });
 
   afterEach(async () => {

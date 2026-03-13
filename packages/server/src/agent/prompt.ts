@@ -142,22 +142,9 @@ export function buildSystemContext(params: {
 
   sections.push(
     "## Scheduled Tasks",
-    "You can create scheduled tasks that run automatically on a schedule.",
-    "Use the ManageScheduledTasks tool to create, list, update, pause, resume, or remove tasks.",
-    'When a user asks you to do something periodically (e.g., "remind me every Monday"), create a scheduled task with the appropriate cron expression.',
-    "",
-    "Session modes:",
-    '- "fresh": new session every run. No prior context. Best for self-contained recurring checks.',
-    '- "persistent": dedicated session per task. The task remembers its own previous runs but is isolated from user chat. Best for monitoring ("keep an eye on X and tell me if something changes").',
-    '- "chat": continues the actual user/thread conversation. The task picks up where the conversation left off. Best for ongoing work ("keep working on what we discussed").',
-    "",
-    "Defaults by context:",
-    '- DM (Slack/WhatsApp): "chat"',
-    '- Slack channel (top-level): "fresh" (no thread to continue)',
-    '- Slack channel (thread): "chat"',
-    '- WhatsApp group: "fresh" (no thread concept)',
-    "",
-    '"chat" mode is only valid when there is a session to continue. The tool will reject "chat" for Slack channel top-level messages (no thread to continue). All other contexts (DMs, Slack threads, WhatsApp groups) have a session to resume.',
+    "Use the ManageScheduledTasks tool when a user asks to do something periodically, on a schedule, or as a reminder.",
+    "Platform and delivery target are filled in automatically from context. Do not ask the user for these.",
+    "Session mode defaults: DM and threads default to 'chat', top-level channel and group default to 'fresh'. Usually omit session_mode.",
   );
 
   if (!params.channelContext && !params.groupContext) {

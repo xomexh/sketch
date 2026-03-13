@@ -40,27 +40,41 @@ export interface SketchMcpDeps {
 }
 
 const manageScheduledTasksSchema = {
-  action: z.enum(["list", "add", "update", "remove", "pause", "resume"]),
-  prompt: z.string().optional().describe("What the agent should do on each run"),
+  action: z.enum(["list", "add", "update", "remove", "pause", "resume"]).describe(
+    `Action to perform.
+- 'add': create a new task (requires prompt, schedule_type, schedule_value)
+- 'list': list tasks in this context (no other params needed)
+- 'update': modify a task (requires task_id, plus fields to change)
+- 'remove': delete a task (requires task_id)
+- 'pause': pause a task (requires task_id)
+- 'resume': resume a paused task (requires task_id)`,
+  ),
+  prompt: z
+    .string()
+    .optional()
+    .describe("The instruction the agent executes each run. Be specific and self-contained."),
   schedule_type: z
     .enum(["cron", "interval"])
     .optional()
-    .describe("'cron' for cron expressions, 'interval' for fixed intervals in seconds"),
+    .describe("'cron' for cron expressions, 'interval' for fixed second intervals."),
   schedule_value: z
     .string()
     .optional()
-    .describe("Cron expression (e.g. '0 9 * * 1-5') or interval in seconds (e.g. '3600')"),
-  timezone: z
-    .string()
-    .optional()
-    .describe("IANA timezone for cron expressions (e.g. 'America/New_York'). Defaults to UTC."),
+    .describe(
+      `For cron: standard 5-field expression (minute hour day-of-month month day-of-week). Always use 5-field, never 6-field. Examples: '*/2 * * * *' (every 2 min), '0 9 * * 1-5' (weekdays 9am), '0 */6 * * *' (every 6 hours).
+For interval: number of seconds as a plain string, minimum 60. Examples: '120' (every 2 min), '3600' (every hour). Do not use duration strings like '2m' or '1h'.`,
+    ),
+  timezone: z.string().optional().describe("IANA timezone (e.g. 'America/New_York', 'Asia/Kolkata'). Defaults to UTC."),
   session_mode: z
     .enum(["fresh", "persistent", "chat"])
     .optional()
     .describe(
-      "Session mode: 'fresh' (no context), 'persistent' (task remembers its runs), 'chat' (continues conversation)",
+      `Controls memory across runs. Usually omit this (smart defaults apply).
+- 'fresh': no memory, each run starts clean
+- 'persistent': task remembers its own previous runs, isolated from user chat
+- 'chat': continues the user's conversation session`,
     ),
-  task_id: z.string().optional().describe("ID of the task to update/remove/pause/resume"),
+  task_id: z.string().optional().describe("ID of the task. Required for update/remove/pause/resume."),
 };
 
 type ManageScheduledTasksParams = {
@@ -94,6 +108,15 @@ export async function handleManageScheduledTasks(
     case "add": {
       if (!params.prompt || !params.schedule_type || !params.schedule_value) {
         return text("Error: prompt, schedule_type, and schedule_value are required for add action.");
+      }
+
+      if (params.schedule_type === "interval") {
+        const seconds = Number(params.schedule_value);
+        if (!Number.isFinite(seconds) || seconds < 60) {
+          return text(
+            "Error: interval schedule_value must be a number of seconds (at least 60). Example: '120' for every 2 minutes.",
+          );
+        }
       }
 
       let sessionMode = params.session_mode;
@@ -247,7 +270,7 @@ export function createSketchMcpServer(deps: SketchMcpDeps) {
 
     tool(
       "ManageScheduledTasks",
-      "Create, list, update, pause, resume, or remove scheduled tasks that run automatically on a schedule.",
+      "Manage scheduled tasks that run automatically. Platform, delivery target, and creator are filled in automatically from context. Do not ask the user for these.",
       manageScheduledTasksSchema,
       async (params) => {
         if (!deps.scheduler || !deps.taskContext) {

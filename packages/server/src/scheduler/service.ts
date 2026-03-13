@@ -77,13 +77,16 @@ export class TaskScheduler {
       this.cronInstances.delete(task.id);
     }
 
-    let cron: Cron;
+    let cronExpr: string;
     if (task.schedule_type === "interval") {
       const seconds = Number.parseInt(task.schedule_value, 10);
-      cron = new Cron("* * * * * *", { interval: seconds }, () => this.executeTask(task));
+      const minutes = Math.max(1, Math.ceil(seconds / 60));
+      cronExpr = `*/${minutes} * * * *`;
     } else {
-      cron = new Cron(task.schedule_value, { timezone: task.timezone }, () => this.executeTask(task));
+      cronExpr = task.schedule_value;
     }
+
+    const cron = new Cron(cronExpr, { timezone: task.timezone, interval: 60 }, () => this.executeTask(task));
 
     this.cronInstances.set(task.id, cron);
 

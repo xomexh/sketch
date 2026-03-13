@@ -20,6 +20,31 @@ export interface User {
   created_at: string;
 }
 
+export interface ScheduledTaskListItem {
+  id: string;
+  platform: "slack" | "whatsapp";
+  contextType: "dm" | "channel" | "group";
+  deliveryTarget: string;
+  threadTs: string | null;
+  prompt: string;
+  scheduleType: "cron" | "interval" | "once";
+  scheduleValue: string;
+  timezone: string;
+  sessionMode: "fresh" | "persistent" | "chat";
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  status: "active" | "paused" | "completed";
+  createdBy: string | null;
+  createdAt: string;
+  targetLabel: string;
+  targetKindLabel: "Slack DM" | "Slack channel" | "WhatsApp DM" | "WhatsApp group";
+  creatorName: string | null;
+  scheduleLabel: string;
+  canPause: boolean;
+  canResume: boolean;
+  canDelete: boolean;
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { ...((options?.headers as Record<string, string>) ?? {}) };
   if (options?.body) {
@@ -212,6 +237,29 @@ export const api = {
     },
     remove(id: string) {
       return request<{ success: boolean }>(`/api/users/${id}`, {
+        method: "DELETE",
+      });
+    },
+  },
+  scheduledTasks: {
+    async list() {
+      const res = await request<{ tasks: ScheduledTaskListItem[] }>("/api/scheduled-tasks");
+      return res.tasks;
+    },
+    async pause(id: string) {
+      const res = await request<{ task: ScheduledTaskListItem }>(`/api/scheduled-tasks/${id}/pause`, {
+        method: "POST",
+      });
+      return res.task;
+    },
+    async resume(id: string) {
+      const res = await request<{ task: ScheduledTaskListItem }>(`/api/scheduled-tasks/${id}/resume`, {
+        method: "POST",
+      });
+      return res.task;
+    },
+    remove(id: string) {
+      return request<{ success: true }>(`/api/scheduled-tasks/${id}`, {
         method: "DELETE",
       });
     },

@@ -30,6 +30,7 @@ import { getInitials } from "@/lib/utils";
  */
 import {
   BrainIcon,
+  CalendarDotsIcon,
   CaretUpDownIcon,
   ChatCircleIcon,
   DesktopIcon,
@@ -52,6 +53,7 @@ interface NavItem {
 const primaryNav: NavItem[] = [
   { label: "Channels", icon: <ChatCircleIcon size={18} />, href: "/channels" },
   { label: "Team", icon: <UsersThreeIcon size={18} />, href: "/team" },
+  { label: "Scheduled Tasks", icon: <CalendarDotsIcon size={18} />, href: "/scheduled-tasks" },
   { label: "Skills", icon: <BrainIcon size={18} />, href: "/skills" },
   { label: "Connections", icon: <LinkSimpleIcon size={18} />, href: "/connections" },
 ];

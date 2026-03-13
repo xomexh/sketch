@@ -36,9 +36,8 @@ function create(branch: string) {
   console.log("\nSymlinking .env...");
   symlinkSync(resolve(MAIN_REPO, ".env"), resolve(worktreeDir, ".env"));
 
-  console.log("Symlinking .planning...");
-  rmSync(resolve(worktreeDir, ".planning"), { recursive: true, force: true });
-  symlinkSync(resolve(MAIN_REPO, ".planning"), resolve(worktreeDir, ".planning"));
+  console.log("Initializing .planning submodule...");
+  run("git submodule update --init .planning", worktreeDir);
 
   console.log("\nInstalling dependencies...");
   run("pnpm install", worktreeDir);
@@ -57,11 +56,10 @@ function remove(branch: string) {
 
   console.log(`Removing worktree at ${worktreeDir}...\n`);
 
-  console.log("Cleaning up submodule references...");
-  rmSync(resolve(worktreeDir, ".planning"), { force: true });
+  console.log("Cleaning up submodule...");
   run("git submodule deinit --force .planning", worktreeDir);
 
-  run(`git worktree remove ${worktreeDir}`);
+  run(`git worktree remove --force ${worktreeDir}`);
   run(`git branch -d ${branch}`);
 
   console.log("\nDone!");

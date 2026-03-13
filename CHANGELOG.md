@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## [0.11.0] — 2026-03-13
+
+- Scheduled tasks control plane: dashboard page with role-scoped visibility and pause/resume/delete actions
+- Scheduled-task management API with friendly target labels resolved from users, channels, and WhatsApp groups
+- WhatsApp group metadata persistence (`whatsapp_groups`) for durable group-name display in scheduled tasks
+- Worktree tooling: create/remove/list commands plus submodule/bootstrap fixes for isolated feature development
+- 863 tests (784 server + 79 frontend)
+
 ## [0.10.0] — 2026-03-13
 
 - Scheduled tasks: DB-backed recurring agent runs via ManageScheduledTasks MCP tool (cron, interval, once)

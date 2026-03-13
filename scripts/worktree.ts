@@ -12,9 +12,10 @@
 
 import { execSync } from "node:child_process";
 import { existsSync, rmSync, symlinkSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const MAIN_REPO = resolve(import.meta.dirname, "..");
+const MAIN_REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 function run(cmd: string, cwd?: string) {
   console.log(`$ ${cmd}`);
@@ -55,6 +56,11 @@ function remove(branch: string) {
   }
 
   console.log(`Removing worktree at ${worktreeDir}...\n`);
+
+  console.log("Cleaning up submodule references...");
+  rmSync(resolve(worktreeDir, ".planning"), { force: true });
+  run("git submodule deinit --force .planning", worktreeDir);
+
   run(`git worktree remove ${worktreeDir}`);
   run(`git branch -d ${branch}`);
 

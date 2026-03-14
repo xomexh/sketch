@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here.
 
+## [0.12.1] — 2026-03-14
+
+- Fix sender attribution in shared contexts: current user's message now prefixed with `[Current sender:]` to prevent the agent from confusing users in channel/group bootstrap history
+
 ## [0.12.0] — 2026-03-14
 
 - Workspace file browser: split-pane file manager with Monaco editor, lazy-loaded folder tree, drag-drop upload, inline create/rename, Ctrl+S save

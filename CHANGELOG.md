@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## [0.12.0] — 2026-03-14
+
+- Workspace file browser: split-pane file manager with Monaco editor, lazy-loaded folder tree, drag-drop upload, inline create/rename, Ctrl+S save
+- Personal/Organization scope switcher to browse user workspace or org workspace (`~/.claude/`)
+- Backend workspace API: file CRUD, upload, download, search, folder management with path traversal protection
+- Modular workspace components: file tree with React context (eliminates 19-prop drilling), extracted editor pane, file icons, and utilities
+- 912 tests (810 server + 102 frontend)
+
 ## [0.11.0] — 2026-03-13
 
 - Scheduled tasks control plane: dashboard page with role-scoped visibility and pause/resume/delete actions

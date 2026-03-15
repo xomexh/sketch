@@ -9,8 +9,9 @@
  */
 import { resolve } from "node:path";
 import { type SDKUserMessage, query } from "@anthropic-ai/claude-agent-sdk";
-import type { Kysely } from "kysely";
-import type { DB } from "../db/schema";
+import type { Kysely, Selectable } from "kysely";
+import type { createOutreachRepository } from "../db/repositories/outreach";
+import type { DB, UsersTable } from "../db/schema";
 import type { Attachment } from "../files";
 import { buildMultimodalContent, formatAttachmentsForPrompt, isImageAttachment } from "../files";
 import type { Logger } from "../logger";
@@ -66,6 +67,17 @@ export interface RunAgentParams {
   sessionMode?: "fresh" | "persistent" | "chat";
   taskContext?: TaskContext;
   scheduler?: TaskScheduler;
+  outreachRepo?: ReturnType<typeof createOutreachRepository>;
+  userRepo?: {
+    list: () => Promise<Selectable<UsersTable>[]>;
+    findById: (id: string) => Promise<Selectable<UsersTable> | undefined>;
+  };
+  currentUserId?: string;
+  sendDm?: (params: { userId: string; platform: string; message: string }) => Promise<{
+    channelId: string;
+    messageRef: string;
+  }>;
+  enqueueMessage?: (params: { requesterUserId: string; message: string }) => Promise<void>;
 }
 
 /**
@@ -154,6 +166,11 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
     findIntegrationProvider: params.findIntegrationProvider,
     taskContext: params.taskContext,
     scheduler: params.scheduler,
+    outreachRepo: params.outreachRepo,
+    userRepo: params.userRepo,
+    currentUserId: params.currentUserId,
+    sendDm: params.sendDm,
+    enqueueMessage: params.enqueueMessage,
   });
 
   const run = query({

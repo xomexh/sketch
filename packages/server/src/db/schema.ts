@@ -7,6 +7,10 @@ export interface UsersTable {
   email_verified_at: string | null;
   slack_user_id: string | null;
   whatsapp_number: string | null;
+  description: string | null;
+  type: Generated<string>;
+  role: string | null;
+  reports_to: string | null;
   created_at: Generated<string>;
 }
 
@@ -117,6 +121,24 @@ export interface ScheduledTasksTable {
   created_at: Generated<string>;
 }
 
+export interface OutreachMessagesTable {
+  id: string;
+  requester_user_id: string;
+  recipient_user_id: string;
+  message: string;
+  task_context: string | null;
+  response: string | null;
+  status: Generated<string>;
+  platform: string;
+  channel_id: string | null;
+  message_ref: string | null;
+  requester_platform: string;
+  requester_channel: string;
+  requester_thread_ts: string | null;
+  created_at: Generated<string>;
+  responded_at: string | null;
+}
+
 export interface DB {
   users: UsersTable;
   channels: ChannelsTable;
@@ -129,4 +151,5 @@ export interface DB {
   mcp_servers: McpServersTable;
   chat_sessions: ChatSessionsTable;
   scheduled_tasks: ScheduledTasksTable;
+  outreach_messages: OutreachMessagesTable;
 }

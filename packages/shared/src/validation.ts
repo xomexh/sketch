@@ -14,6 +14,11 @@ export const filePathSchema = z
   .refine((path) => !path.startsWith("/"), "Absolute paths are not allowed")
   .refine((path) => !path.includes(".."), "Path cannot contain parent directory references");
 
+export const descriptionSchema = z.string().max(500, "Description must be under 500 characters");
+
+export const userTypeSchema = z.enum(["human", "agent"]);
+export const roleSchema = z.string().max(100, "Role must be under 100 characters");
+
 export const fileNameSchema = z
   .string()
   .min(1, "Name cannot be empty")

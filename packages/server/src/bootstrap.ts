@@ -12,6 +12,7 @@ import { createDatabase } from "./db/index";
 import { runMigrations } from "./db/migrate";
 import { createChannelRepository } from "./db/repositories/channels";
 import { createMcpServerRepository } from "./db/repositories/mcp-servers";
+import { createOutreachRepository } from "./db/repositories/outreach";
 import { createSettingsRepository } from "./db/repositories/settings";
 import { createUserRepository } from "./db/repositories/users";
 import { createWhatsAppGroupRepository } from "./db/repositories/whatsapp-groups";
@@ -64,6 +65,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
   const settingsRepo = createSettingsRepository(db);
   const mcpServersRepo = createMcpServerRepository(db);
   const whatsappGroupsRepo = createWhatsAppGroupRepository(db);
+  const outreachRepo = createOutreachRepository(db);
 
   // 4. LLM env from DB
   async function applyLlmEnvFromDb() {
@@ -134,6 +136,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
       return { type: row.type, credentials: row.credentials };
     },
     scheduler,
+    outreachRepo,
   };
 
   const startSlackBotIfConfigured = createSlackStartupManager({
@@ -172,6 +175,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
       return { type: row.type, credentials: row.credentials };
     },
     scheduler,
+    outreachRepo,
   });
 
   // 9. HTTP server

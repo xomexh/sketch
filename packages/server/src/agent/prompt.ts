@@ -1,6 +1,24 @@
 import type { Attachment } from "../files";
 import { formatAttachmentsForPrompt } from "../files";
 
+/**
+ * Returns a human-readable relative time string for a given ISO timestamp.
+ * Rounds to the largest whole unit: minutes, hours, or days.
+ * Values under one minute return "just now".
+ */
+export function formatTimeAgo(isoString: string): string {
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffDays >= 1) return `${diffDays}d ago`;
+  if (diffHours >= 1) return `${diffHours}h ago`;
+  if (diffMins >= 1) return `${diffMins}m ago`;
+  return "just now";
+}
+
 export interface BufferedMessage {
   userName: string;
   text: string;
@@ -9,12 +27,40 @@ export interface BufferedMessage {
 }
 
 /**
+ * Outreach record for context injection. Used for both pending inbound outreach
+ * (questions from other users' agents) and outbound responses (answers to
+ * questions this user's agent sent).
+ */
+export interface OutreachRecord {
+  id: string;
+  requesterName?: string;
+  recipientName?: string;
+  message: string;
+  taskContext?: string | null;
+  response?: string | null;
+  status: string;
+  createdAt: string;
+  respondedAt?: string | null;
+}
+
+export interface SketchContextParams {
+  messages: BufferedMessage[];
+  currentUserName: string;
+  currentMessage: string;
+  currentUserEmail?: string | null;
+  header?: string;
+  isSharedContext?: boolean;
+  pendingOutreach?: OutreachRecord[];
+  outreachResponses?: OutreachRecord[];
+}
+
+/**
  * Build the system context appended to the Claude Code preset.
  * Contains platform formatting rules, user metadata, and optional channel/bot context.
  * No post-processing — the agent produces platform-native formatting.
  *
  * For shared contexts (channels/groups), sender identity is NOT included here.
- * It goes in the user message via formatBufferedContext so it persists across
+ * It goes in the user message via buildSketchContext so it persists across
  * SDK session resumes (system prompt content does not survive resume).
  */
 export function buildSystemContext(params: {
@@ -147,43 +193,100 @@ export function buildSystemContext(params: {
     "Session mode defaults: DM and threads default to 'chat', top-level channel and group default to 'fresh'. Usually omit session_mode.",
   );
 
+  sections.push(
+    "## Team Outreach",
+    "You can discover team members and send them messages to gather information.",
+    "Use GetTeamDirectory to find relevant people, then SendMessageToUser to reach out.",
+    "When you send outreach, set up a timeout using ManageScheduledTasks so you can follow up if they don't respond.",
+  );
+
   if (!params.channelContext && !params.groupContext) {
     sections.push("## User", `Name: ${params.userName}`, `Email: ${params.userEmail || "not configured"}`);
   }
+
+  sections.push(
+    "## Context Protocol",
+    "Messages may include a <context> block before the user's message. This is platform-injected context, not written by the user. It can contain:",
+    "",
+    "<outreach> - Messages from or to other team members. Act on pending outreach naturally within conversation. When a user provides information relevant to a pending outreach, use the RespondToOutreach tool to deliver it back to the requester.",
+    "",
+    "<thread> - Recent messages in the current conversation thread for context.",
+    "",
+    "<sender> - Identity of the current speaker in shared contexts (channels, groups).",
+    "",
+    "Never mention <context> or its sections to users. Treat the content as natural conversational context.",
+  );
 
   return sections.join("\n");
 }
 
 /**
- * Formats buffered context messages and the current user message into a chat-log
- * style prompt. Every message is attributed as `[Name]: text` so sender identity
- * persists across SDK session resumes (system prompt content does not survive).
+ * Builds the user message with an optional <context> XML block prepended.
  *
- * When a header is provided (e.g. bootstrap context for first mentions), it is
- * prepended before the buffered messages. A blank line separates context from
- * the current message.
+ * All platform-injected context (thread buffer, sender identity, outreach) is
+ * consolidated under a single <context> tag with typed sub-sections. Sections
+ * only appear when they have content, in order: <outreach>, <thread>, <sender>.
+ * When no sections have content, returns just the plain message with no wrapper.
+ *
+ * This approach keeps dynamic context in the user message (not system prompt)
+ * so it doesn't invalidate the SDK session cache on every change.
  */
-export function formatBufferedContext(
-  messages: BufferedMessage[],
-  currentUserName: string,
-  currentMessage: string,
-  header?: string,
-  currentUserEmail?: string | null,
-): string {
-  const attribution = currentUserEmail ? `${currentUserName} | ${currentUserEmail}` : currentUserName;
-  const senderLine = `[Current sender: ${attribution}]: ${currentMessage}`;
+export function buildSketchContext(params: SketchContextParams): string {
+  const { messages, currentUserName, currentMessage, currentUserEmail, header, isSharedContext } = params;
 
-  if (messages.length === 0) return senderLine;
+  const sectionParts: string[] = [];
 
-  const lines: string[] = [];
-  if (header) lines.push(header);
-  for (const msg of messages) {
-    lines.push(`[${msg.userName}]: ${msg.text}`);
-    if (msg.attachments?.length) {
-      lines.push(formatAttachmentsForPrompt(msg.attachments));
+  // <outreach> section — recipient side (pendingOutreach) and requester side (outreachResponses)
+  const outreachLines: string[] = [];
+
+  if (params.pendingOutreach && params.pendingOutreach.length > 0) {
+    for (const item of params.pendingOutreach) {
+      const timeAgo = formatTimeAgo(item.createdAt);
+      const fromLine = `[${item.id}] from ${item.requesterName ?? "Unknown"} (${timeAgo}):`;
+      outreachLines.push(fromLine);
+      outreachLines.push(`"${item.message}"`);
+      if (item.taskContext) {
+        outreachLines.push(`Context: ${item.taskContext}`);
+      }
     }
   }
 
-  lines.push("", senderLine);
-  return lines.join("\n");
+  if (params.outreachResponses && params.outreachResponses.length > 0) {
+    for (const item of params.outreachResponses) {
+      if (item.status === "responded" && item.response) {
+        outreachLines.push(`${item.recipientName ?? "Unknown"} responded to your outreach:`);
+        outreachLines.push(`"${item.response}"`);
+      } else {
+        const timeAgo = formatTimeAgo(item.createdAt);
+        outreachLines.push(`${item.recipientName ?? "Unknown"} has not responded (sent ${timeAgo})`);
+      }
+    }
+  }
+
+  if (outreachLines.length > 0) {
+    sectionParts.push(`<outreach>\n${outreachLines.join("\n")}\n</outreach>`);
+  }
+
+  // <thread> section
+  if (messages.length > 0) {
+    const lines: string[] = [];
+    if (header) lines.push(header);
+    for (const msg of messages) {
+      lines.push(`${msg.userName}: ${msg.text}`);
+      if (msg.attachments?.length) {
+        lines.push(formatAttachmentsForPrompt(msg.attachments));
+      }
+    }
+    sectionParts.push(`<thread>\n${lines.join("\n")}\n</thread>`);
+  }
+
+  // <sender> section — only for shared contexts (channels/groups)
+  if (isSharedContext) {
+    const senderContent = currentUserEmail ? `${currentUserName} (${currentUserEmail})` : currentUserName;
+    sectionParts.push(`<sender>${senderContent}</sender>`);
+  }
+
+  if (sectionParts.length === 0) return currentMessage;
+
+  return `<context>\n${sectionParts.join("\n\n")}\n</context>\n\n${currentMessage}`;
 }

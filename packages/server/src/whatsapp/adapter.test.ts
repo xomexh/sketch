@@ -15,6 +15,10 @@ function makeUser(overrides: Record<string, unknown> = {}) {
     whatsapp_number: "+1234567890",
     created_at: "2025-01-01",
     email_verified_at: null,
+    description: null,
+    type: "human",
+    role: null,
+    reports_to: null,
     ...overrides,
   };
 }
@@ -407,7 +411,7 @@ describe("whatsapp/adapter", () => {
       await flush();
 
       const agentCall = vi.mocked(deps.runAgent).mock.calls[0][0];
-      expect(agentCall.userMessage).toContain("[Current sender: Alice | alice@test.com]:");
+      expect(agentCall.userMessage).toContain("<sender>Alice (alice@test.com)</sender>");
     });
 
     it("calls buildMcpServers with null for unregistered group users", async () => {
@@ -431,8 +435,8 @@ describe("whatsapp/adapter", () => {
 
       expect(deps.buildMcpServers).toHaveBeenCalledWith(null);
       const agentCall = vi.mocked(deps.runAgent).mock.calls[0][0];
-      expect(agentCall.userMessage).toContain("[Current sender: Bob]:");
-      expect(agentCall.userMessage).not.toContain("|");
+      expect(agentCall.userMessage).toContain("<sender>Bob</sender>");
+      expect(agentCall.userMessage).not.toContain("<sender>Bob (");
     });
 
     it("starts and stops composing for group mentions", async () => {

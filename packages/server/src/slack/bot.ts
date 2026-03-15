@@ -251,6 +251,14 @@ export class SlackBot {
       }));
   }
 
+  async openDmChannel(slackUserId: string, botToken?: string): Promise<string | null> {
+    const result = await this.app.client.conversations.open({
+      ...(botToken ? { token: botToken } : {}),
+      users: slackUserId,
+    });
+    return result.channel?.id ?? null;
+  }
+
   async uploadFile(channelId: string, filePath: string, threadTs?: string): Promise<void> {
     const { readFileSync } = await import("node:fs");
     const { basename } = await import("node:path");

@@ -19,6 +19,10 @@ export interface User {
   email_verified_at: string | null;
   slack_user_id: string | null;
   whatsapp_number: string | null;
+  description: string | null;
+  type: string;
+  role: string | null;
+  reports_to: string | null;
   created_at: string;
 }
 
@@ -221,13 +225,31 @@ export const api = {
     list() {
       return request<{ users: User[] }>("/api/users");
     },
-    create(data: { name: string; email?: string | null; whatsappNumber?: string | null }) {
+    create(data: {
+      name: string;
+      email?: string | null;
+      whatsappNumber?: string | null;
+      description?: string | null;
+      type?: string;
+      role?: string | null;
+      reportsTo?: string | null;
+    }) {
       return request<{ user: User; verificationSent?: boolean }>("/api/users", {
         method: "POST",
         body: JSON.stringify(data),
       });
     },
-    update(id: string, data: { name?: string; email?: string | null; whatsappNumber?: string | null }) {
+    update(
+      id: string,
+      data: {
+        name?: string;
+        email?: string | null;
+        whatsappNumber?: string | null;
+        description?: string | null;
+        role?: string | null;
+        reportsTo?: string | null;
+      },
+    ) {
       return request<{ user: User; verificationSent?: boolean }>(`/api/users/${id}`, {
         method: "PATCH",
         body: JSON.stringify(data),

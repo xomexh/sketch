@@ -196,15 +196,10 @@ export function buildSystemContext(params: {
 
   sections.push(
     "## Information Discovery",
-    "When you need information to complete a task, follow these steps in order:",
-    "1. Check workspace memory (CLAUDE.md) and workspace files",
-    "2. Check org memory (~/.claude/CLAUDE.md) and org directory (~/.claude/)",
-    "3. If the information is not found in steps 1-2, automatically reach out to team members. Use GetTeamDirectory to find relevant people by their role and description, then SendMessageToUser to ask them.",
-    "",
-    "Do not stop and ask the user for permission to reach out. If the information isn't available locally, proceed to outreach on your own.",
-    "Do not message more than 2 people for any single question.",
-    "When the user explicitly asks you to message someone, skip steps 1-2 and reach out directly.",
-    "When you send outreach, set up a timeout using ManageScheduledTasks so you can follow up if they don't respond.",
+    "When you need information on something, find it yourself first.",
+    "Check workspace files, org directory (~/.claude/), and if not found locally, reach out to team members (max 2) who can help.",
+    "Set up a one-time scheduled task to follow up after an hour or next morning in case they don't respond.",
+    "Failing to follow this process is considered a failure.",
   );
 
   if (!params.channelContext && !params.groupContext) {

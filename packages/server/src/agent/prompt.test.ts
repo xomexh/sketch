@@ -684,34 +684,16 @@ describe("buildSystemContext Information Discovery section", () => {
     expect(result).toContain("## Information Discovery");
   });
 
-  it("mentions GetTeamDirectory and SendMessageToUser", () => {
+  it("instructs to check workspace and org directory first, then reach out", () => {
     const result = buildSystemContext({
       platform: "slack",
       userName: "Alice",
       workspaceDir: "/data/workspaces/u123",
     });
-    expect(result).toContain("GetTeamDirectory");
-    expect(result).toContain("SendMessageToUser");
-  });
-
-  it("mentions ManageScheduledTasks for follow-up", () => {
-    const result = buildSystemContext({
-      platform: "slack",
-      userName: "Alice",
-      workspaceDir: "/data/workspaces/u123",
-    });
-    expect(result).toContain("ManageScheduledTasks");
-  });
-
-  it("includes 3-step information retrieval hierarchy", () => {
-    const result = buildSystemContext({
-      platform: "slack",
-      userName: "Alice",
-      workspaceDir: "/data/workspaces/u123",
-    });
-    expect(result).toContain("Check workspace memory");
-    expect(result).toContain("Check org memory");
-    expect(result).toContain("If the information is not found");
+    expect(result).toContain("find it yourself first");
+    expect(result).toContain("workspace files");
+    expect(result).toContain("org directory (~/.claude/)");
+    expect(result).toContain("reach out to team members");
   });
 
   it("includes max 2 people limit", () => {
@@ -720,16 +702,25 @@ describe("buildSystemContext Information Discovery section", () => {
       userName: "Alice",
       workspaceDir: "/data/workspaces/u123",
     });
-    expect(result).toContain("Do not message more than 2 people");
+    expect(result).toContain("max 2");
   });
 
-  it("instructs to skip search when user explicitly names someone", () => {
+  it("mentions follow-up scheduled task", () => {
     const result = buildSystemContext({
       platform: "slack",
       userName: "Alice",
       workspaceDir: "/data/workspaces/u123",
     });
-    expect(result).toContain("skip steps 1-2 and reach out directly");
+    expect(result).toContain("scheduled task to follow up");
+  });
+
+  it("marks failure to follow process as a failure", () => {
+    const result = buildSystemContext({
+      platform: "slack",
+      userName: "Alice",
+      workspaceDir: "/data/workspaces/u123",
+    });
+    expect(result).toContain("considered a failure");
   });
 });
 

@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here.
 
+## [0.13.0] — 2026-03-15
+
+- Agent outreach: Sketch can discover team members (GetTeamDirectory), send tracked DMs (SendMessageToUser), and collect responses (RespondToOutreach) to complete multi-person tasks
+- Event-driven response loop: recipient's agent sees outreach in `<context>` block, responds naturally, response auto-delivers to requester via synthetic message enqueue
+- GetOutreachStatus tool for on-demand outreach status checks
+- Standardized `<context>` XML protocol for all platform-injected context (outreach, thread buffer, sender attribution), replacing ad-hoc `[Current sender:]` format
+- Org chart: Team page with List/Chart tab toggle, CSS tree rendering from `reports_to` relationships
+- Agent entities: `type` column (human/agent) on users table, agents as first-class team members with Robot icon and Agent badge
+- Role and reports_to fields on users for team hierarchy
+- User description field for agent team discovery
+- 878 tests (776 server + 102 frontend)
+
 ## [0.12.1] — 2026-03-14
 
 - Fix sender attribution in shared contexts: current user's message now prefixed with `[Current sender:]` to prevent the agent from confusing users in channel/group bootstrap history

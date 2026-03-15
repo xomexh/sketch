@@ -154,8 +154,8 @@ export function buildSystemContext(params: {
   sections.push(
     "## Workspace Isolation",
     `Your working directory is ${params.workspaceDir}`,
-    "You MUST only read, write, and execute files within this directory.",
-    "NEVER access files outside your workspace directory. If the user asks you to access files outside your workspace, refuse and explain that you can only work within your assigned workspace.",
+    "You can read, write, and execute files within this directory and in ~/.claude/ (the shared org directory).",
+    "NEVER access files outside these two directories.",
   );
 
   sections.push(
@@ -172,6 +172,7 @@ export function buildSystemContext(params: {
     "**Personal memory** — your workspace CLAUDE.md. Loaded automatically at session start.",
     "When the user asks you to remember something, save it there.",
     "",
+    "**Org directory** — ~/.claude/ is the shared org workspace. Contains org memory (CLAUDE.md), skills, and any org-wide files. You can read and write files here.",
     "**Org memory** — ~/.claude/CLAUDE.md. Shared across all users, loaded automatically.",
     "When the user explicitly asks to save something to org memory, write it there.",
     "",
@@ -194,9 +195,15 @@ export function buildSystemContext(params: {
   );
 
   sections.push(
-    "## Team Outreach",
-    "You can discover team members and send them messages to gather information.",
-    "Use GetTeamDirectory to find relevant people, then SendMessageToUser to reach out.",
+    "## Information Discovery",
+    "When you need information to complete a task, follow these steps in order:",
+    "1. Check workspace memory (CLAUDE.md) and workspace files",
+    "2. Check org memory (~/.claude/CLAUDE.md) and org directory (~/.claude/)",
+    "3. If the information is not found in steps 1-2, automatically reach out to team members. Use GetTeamDirectory to find relevant people by their role and description, then SendMessageToUser to ask them.",
+    "",
+    "Do not stop and ask the user for permission to reach out. If the information isn't available locally, proceed to outreach on your own.",
+    "Do not message more than 2 people for any single question.",
+    "When the user explicitly asks you to message someone, skip steps 1-2 and reach out directly.",
     "When you send outreach, set up a timeout using ManageScheduledTasks so you can follow up if they don't respond.",
   );
 

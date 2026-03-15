@@ -29,7 +29,7 @@ describe("buildSystemContext", () => {
     });
 
     it("includes file restriction rule", () => {
-      expect(result).toContain("MUST only read, write, and execute files within this directory");
+      expect(result).toContain("NEVER access files outside these two directories");
     });
 
     it("includes user name under User heading", () => {
@@ -84,7 +84,7 @@ describe("buildSystemContext", () => {
     });
 
     it("includes file restriction rule", () => {
-      expect(result).toContain("MUST only read, write, and execute files within this directory");
+      expect(result).toContain("NEVER access files outside these two directories");
     });
 
     it("includes file attachments section", () => {
@@ -674,14 +674,14 @@ describe("buildSketchContext with outreach", () => {
   });
 });
 
-describe("buildSystemContext Team Outreach section", () => {
-  it("includes ## Team Outreach section", () => {
+describe("buildSystemContext Information Discovery section", () => {
+  it("includes ## Information Discovery section", () => {
     const result = buildSystemContext({
       platform: "slack",
       userName: "Alice",
       workspaceDir: "/data/workspaces/u123",
     });
-    expect(result).toContain("## Team Outreach");
+    expect(result).toContain("## Information Discovery");
   });
 
   it("mentions GetTeamDirectory and SendMessageToUser", () => {
@@ -701,5 +701,55 @@ describe("buildSystemContext Team Outreach section", () => {
       workspaceDir: "/data/workspaces/u123",
     });
     expect(result).toContain("ManageScheduledTasks");
+  });
+
+  it("includes 3-step information retrieval hierarchy", () => {
+    const result = buildSystemContext({
+      platform: "slack",
+      userName: "Alice",
+      workspaceDir: "/data/workspaces/u123",
+    });
+    expect(result).toContain("Check workspace memory");
+    expect(result).toContain("Check org memory");
+    expect(result).toContain("If the information is not found");
+  });
+
+  it("includes max 2 people limit", () => {
+    const result = buildSystemContext({
+      platform: "slack",
+      userName: "Alice",
+      workspaceDir: "/data/workspaces/u123",
+    });
+    expect(result).toContain("Do not message more than 2 people");
+  });
+
+  it("instructs to skip search when user explicitly names someone", () => {
+    const result = buildSystemContext({
+      platform: "slack",
+      userName: "Alice",
+      workspaceDir: "/data/workspaces/u123",
+    });
+    expect(result).toContain("skip steps 1-2 and reach out directly");
+  });
+});
+
+describe("buildSystemContext workspace and org directory", () => {
+  it("mentions ~/.claude/ as shared org directory in workspace isolation", () => {
+    const result = buildSystemContext({
+      platform: "slack",
+      userName: "Alice",
+      workspaceDir: "/data/workspaces/u123",
+    });
+    expect(result).toContain("~/.claude/ (the shared org directory)");
+  });
+
+  it("includes org directory line in memory section", () => {
+    const result = buildSystemContext({
+      platform: "slack",
+      userName: "Alice",
+      workspaceDir: "/data/workspaces/u123",
+    });
+    expect(result).toContain("Org directory");
+    expect(result).toContain("~/.claude/ is the shared org workspace");
   });
 });

@@ -95,9 +95,15 @@ export class TaskScheduler {
 
     let cronExpr: string;
     if (task.schedule_type === "interval") {
-      const seconds = Number.parseInt(task.schedule_value, 10);
-      const minutes = Math.max(1, Math.ceil(seconds / 60));
-      cronExpr = `*/${minutes} * * * *`;
+      const totalSeconds = Number.parseInt(task.schedule_value, 10);
+      const totalMinutes = Math.max(1, Math.ceil(totalSeconds / 60));
+      if (totalMinutes < 60) {
+        cronExpr = `*/${totalMinutes} * * * *`;
+      } else {
+        const hours = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+        cronExpr = `${mins} */${hours} * * *`;
+      }
     } else {
       cronExpr = task.schedule_value;
     }

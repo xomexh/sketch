@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here.
 
+## [0.13.1] — 2026-03-18
+
+- Fix interval-to-cron conversion crash for intervals >= 60 minutes (e.g., 6-hour intervals produced invalid `*/360` cron expressions that crashed croner on startup)
+- Simplify Information Discovery prompt for autonomous outreach
+- Improve system prompt for autonomous outreach and org directory access
+- 883 tests (781 server + 102 frontend)
+
 ## [0.13.0] — 2026-03-15
 
 - Agent outreach: Sketch can discover team members (GetTeamDirectory), send tracked DMs (SendMessageToUser), and collect responses (RespondToOutreach) to complete multi-person tasks

@@ -6,16 +6,35 @@ import { runMigrations } from "./db/migrate";
 import type { DB } from "./db/schema";
 
 /**
+ * Lazily-initialized template: migrations run once, then every createTestDb()
+ * call clones the result via serialize/deserialize (~0.1ms vs ~25ms per migration set).
+ */
+let templateBuffer: Buffer | null = null;
+
+async function getTemplateBuffer(): Promise<Buffer> {
+  if (templateBuffer) return templateBuffer;
+  const raw = new Database(":memory:");
+  const tmpDb = new Kysely<DB>({ dialect: new SqliteDialect({ database: raw }) });
+  await runMigrations(tmpDb);
+  templateBuffer = raw.serialize();
+  await tmpDb.destroy();
+  return templateBuffer;
+}
+
+/**
  * Creates an in-memory SQLite database with all migrations applied.
- * Each call returns a fresh, isolated database.
+ * Each call returns a fresh, isolated database cloned from a cached template.
  */
 export async function createTestDb(): Promise<Kysely<DB>> {
+  const buf = await getTemplateBuffer();
   const db = new Kysely<DB>({
     dialect: new SqliteDialect({
-      database: new Database(":memory:"),
+      database: new Database(buf),
     }),
   });
-  await runMigrations(db);
+  // Force driver initialization so destroy() works correctly
+  // (Kysely's RuntimeDriver.destroy() is a no-op if init() was never called).
+  await db.selectFrom("users").select("id").limit(0).execute();
   return db;
 }
 

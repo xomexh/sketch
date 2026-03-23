@@ -60,9 +60,107 @@ export interface SettingsTable {
   smtp_user: string | null;
   smtp_password: string | null;
   smtp_from: string | null;
+  smtp_secure: Generated<number>;
+  google_oauth_client_id: string | null;
+  google_oauth_client_secret: string | null;
+  gemini_api_key: string | null;
+  enrichment_enabled: Generated<number>;
   onboarding_completed_at: string | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;
+}
+
+export interface ConnectorConfigsTable {
+  id: string;
+  connector_type: string;
+  auth_type: string;
+  credentials: string;
+  scope_config: Generated<string>;
+
+  sync_status: Generated<string>;
+  sync_cursor: string | null;
+  last_synced_at: string | null;
+  error_message: string | null;
+  created_by: string;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export interface IndexedFilesTable {
+  id: string;
+  connector_config_id: string;
+  provider_file_id: string;
+  provider_url: string | null;
+  file_name: string;
+  file_type: string | null;
+  content_category: string;
+  content: string | null;
+  summary: string | null;
+  tags: string | null;
+  source: string;
+  source_path: string | null;
+  content_hash: string | null;
+  is_archived: Generated<number>;
+  source_created_at: string | null;
+  source_updated_at: string | null;
+  synced_at: string;
+  indexed_at: Generated<string>;
+  context_note: string | null;
+  enrichment_status: Generated<string>;
+  access_scope_id: string | null;
+  mime_type: string | null;
+  embedding_status: Generated<string>;
+}
+
+export interface DocumentChunksTable {
+  id: string;
+  indexed_file_id: string;
+  chunk_index: number;
+  content: string;
+  token_count: number | null;
+}
+
+export interface DocumentTimeframesTable {
+  id: string;
+  indexed_file_id: string;
+  start_date: string;
+  end_date: string | null;
+  context: string | null;
+}
+
+export interface AccessScopesTable {
+  id: string;
+  connector_config_id: string;
+  scope_type: string;
+  provider_scope_id: string;
+  label: string | null;
+}
+
+export interface AccessScopeMembersTable {
+  access_scope_id: string;
+  email: string;
+}
+
+export interface ConnectorFilesTable {
+  connector_config_id: string;
+  indexed_file_id: string;
+}
+
+export interface UserProviderIdentitiesTable {
+  id: string;
+  user_id: string;
+  provider: string;
+  provider_user_id: string;
+  provider_email: string | null;
+  access_token: string | null;
+  refresh_token: string | null;
+  token_expires_at: string | null;
+  connected_at: Generated<string>;
+}
+
+export interface FileAccessTable {
+  indexed_file_id: string;
+  email: string;
 }
 
 export interface EmailVerificationTokensTable {
@@ -146,6 +244,15 @@ export interface DB {
   whatsapp_keys: WhatsAppKeysTable;
   whatsapp_groups: WhatsAppGroupsTable;
   settings: SettingsTable;
+  connector_configs: ConnectorConfigsTable;
+  indexed_files: IndexedFilesTable;
+  access_scopes: AccessScopesTable;
+  access_scope_members: AccessScopeMembersTable;
+  connector_files: ConnectorFilesTable;
+  document_chunks: DocumentChunksTable;
+  document_timeframes: DocumentTimeframesTable;
+  user_provider_identities: UserProviderIdentitiesTable;
+  file_access: FileAccessTable;
   email_verification_tokens: EmailVerificationTokensTable;
   magic_link_tokens: MagicLinkTokensTable;
   mcp_servers: McpServersTable;

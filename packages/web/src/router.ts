@@ -2,6 +2,7 @@ import { createRouter } from "@tanstack/react-router";
 import { channelsRoute } from "./routes/channels";
 import { connectionsCallbackRoute, connectionsRoute } from "./routes/connections";
 import { dashboardRoute } from "./routes/dashboard";
+import { filesRoute } from "./routes/files";
 import { indexRoute } from "./routes/index";
 import { loginRoute } from "./routes/login";
 import { onboardingRoute } from "./routes/onboarding";
@@ -20,6 +21,7 @@ const routeTree = rootRoute.addChildren([
     teamRoute,
     scheduledTasksRoute,
     skillsRoute,
+    filesRoute,
     workspaceRoute,
     connectionsRoute.addChildren([connectionsCallbackRoute]),
   ]),

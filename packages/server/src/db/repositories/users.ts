@@ -41,10 +41,10 @@ export function createUserRepository(db: Kysely<DB>) {
         .values({
           id,
           name: data.name,
-          slack_user_id: data.slackUserId ?? null,
-          whatsapp_number: data.whatsappNumber ?? null,
           email: data.email ?? null,
           email_verified_at: data.email && data.emailVerified ? new Date().toISOString() : null,
+          slack_user_id: data.slackUserId ?? null,
+          whatsapp_number: data.whatsappNumber ?? null,
           description: data.description ?? null,
           type: data.type ?? "human",
           role: data.role ?? null,

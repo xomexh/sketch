@@ -75,6 +75,7 @@ export interface ChannelStatus {
   configured: boolean;
   connected: boolean | null;
   phoneNumber?: string | null;
+  fromAddress?: string | null;
   outboundOnly?: boolean;
 }
 
@@ -87,6 +88,90 @@ export interface SetupStatus {
   slackConnected: boolean;
   llmConnected: boolean;
   llmProvider: "anthropic" | "bedrock" | null;
+}
+
+export interface ConnectorConfig {
+  id: string;
+  connectorType: string;
+  authType: string;
+  scopeConfig: Record<string, unknown>;
+
+  syncStatus: "active" | "syncing" | "error" | "paused" | "pending";
+  lastSyncedAt: string | null;
+  errorMessage: string | null;
+  createdBy: string;
+  createdAt: string;
+  fileCount?: number;
+}
+
+export interface ConnectorFile {
+  id: string;
+  fileName: string;
+  fileType: string | null;
+  contentCategory: "document" | "structured";
+  source: string;
+  sourcePath: string | null;
+  providerUrl: string | null;
+  syncedAt: string;
+  sourceUpdatedAt: string | null;
+  hasSummary: boolean;
+  accessScope: "restricted" | "unrestricted";
+  accessCount: number | null;
+}
+
+export interface FileContent {
+  id: string;
+  fileName: string;
+  fileType: string | null;
+  content: string | null;
+  summary: string | null;
+  contextNote: string | null;
+  tags: string | null;
+  source: string;
+  sourcePath: string | null;
+  providerUrl: string | null;
+  enrichmentStatus: string;
+}
+
+export interface FileAccessMember {
+  email: string;
+  userName: string | null;
+  userId: string | null;
+  source: "scope" | "file";
+  mapped: boolean;
+}
+
+/** A file returned by the paginated all-files endpoint. */
+export type UnifiedFile = ConnectorFile;
+
+/** A result from hybrid search (FTS5 + vector). */
+export interface SearchResult {
+  id: string;
+  fileName: string;
+  source: string;
+  contentCategory: string;
+  summary: string | null;
+  providerUrl: string | null;
+  sourcePath: string | null;
+  sourceUpdatedAt: string | null;
+  tags: string | null;
+  snippet: string | null;
+  similarity: number | null;
+  score: number;
+}
+
+export interface FileAccess {
+  scope: "restricted" | "unrestricted";
+  members: FileAccessMember[];
+}
+
+export interface ProviderIdentity {
+  id: string;
+  provider: string;
+  providerUserId: string;
+  providerEmail: string | null;
+  connectedAt: string;
+  hasToken: boolean;
 }
 
 export interface SessionResponse {
@@ -205,10 +290,18 @@ export const api = {
       return request<{ success: boolean }>("/api/channels/email", { method: "DELETE" });
     },
   },
-  whatsapp: {
-    status() {
-      return request<{ connected: boolean; phoneNumber: string | null }>("/api/channels/whatsapp");
+  email: {
+    configure(data: { host: string; port: number; user: string; pass: string; from: string; secure: boolean }) {
+      return request<{ success: boolean }>("/api/channels/email/config", {
+        method: "PUT",
+        body: JSON.stringify(data),
+      });
     },
+    disconnect() {
+      return request<{ success: boolean }>("/api/channels/email/config", { method: "DELETE" });
+    },
+  },
+  whatsapp: {
     cancelPairing() {
       return request<{ success: boolean }>("/api/channels/whatsapp/pair", { method: "DELETE" });
     },
@@ -219,6 +312,148 @@ export const api = {
   settings: {
     identity() {
       return request<{ orgName: string | null; botName: string }>("/api/settings/identity");
+    },
+    searchConfig() {
+      return request<{ geminiApiKeyConfigured: boolean; enrichmentEnabled: number }>("/api/settings/search");
+    },
+    updateSearchConfig(data: { geminiApiKey?: string | null; enrichmentEnabled?: boolean }) {
+      return request<{ geminiApiKeyConfigured: boolean; enrichmentEnabled: number }>("/api/settings/search", {
+        method: "PUT",
+        body: JSON.stringify(data),
+      });
+    },
+    runEnrichment() {
+      return request<{ success: boolean; message: string }>("/api/settings/search/enrichments", {
+        method: "POST",
+      });
+    },
+  },
+  integrations: {
+    list() {
+      return request<{ connectors: ConnectorConfig[] }>("/api/connectors");
+    },
+    get(id: string) {
+      return request<{ connector: ConnectorConfig }>(`/api/connectors/${id}`);
+    },
+    connect(data: {
+      connectorType: string;
+      authType: string;
+      credentials: Record<string, unknown>;
+      scopeConfig?: Record<string, unknown>;
+    }) {
+      return request<{ connector: { id: string; connectorType: string; syncStatus: string } }>("/api/connectors", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+    disconnect(id: string) {
+      return request<{ success: boolean }>(`/api/connectors/${id}`, { method: "DELETE" });
+    },
+    sync(id: string) {
+      return request<{ sync: { connectorId: string; status: string } }>(`/api/connectors/${id}/syncs`, {
+        method: "POST",
+      });
+    },
+    files(id: string) {
+      return request<{ files: ConnectorFile[] }>(`/api/connectors/${id}/files`);
+    },
+    allFiles(opts?: { limit?: number; offset?: number; source?: string }) {
+      const params = new URLSearchParams();
+      if (opts?.limit) params.set("limit", String(opts.limit));
+      if (opts?.offset) params.set("offset", String(opts.offset));
+      if (opts?.source) params.set("source", opts.source);
+      const qs = params.toString();
+      return request<{ files: UnifiedFile[]; total: number; hasMore: boolean }>(
+        `/api/connectors/all-files${qs ? `?${qs}` : ""}`,
+      );
+    },
+    search(opts: { query: string; source?: string; category?: string; limit?: number }) {
+      const params = new URLSearchParams();
+      params.set("query", opts.query);
+      if (opts.source) params.set("source", opts.source);
+      if (opts.category) params.set("category", opts.category);
+      if (opts.limit) params.set("limit", String(opts.limit));
+      return request<{ results: SearchResult[] }>(`/api/connectors/search?${params.toString()}`);
+    },
+    fileContent(fileId: string) {
+      return request<{ file: FileContent; access: FileAccess }>(`/api/connectors/files/${fileId}/content`);
+    },
+    enrich(id: string, data: { fileIds: string[]; instruction: string }) {
+      return request<{ enrichment: { jobId: string; connectorId: string; fileCount: number } }>(
+        `/api/connectors/${id}/enrichments`,
+        {
+          method: "POST",
+          body: JSON.stringify(data),
+        },
+      );
+    },
+    enrichFile(fileId: string) {
+      return request<{ success: boolean; fileId: string; fileName: string }>(
+        `/api/connectors/files/${fileId}/enrichments`,
+        {
+          method: "POST",
+        },
+      );
+    },
+    browseGoogleDrive(credentials: { client_id: string; client_secret: string; refresh_token: string }) {
+      return request<{
+        sharedDrives: Array<{ id: string; name: string }>;
+        rootFolders: Array<{ id: string; name: string }>;
+      }>("/api/connectors/google-drive/browse", {
+        method: "POST",
+        body: JSON.stringify({ credentials }),
+      });
+    },
+    browseGoogleDriveExisting(connectorId: string) {
+      return request<{
+        sharedDrives: Array<{ id: string; name: string; selected: boolean }>;
+        rootFolders: Array<{ id: string; name: string; selected: boolean }>;
+      }>(`/api/connectors/google-drive/browse/${connectorId}`);
+    },
+    browseFolderContents(connectorId: string, folderId: string) {
+      return request<{
+        items: Array<{ id: string; name: string; mimeType: string; isFolder: boolean }>;
+      }>(`/api/connectors/google-drive/browse/${connectorId}/folder/${folderId}`);
+    },
+    updateScope(id: string, scopeConfig: Record<string, unknown>) {
+      return request<{
+        connector: { id: string; connectorType: string; scopeConfig: Record<string, unknown>; syncStatus: string };
+      }>(`/api/connectors/${id}/scope`, {
+        method: "PATCH",
+        body: JSON.stringify({ scopeConfig }),
+      });
+    },
+  },
+  googleOAuth: {
+    status() {
+      return request<{ configured: boolean; clientId: string | null; baseUrl: string | null }>(
+        "/api/oauth/google/status",
+      );
+    },
+    configure(clientId: string, clientSecret: string) {
+      return request<{ success: boolean }>("/api/oauth/google/config", {
+        method: "PUT",
+        body: JSON.stringify({ clientId, clientSecret }),
+      });
+    },
+    authorizeUrl() {
+      return "/api/oauth/google/authorize";
+    },
+  },
+  identities: {
+    listForUser(userId: string) {
+      return request<{ identities: ProviderIdentity[] }>(`/api/identities/user/${userId}`);
+    },
+    connect(data: { userId: string; provider: string; providerUserId: string; providerEmail?: string | null }) {
+      return request<{ identity: ProviderIdentity }>("/api/identities", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+    disconnect(userId: string, provider: string) {
+      return request<{ success: boolean }>(`/api/identities/user/${userId}/provider/${provider}`, {
+        method: "DELETE",
+      });
     },
   },
   users: {

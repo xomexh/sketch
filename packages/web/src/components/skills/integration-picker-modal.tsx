@@ -48,7 +48,7 @@ export function IntegrationPickerModal({
         onOpenChange(nextOpen);
       }}
     >
-      <DialogContent className="max-w-lg gap-0 p-0">
+      <DialogContent className="gap-0 p-0">
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle className="text-base font-semibold">Add integration</DialogTitle>
         </DialogHeader>

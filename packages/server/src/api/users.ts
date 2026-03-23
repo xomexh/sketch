@@ -126,7 +126,10 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
       return c.json({ user, verificationSent }, 201);
     } catch (err: unknown) {
       if (err instanceof Error && err.message.includes("UNIQUE constraint failed")) {
-        return c.json({ error: { code: "CONFLICT", message: "This number is already linked to another member" } }, 409);
+        return c.json(
+          { error: { code: "CONFLICT", message: "This email or number is already linked to another member" } },
+          409,
+        );
       }
       throw err;
     }
@@ -194,7 +197,10 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
       return c.json({ user, verificationSent });
     } catch (err: unknown) {
       if (err instanceof Error && err.message.includes("UNIQUE constraint failed")) {
-        return c.json({ error: { code: "CONFLICT", message: "This number is already linked to another member" } }, 409);
+        return c.json(
+          { error: { code: "CONFLICT", message: "This email or number is already linked to another member" } },
+          409,
+        );
       }
       throw err;
     }

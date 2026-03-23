@@ -43,6 +43,11 @@ export function createSettingsRepository(db: Kysely<DB>) {
         smtpUser: string | null;
         smtpPassword: string | null;
         smtpFrom: string | null;
+        smtpSecure: number | null;
+        googleOauthClientId: string | null;
+        googleOauthClientSecret: string | null;
+        geminiApiKey: string | null;
+        enrichmentEnabled: number | null;
       }>,
     ) {
       const updates: Record<string, string | number | null> = {};
@@ -64,6 +69,12 @@ export function createSettingsRepository(db: Kysely<DB>) {
       if (data.smtpUser !== undefined) updates.smtp_user = data.smtpUser;
       if (data.smtpPassword !== undefined) updates.smtp_password = data.smtpPassword;
       if (data.smtpFrom !== undefined) updates.smtp_from = data.smtpFrom;
+      if (data.smtpSecure !== undefined) updates.smtp_secure = data.smtpSecure;
+      if (data.googleOauthClientId !== undefined) updates.google_oauth_client_id = data.googleOauthClientId;
+      if (data.googleOauthClientSecret !== undefined) updates.google_oauth_client_secret = data.googleOauthClientSecret;
+      if (data.geminiApiKey !== undefined) updates.gemini_api_key = data.geminiApiKey;
+      if (data.enrichmentEnabled !== undefined) updates.enrichment_enabled = data.enrichmentEnabled;
+
       if (Object.keys(updates).length === 0) return;
 
       await db.updateTable("settings").set(updates).where("id", "=", "default").execute();

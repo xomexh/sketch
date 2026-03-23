@@ -3,12 +3,12 @@
  * Opens an SSE connection to GET /api/channels/whatsapp/pair, renders QR codes as they arrive,
  * and detects scan completion in real-time.
  *
- * While pairing is active, a Cancel button is shown. Cancelling calls
- * DELETE /api/channels/whatsapp/pair to abort the server-side session.
+ * Dismissal is handled by the parent dialog's × button. On unmount, the component
+ * automatically cleans up the SSE connection and cancels the server-side session.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ArrowClockwiseIcon, CheckCircleIcon, SpinnerGapIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, CheckCircleIcon, SpinnerGapIcon, WarningIcon } from "@phosphor-icons/react";
 import QRCode from "qrcode";
 
 import { Button } from "@/components/ui/button";
@@ -18,23 +18,19 @@ type QrState = "idle" | "generating" | "ready" | "connected" | "expired" | "erro
 
 interface WhatsAppQRProps {
   onConnected: (phoneNumber: string) => void;
-  onCancel?: () => void;
   onError?: (message: string) => void;
   autoStart?: boolean;
 }
 
-export function WhatsAppQR({ onConnected, onCancel, onError, autoStart = true }: WhatsAppQRProps) {
+export function WhatsAppQR({ onConnected, onError, autoStart = true }: WhatsAppQRProps) {
   const [state, setState] = useState<QrState>("idle");
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isCancelling, setIsCancelling] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const onConnectedRef = useRef(onConnected);
-  const onCancelRef = useRef(onCancel);
   const onErrorRef = useRef(onError);
   onConnectedRef.current = onConnected;
-  onCancelRef.current = onCancel;
   onErrorRef.current = onError;
 
   const cleanup = useCallback(() => {
@@ -43,19 +39,6 @@ export function WhatsAppQR({ onConnected, onCancel, onError, autoStart = true }:
       eventSourceRef.current = null;
     }
   }, []);
-
-  const handleCancel = useCallback(async () => {
-    setIsCancelling(true);
-    cleanup();
-    try {
-      await api.whatsapp.cancelPairing();
-    } catch {
-      // Pairing may have already ended — ignore
-    }
-    setIsCancelling(false);
-    setState("idle");
-    onCancelRef.current?.();
-  }, [cleanup]);
 
   const startPairing = useCallback(() => {
     cleanup();
@@ -103,7 +86,10 @@ export function WhatsAppQR({ onConnected, onCancel, onError, autoStart = true }:
     if (autoStart) {
       startPairing();
     }
-    return cleanup;
+    return () => {
+      cleanup();
+      api.whatsapp.cancelPairing().catch(() => {});
+    };
   }, [autoStart, startPairing, cleanup]);
 
   if (state === "idle") {
@@ -123,10 +109,6 @@ export function WhatsAppQR({ onConnected, onCancel, onError, autoStart = true }:
           <SpinnerGapIcon className="size-6 animate-spin text-muted-foreground" />
         </div>
         <p className="text-xs text-muted-foreground">Generating QR code...</p>
-        <Button variant="ghost" size="sm" onClick={handleCancel} disabled={isCancelling}>
-          <XIcon className="size-3.5" />
-          Cancel
-        </Button>
       </div>
     );
   }
@@ -141,10 +123,6 @@ export function WhatsAppQR({ onConnected, onCancel, onError, autoStart = true }:
         <p className="max-w-xs text-center text-xs text-muted-foreground/70">
           Open WhatsApp &rarr; Settings &rarr; Linked Devices &rarr; Link a Device
         </p>
-        <Button variant="ghost" size="sm" onClick={handleCancel} disabled={isCancelling}>
-          <XIcon className="size-3.5" />
-          Cancel
-        </Button>
       </div>
     );
   }

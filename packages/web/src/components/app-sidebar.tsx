@@ -35,6 +35,8 @@ import {
   ChatCircleIcon,
   DesktopIcon,
   FolderIcon,
+  FolderSimpleIcon,
+  GearIcon,
   LinkSimpleIcon,
   MoonIcon,
   SignOutIcon,
@@ -53,11 +55,17 @@ interface NavItem {
 
 const primaryNav: NavItem[] = [
   { label: "Channels", icon: <ChatCircleIcon size={18} />, href: "/channels" },
+  { label: "Files", icon: <FolderSimpleIcon size={18} />, href: "/files" },
   { label: "Team", icon: <UsersThreeIcon size={18} />, href: "/team" },
   { label: "Scheduled Tasks", icon: <CalendarDotsIcon size={18} />, href: "/scheduled-tasks" },
   { label: "Skills", icon: <BrainIcon size={18} />, href: "/skills" },
   { label: "Workspace", icon: <FolderIcon size={18} />, href: "/workspace" },
   { label: "Connections", icon: <LinkSimpleIcon size={18} />, href: "/connections" },
+];
+
+const adminNav: NavItem[] = [
+  { label: "Connections", icon: <LinkSimpleIcon size={18} />, href: "/connections" },
+  { label: "Settings", icon: <GearIcon size={18} />, href: "/settings", disabled: true },
 ];
 
 export function AppSidebar({

@@ -1,4 +1,4 @@
-import { XIcon } from "lucide-react";
+import { ArrowLeftIcon, XIcon } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import type * as React from "react";
 
@@ -122,8 +122,42 @@ function DialogDescription({ className, ...props }: React.ComponentProps<typeof 
   );
 }
 
+/**
+ * Back row for multi-step modals (step 2+).
+ * Renders `← label` on the left and a close button on the right.
+ * When used, pass `showCloseButton={false}` to `DialogContent` so the
+ * default absolute-positioned close button is suppressed.
+ */
+function DialogBackRow({
+  label,
+  onBack,
+  className,
+}: {
+  label: string;
+  onBack: () => void;
+  className?: string;
+}) {
+  return (
+    <div data-slot="dialog-back-row" className={cn("flex items-center justify-between", className)}>
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeftIcon size={14} />
+        {label}
+      </button>
+      <DialogPrimitive.Close className="rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden ring-offset-background focus:ring-ring [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">
+        <XIcon />
+        <span className="sr-only">Close</span>
+      </DialogPrimitive.Close>
+    </div>
+  );
+}
+
 export {
   Dialog,
+  DialogBackRow,
   DialogClose,
   DialogContent,
   DialogDescription,

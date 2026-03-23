@@ -22,6 +22,12 @@ import * as m015 from "./migrations/015-whatsapp-groups";
 import * as m016 from "./migrations/016-user-description";
 import * as m017 from "./migrations/017-outreach-messages";
 import * as m018 from "./migrations/018-user-type-role-hierarchy";
+import * as m019 from "./migrations/019-connectors";
+import * as m020 from "./migrations/020-user-provider-identities";
+import * as m021 from "./migrations/021-file-access";
+import * as m022 from "./migrations/022-settings-extended";
+import * as m023 from "./migrations/023-semantic-search";
+import * as m024 from "./migrations/024-settings-enrichment";
 import type { DB } from "./schema";
 
 export async function runMigrations(db: Kysely<DB>): Promise<void> {
@@ -48,6 +54,12 @@ export async function runMigrations(db: Kysely<DB>): Promise<void> {
           "016-user-description": m016,
           "017-outreach-messages": m017,
           "018-user-type-role-hierarchy": m018,
+          "019-connectors": m019,
+          "020-user-provider-identities": m020,
+          "021-file-access": m021,
+          "022-settings-extended": m022,
+          "023-semantic-search": m023,
+          "024-settings-enrichment": m024,
         };
       },
     },

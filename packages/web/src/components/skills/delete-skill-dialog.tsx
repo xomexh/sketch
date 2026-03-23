@@ -18,7 +18,7 @@ interface DeleteSkillDialogProps {
 export function DeleteSkillDialog({ open, onOpenChange, skillName, onConfirm }: DeleteSkillDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle className="text-base font-semibold">Delete &lsquo;{skillName}&rsquo;?</DialogTitle>
           <DialogDescription className="text-sm">

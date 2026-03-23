@@ -20,13 +20,21 @@ import { ChannelsPage } from "./channels";
 function channelsHandler(
   slack: { configured: boolean; connected: boolean | null },
   whatsapp: { configured: boolean; connected: boolean | null; phoneNumber?: string },
+  email?: { configured: boolean; connected: boolean | null; fromAddress?: string },
 ) {
   server.use(
     http.get("/api/channels/status", () => {
       return HttpResponse.json({
         channels: [
-          { platform: "slack", ...slack, phoneNumber: null },
-          { platform: "whatsapp", phoneNumber: null, ...whatsapp },
+          { platform: "slack", ...slack, phoneNumber: null, fromAddress: null },
+          { platform: "whatsapp", phoneNumber: null, fromAddress: null, ...whatsapp },
+          {
+            platform: "email",
+            configured: email?.configured ?? false,
+            connected: email?.connected ?? null,
+            phoneNumber: null,
+            fromAddress: email?.fromAddress ?? null,
+          },
         ],
       });
     }),

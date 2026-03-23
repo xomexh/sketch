@@ -1,6 +1,7 @@
 /**
- * Channels page — displays Slack and WhatsApp platform cards with connection status.
+ * Channels page — displays Slack, WhatsApp, and Email platform cards with connection status.
  * WhatsApp pairing uses SSE-based QR flow via the shared WhatsAppQR component.
+ * Email uses SMTP configuration for magic link delivery.
  */
 import {
   AlertDialog,
@@ -13,7 +14,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +42,7 @@ import {
   CopySimpleIcon,
   DotsThreeIcon,
   EnvelopeIcon,
+  EnvelopeSimpleIcon,
   SlackLogoIcon,
   SpinnerGapIcon,
   WarningIcon,
@@ -78,6 +87,7 @@ export function ChannelsPage() {
         )}
         {isLoading ? (
           <>
+            <Skeleton className="h-32 rounded-lg" />
             <Skeleton className="h-32 rounded-lg" />
             <Skeleton className="h-32 rounded-lg" />
           </>
@@ -316,17 +326,18 @@ function WhatsAppPairDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="max-w-sm"
-        showCloseButton={false}
-        onInteractOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
-      >
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Connect WhatsApp</DialogTitle>
           <DialogDescription>Scan this QR code with WhatsApp to connect your number.</DialogDescription>
         </DialogHeader>
-        {open && <WhatsAppQR onConnected={onConnected} onCancel={() => onOpenChange(false)} />}
+        {open && <WhatsAppQR onConnected={onConnected} />}
+        <DialogFooter>
+          <Button variant="outline" size="sm" disabled>
+            <SpinnerGapIcon className="size-3.5 animate-spin" />
+            Waiting for scan
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -669,7 +680,7 @@ function SlackConnectDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Connect Slack</DialogTitle>
           <DialogDescription>Create a Slack app and paste the tokens to connect.</DialogDescription>
@@ -733,6 +744,9 @@ function SlackConnectDialog({
               className="font-mono text-xs"
             />
           </div>
+        </div>
+
+        <DialogFooter>
           <Button
             variant="outline"
             size="sm"
@@ -748,7 +762,7 @@ function SlackConnectDialog({
               "Connect"
             )}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

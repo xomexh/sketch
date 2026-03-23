@@ -95,8 +95,9 @@ export const handlers = [
   http.get("/api/channels/status", () => {
     return HttpResponse.json({
       channels: [
-        { platform: "slack", configured: false, connected: null, phoneNumber: null },
-        { platform: "whatsapp", configured: false, connected: null, phoneNumber: null },
+        { platform: "slack", configured: false, connected: null, phoneNumber: null, fromAddress: null },
+        { platform: "whatsapp", configured: false, connected: null, phoneNumber: null, fromAddress: null },
+        { platform: "email", configured: false, connected: null, phoneNumber: null, fromAddress: null },
       ],
     });
   }),
@@ -125,10 +126,10 @@ export const handlers = [
   }),
 
   http.post("/api/users", async ({ request }) => {
-    const body = (await request.json()) as { name?: string; whatsappNumber?: string };
-    if (!body.name || !body.whatsappNumber) {
+    const body = (await request.json()) as { name?: string; email?: string; whatsappNumber?: string };
+    if (!body.name || (!body.email && !body.whatsappNumber)) {
       return HttpResponse.json(
-        { error: { code: "VALIDATION_ERROR", message: "Name and WhatsApp number required" } },
+        { error: { code: "VALIDATION_ERROR", message: "Name and either email or WhatsApp number required" } },
         { status: 400 },
       );
     }
@@ -137,9 +138,9 @@ export const handlers = [
         user: {
           id: "u-new",
           name: body.name,
-          email: null,
+          email: body.email ?? null,
           slack_user_id: null,
-          whatsapp_number: body.whatsappNumber,
+          whatsapp_number: body.whatsappNumber ?? null,
           created_at: new Date().toISOString(),
         },
       },
@@ -148,12 +149,12 @@ export const handlers = [
   }),
 
   http.patch("/api/users/:id", async ({ request }) => {
-    const body = (await request.json()) as { name?: string; whatsappNumber?: string | null };
+    const body = (await request.json()) as { name?: string; email?: string | null; whatsappNumber?: string | null };
     return HttpResponse.json({
       user: {
         id: "u1",
         name: body.name ?? "Alice Smith",
-        email: null,
+        email: body.email ?? null,
         slack_user_id: "U001",
         whatsapp_number: body.whatsappNumber ?? null,
         created_at: "2026-01-01T00:00:00Z",

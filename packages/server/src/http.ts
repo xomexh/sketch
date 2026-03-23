@@ -10,19 +10,27 @@ import type { Kysely } from "kysely";
 import type { Logger } from "pino";
 import { authRoutes } from "./api/auth";
 import { channelRoutes } from "./api/channels";
+import { connectorRoutes } from "./api/connectors";
+import { emailRoutes } from "./api/email";
 import { healthRoutes } from "./api/health";
 import { mcpServerRoutes } from "./api/mcp-servers";
 import { createAuthMiddleware } from "./api/middleware";
+import { providerIdentityRoutes } from "./api/provider-identities";
 import { scheduledTaskRoutes } from "./api/scheduled-tasks";
 import { settingsRoutes } from "./api/settings";
 import { setupRoutes } from "./api/setup";
 import { skillsRoutes } from "./api/skills";
+
+import { oauthRoutes } from "./api/oauth";
 import { userRoutes } from "./api/users";
 import { whatsappRoutes } from "./api/whatsapp";
 import { createWorkspaceApi } from "./api/workspace";
 import type { Config } from "./config";
+import { createConnectorRepository } from "./db/repositories/connectors";
 import { createMcpServerRepository } from "./db/repositories/mcp-servers";
+import { createProviderIdentityRepository } from "./db/repositories/provider-identities";
 import { createSettingsRepository } from "./db/repositories/settings";
+
 import { createUserRepository } from "./db/repositories/users";
 import type { DB } from "./db/schema";
 import type { TaskScheduler } from "./scheduler/service";
@@ -32,18 +40,19 @@ import type { WhatsAppBot } from "./whatsapp/bot";
 interface AppDeps {
   whatsapp?: WhatsAppBot;
   getSlack?: () => SlackBot | null;
+  logger?: Logger;
   onSlackTokensUpdated?: (tokens?: { botToken: string; appToken: string }) => Promise<void>;
   onSlackDisconnect?: () => Promise<void>;
   onLlmSettingsUpdated?: () => Promise<void>;
   onSmtpUpdated?: () => Promise<void>;
   scheduler?: Pick<TaskScheduler, "pauseTask" | "resumeTask" | "removeTask">;
-  logger?: Logger;
 }
 
 export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   const app = new Hono();
   const settings = createSettingsRepository(db);
   const users = createUserRepository(db);
+  const connectors = createConnectorRepository(db);
   const mcpServers = createMcpServerRepository(db);
   const logger = deps?.logger ?? (console as unknown as Logger);
 
@@ -60,7 +69,7 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
       onLlmSettingsUpdated: deps?.onLlmSettingsUpdated,
     }),
   );
-  app.route("/api/settings", settingsRoutes(settings));
+  app.route("/api/settings", settingsRoutes(settings, db, deps?.logger));
   app.route("/api/skills", skillsRoutes(config));
   app.route("/api/users", userRoutes(users, { settings, db, logger, config }));
   app.route("/api/mcp-servers", mcpServerRoutes(mcpServers, users));
@@ -81,6 +90,19 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
 
   if (deps?.whatsapp) {
     app.route("/api/channels/whatsapp", whatsappRoutes(deps.whatsapp));
+  }
+
+  app.route("/api/channels/email", emailRoutes(settings));
+
+  if (deps?.logger) {
+    app.route("/api/connectors", connectorRoutes(connectors, db, deps.logger));
+  }
+
+  const identities = createProviderIdentityRepository(db);
+  app.route("/api/identities", providerIdentityRoutes(identities, users));
+
+  if (deps?.logger) {
+    app.route("/api/oauth", oauthRoutes(settings, identities, connectors, users, db, deps.logger, config.BASE_URL));
   }
 
   // Static file serving for the SPA (production only — dev uses Vite dev server)

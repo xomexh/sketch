@@ -1,0 +1,275 @@
+/**
+ * OAuth redirect flow for per-user Google Drive connections.
+ *
+ * Two endpoints:
+ * - GET /google/authorize — redirects user to Google's consent screen
+ * - GET /google/callback — Google redirects here with auth code, exchanges for tokens
+ *
+ * The authorize endpoint encodes userId + nonce in the state param.
+ * The callback verifies the nonce, exchanges the code, saves tokens,
+ * creates a connector_config, and redirects to a frontend success page.
+ */
+import { randomBytes } from "node:crypto";
+import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
+import type { Kysely } from "kysely";
+import type { Logger } from "pino";
+import { z } from "zod";
+import { verifyJwt } from "../auth/jwt";
+import { ensureValidToken } from "../connectors/google-drive";
+import type { OAuthCredentials } from "../connectors/types";
+import type { createConnectorRepository } from "../db/repositories/connectors";
+import type { createProviderIdentityRepository } from "../db/repositories/provider-identities";
+import type { createSettingsRepository } from "../db/repositories/settings";
+import type { createUserRepository } from "../db/repositories/users";
+import type { DB } from "../db/schema";
+import { SESSION_COOKIE } from "./auth";
+import { requireAdmin } from "./middleware";
+
+type SettingsRepo = ReturnType<typeof createSettingsRepository>;
+type IdentityRepo = ReturnType<typeof createProviderIdentityRepository>;
+type ConnectorRepo = ReturnType<typeof createConnectorRepository>;
+type UserRepo = ReturnType<typeof createUserRepository>;
+
+const googleConfigSchema = z.object({
+  clientId: z.string().min(1, "clientId is required"),
+  clientSecret: z.string().min(1, "clientSecret is required"),
+});
+
+const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+const USERINFO_SCOPE = "https://www.googleapis.com/auth/userinfo.email";
+
+/** In-memory nonce store. Entries expire after 10 minutes. */
+const pendingStates = new Map<string, { userId: string; expiresAt: number }>();
+
+function cleanupExpiredStates() {
+  const now = Date.now();
+  for (const [key, val] of pendingStates) {
+    if (val.expiresAt < now) pendingStates.delete(key);
+  }
+}
+
+export function oauthRoutes(
+  settings: SettingsRepo,
+  identities: IdentityRepo,
+  connectors: ConnectorRepo,
+  users: UserRepo,
+  db: Kysely<DB>,
+  logger: Logger,
+  baseUrl?: string,
+) {
+  const routes = new Hono();
+
+  /**
+   * GET /google/authorize
+   * Derives the current user from the session, then redirects to Google's OAuth consent screen.
+   */
+  routes.get("/google/authorize", async (c) => {
+    // Resolve user from session JWT
+    const config = await settings.get();
+    const token = getCookie(c, SESSION_COOKIE);
+    const payload = token && config?.jwt_secret ? await verifyJwt(token, config.jwt_secret) : null;
+    if (!payload?.sub) {
+      return c.json({ error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
+    }
+    const email = payload.sub;
+
+    let user = await users.findByEmail(email);
+    if (!user) {
+      // Auto-create a user record for the admin on first OAuth connect
+      user = await users.create({ name: email.split("@")[0], email });
+    }
+    const userId = user.id;
+
+    if (!config?.google_oauth_client_id || !config?.google_oauth_client_secret) {
+      return c.json(
+        { error: { code: "NOT_CONFIGURED", message: "Google OAuth client ID and secret must be configured first" } },
+        400,
+      );
+    }
+
+    cleanupExpiredStates();
+
+    const nonce = randomBytes(16).toString("hex");
+    const state = `${userId}:${nonce}`;
+    pendingStates.set(nonce, { userId, expiresAt: Date.now() + 10 * 60 * 1000 });
+
+    // Build the callback URL from BASE_URL or the request's origin
+    const origin = baseUrl ?? new URL(c.req.url).origin;
+    const redirectUri = `${origin}/api/oauth/google/callback`;
+
+    const params = new URLSearchParams({
+      client_id: config.google_oauth_client_id,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: `${DRIVE_SCOPE} ${USERINFO_SCOPE}`,
+      access_type: "offline",
+      prompt: "consent",
+      state,
+    });
+
+    return c.redirect(`${GOOGLE_AUTH_URL}?${params.toString()}`);
+  });
+
+  /**
+   * GET /google/callback?code=...&state=...
+   * Exchanges auth code for tokens, saves to DB, redirects to frontend.
+   */
+  routes.get("/google/callback", async (c) => {
+    const code = c.req.query("code");
+    const state = c.req.query("state");
+    const error = c.req.query("error");
+
+    if (error) {
+      logger.warn({ error }, "Google OAuth denied");
+      return c.redirect("/files?oauth=error&reason=denied");
+    }
+
+    if (!code || !state) {
+      return c.redirect("/files?oauth=error&reason=missing_params");
+    }
+
+    // Parse and verify state
+    const colonIdx = state.indexOf(":");
+    if (colonIdx === -1) {
+      return c.redirect("/files?oauth=error&reason=invalid_state");
+    }
+
+    const userId = state.substring(0, colonIdx);
+    const nonce = state.substring(colonIdx + 1);
+
+    cleanupExpiredStates();
+    const pending = pendingStates.get(nonce);
+    if (!pending || pending.userId !== userId) {
+      return c.redirect("/files?oauth=error&reason=invalid_state");
+    }
+    pendingStates.delete(nonce);
+
+    const config = await settings.get();
+    if (!config?.google_oauth_client_id || !config?.google_oauth_client_secret) {
+      return c.redirect("/files?oauth=error&reason=not_configured");
+    }
+
+    // Build redirect URI from BASE_URL or request origin (must match authorize step)
+    const origin = baseUrl ?? new URL(c.req.url).origin;
+    const redirectUri = `${origin}/api/oauth/google/callback`;
+
+    try {
+      // Exchange auth code for tokens
+      const tokenRes = await fetch(GOOGLE_TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code,
+          client_id: config.google_oauth_client_id,
+          client_secret: config.google_oauth_client_secret,
+          redirect_uri: redirectUri,
+          grant_type: "authorization_code",
+        }),
+      });
+
+      if (!tokenRes.ok) {
+        const errBody = await tokenRes.text();
+        logger.error({ status: tokenRes.status, body: errBody }, "Google token exchange failed");
+        return c.redirect("/files?oauth=error&reason=token_exchange");
+      }
+
+      const tokenData = (await tokenRes.json()) as {
+        access_token: string;
+        refresh_token?: string;
+        expires_in: number;
+        token_type: string;
+      };
+
+      if (!tokenData.refresh_token) {
+        logger.error("No refresh_token in response — user may have already authorized this app");
+        return c.redirect("/files?oauth=error&reason=no_refresh_token");
+      }
+
+      const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
+
+      // Fetch Google user info to get email
+      const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
+      const userInfo = userInfoRes.ok
+        ? ((await userInfoRes.json()) as { email?: string; id?: string })
+        : { email: undefined, id: undefined };
+
+      const providerEmail = userInfo.email ?? null;
+      const providerUserId = userInfo.email ?? userInfo.id ?? userId;
+
+      // Save to user_provider_identities
+      await identities.upsert({
+        userId,
+        provider: "google_drive",
+        providerUserId,
+        providerEmail,
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token,
+        tokenExpiresAt: expiresAt,
+      });
+
+      // Create a connector_config with this user's tokens (no scope yet — user picks drives/folders next)
+      const oauthCreds: OAuthCredentials = {
+        type: "oauth",
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
+        expires_at: expiresAt,
+        client_id: config.google_oauth_client_id,
+        client_secret: config.google_oauth_client_secret,
+      };
+
+      const validCreds = await ensureValidToken(oauthCreds);
+
+      const connectorConfig = await connectors.createConfig({
+        connectorType: "google_drive",
+        authType: "oauth",
+        credentials: JSON.stringify(validCreds),
+        scopeConfig: JSON.stringify({}),
+        createdBy: userId,
+      });
+
+      logger.info(
+        { userId, connectorId: connectorConfig.id, providerEmail },
+        "Google Drive OAuth tokens saved — awaiting drive selection",
+      );
+
+      return c.redirect(`/files?oauth=success&connectorId=${connectorConfig.id}`);
+    } catch (err) {
+      logger.error({ err, userId }, "OAuth callback failed");
+      return c.redirect("/files?oauth=error&reason=internal");
+    }
+  });
+
+  /** GET /google/status — check if Google OAuth is configured. */
+  routes.get("/google/status", async (c) => {
+    const config = await settings.get();
+    return c.json({
+      configured: !!(config?.google_oauth_client_id && config?.google_oauth_client_secret),
+      clientId: config?.google_oauth_client_id ?? null,
+      baseUrl: baseUrl ?? null,
+    });
+  });
+
+  /** PUT /google/config — save Google OAuth client_id + client_secret. */
+  routes.put("/google/config", requireAdmin(), async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const parsed = googleConfigSchema.safeParse(body);
+    if (!parsed.success) {
+      const message = parsed.error.issues[0]?.message ?? "Invalid request";
+      return c.json({ error: { code: "VALIDATION_ERROR", message } }, 400);
+    }
+
+    await settings.update({
+      googleOauthClientId: parsed.data.clientId.trim(),
+      googleOauthClientSecret: parsed.data.clientSecret.trim(),
+    });
+
+    return c.json({ success: true });
+  });
+
+  return routes;
+}

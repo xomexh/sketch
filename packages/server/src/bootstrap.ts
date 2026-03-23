@@ -8,6 +8,8 @@ import { applyLlmEnvFromSettings } from "./agent/llm-env";
 import { runAgent } from "./agent/runner";
 import type { McpServerConfig } from "./agent/runner";
 import type { Config } from "./config";
+import { createLlmCallFn } from "./connectors/llm";
+import { startSyncScheduler } from "./connectors/sync";
 import { createDatabase } from "./db/index";
 import { runMigrations } from "./db/migrate";
 import { createChannelRepository } from "./db/repositories/channels";
@@ -121,6 +123,11 @@ export async function createServer(config: Config, options?: CreateServerOptions
   });
   await scheduler.start();
 
+  // 8.6. Connector sync scheduler — recovers stale syncs, runs periodic sync + enrichment
+  const syncScheduler = startSyncScheduler(db, logger, 30 * 60 * 1000, {
+    llmCall: createLlmCallFn(),
+  });
+
   const slackAdapterDeps = {
     db,
     config,
@@ -223,6 +230,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
   // 11. Shutdown handle
   async function shutdown() {
     logger.info("Shutting down...");
+    await syncScheduler.stop();
     scheduler.stop();
     if (slack) await slack.stop();
     await whatsapp.stop();

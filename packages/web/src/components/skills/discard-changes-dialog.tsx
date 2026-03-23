@@ -18,7 +18,7 @@ interface DiscardChangesDialogProps {
 export function DiscardChangesDialog({ open, onOpenChange, onConfirm, isNewSkill }: DiscardChangesDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle className="text-base font-semibold">
             {isNewSkill ? "Discard this skill?" : "Discard changes?"}

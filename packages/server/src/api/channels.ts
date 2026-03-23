@@ -40,17 +40,21 @@ export function channelRoutes(deps: ChannelDeps) {
         configured: slackConfigured,
         connected: slackConfigured ? true : null,
         phoneNumber: null,
+        fromAddress: null,
       },
       {
         platform: "whatsapp" as const,
         configured: deps.whatsapp?.isConnected ?? false,
         connected: deps.whatsapp?.isConnected ? true : null,
         phoneNumber: deps.whatsapp?.phoneNumber ?? null,
+        fromAddress: null,
       },
       {
         platform: "email" as const,
         configured: emailConfigured,
-        connected: emailConfigured,
+        connected: emailConfigured ? true : null,
+        phoneNumber: null,
+        fromAddress: emailConfigured ? (settingsRow?.smtp_from ?? null) : null,
         outboundOnly: true,
       },
     ];

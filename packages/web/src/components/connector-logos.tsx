@@ -1,0 +1,106 @@
+/**
+ * Brand SVG logos for connector integrations.
+ *
+ * All icons use viewBox="0 0 24 24" and fill="currentColor" so they
+ * inherit the parent's text color. Wrap in a colored container to
+ * show the brand color, or apply the color directly.
+ *
+ * Source: Simple Icons (CC0 1.0 Universal license).
+ */
+
+interface LogoProps {
+  size?: number;
+  className?: string;
+  style?: React.CSSProperties;
+}
+
+export function GoogleDriveLogo({ size = 16, className, style }: LogoProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      width={size}
+      height={size}
+      className={className}
+      style={style}
+      aria-hidden="true"
+    >
+      <path d="M12.01 1.485c-2.082 0-3.754.02-3.743.047.01.02 1.708 3.001 3.774 6.62l3.76 6.574h3.76c2.081 0 3.753-.02 3.742-.047-.005-.02-1.708-3.001-3.775-6.62l-3.76-6.574zm-4.76 1.73a789.828 789.861 0 0 0-3.63 6.319L0 15.868l1.89 3.298 1.885 3.297 3.62-6.335 3.618-6.33-1.88-3.287C8.1 4.704 7.255 3.22 7.25 3.214zm2.259 12.653-.203.348c-.114.198-.96 1.672-1.88 3.287a423.93 423.948 0 0 1-1.698 2.97c-.01.026 3.24.042 7.222.042h7.244l1.796-3.157c.992-1.734 1.85-3.23 1.906-3.323l.104-.167h-7.249z" />
+    </svg>
+  );
+}
+
+export function ClickUpLogo({ size = 16, className, style }: LogoProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      width={size}
+      height={size}
+      className={className}
+      style={style}
+      aria-hidden="true"
+    >
+      <path d="M2 18.439l3.69-2.828c1.961 2.56 4.044 3.739 6.363 3.739 2.307 0 4.33-1.166 6.203-3.704L22 18.405C19.298 22.065 15.941 24 12.053 24 8.178 24 4.788 22.078 2 18.439zM12.04 6.15l-6.568 5.66-3.036-3.52L12.055 0l9.543 8.296-3.05 3.509z" />
+    </svg>
+  );
+}
+
+export function NotionLogo({ size = 16, className, style }: LogoProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      width={size}
+      height={size}
+      className={className}
+      style={style}
+      aria-hidden="true"
+    >
+      <path d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.981-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.167V6.354c0-.606-.233-.933-.748-.887l-15.177.887c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.748 0-.935-.234-1.495-.933l-4.577-7.186v6.952L12.21 19s0 .84-1.168.84l-3.222.186c-.093-.186 0-.653.327-.746l.84-.233V9.854L7.822 9.76c-.094-.42.14-1.026.793-1.073l3.456-.233 4.764 7.279v-6.44l-1.215-.139c-.093-.514.28-.887.747-.933zM1.936 1.035l13.31-.98c1.634-.14 2.055-.047 3.082.7l4.249 2.986c.7.513.934.653.934 1.213v16.378c0 1.026-.373 1.634-1.68 1.726l-15.458.934c-.98.047-1.448-.093-1.962-.747l-3.129-4.06c-.56-.747-.793-1.306-.793-1.96V2.667c0-.839.374-1.54 1.447-1.632z" />
+    </svg>
+  );
+}
+
+export function LinearLogo({ size = 16, className, style }: LogoProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      width={size}
+      height={size}
+      className={className}
+      style={style}
+      aria-hidden="true"
+    >
+      <path d="M2.886 4.18A11.982 11.982 0 0 1 11.99 0C18.624 0 24 5.376 24 12.009c0 3.64-1.62 6.903-4.18 9.105L2.887 4.18ZM1.817 5.626l16.556 16.556c-.524.33-1.075.62-1.65.866L.951 7.277c.247-.575.537-1.126.866-1.65ZM.322 9.163l14.515 14.515c-.71.172-1.443.282-2.195.322L0 11.358a12 12 0 0 1 .322-2.195Zm-.17 4.862 9.823 9.824a12.02 12.02 0 0 1-9.824-9.824Z" />
+    </svg>
+  );
+}
+
+/** Returns the brand logo component for a connector type, or null if unknown. */
+export function ConnectorLogo({
+  type,
+  size = 16,
+  className,
+  style,
+}: {
+  type: string;
+  size?: number;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const props = { size, className, style };
+  switch (type) {
+    case "google_drive":
+      return <GoogleDriveLogo {...props} />;
+    case "clickup":
+      return <ClickUpLogo {...props} />;
+    case "notion":
+      return <NotionLogo {...props} />;
+    case "linear":
+      return <LinearLogo {...props} />;
+    default:
+      return null;
+  }
+}

@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here.
 
+## [0.14.0] — 2026-03-24
+
+- Connectors: Google Drive, ClickUp, Notion, and Linear file sync with hybrid semantic search (LLM tagging + vector embeddings) and auto-enrichment pipeline
+- Connections UI: integration catalog with OAuth flow, per-tool permissions, MCP server management
+- Email channel (SMTP) with magic link verification
+- Fix WhatsApp group LID resolution: sender JIDs using LID format now correctly resolve to phone numbers for user identity and integration auth
+- WhatsApp phone number in agent context: phone appears in `<sender>` tag (groups) and `## User` section (DMs) alongside email
+- One-command self-hosting setup script
+- Test performance: mock icon libraries (72% import speedup), template DB cloning, fast scrypt
+- 1,096 tests (994 server + 102 frontend)
+
 ## [0.13.1] — 2026-03-18
 
 - Fix interval-to-cron conversion crash for intervals >= 60 minutes (e.g., 6-hour intervals produced invalid `*/360` cron expressions that crashed croner on startup)

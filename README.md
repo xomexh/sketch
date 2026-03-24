@@ -14,6 +14,7 @@
   <img src="https://img.shields.io/badge/node-24%2B-brightgreen?style=for-the-badge" alt="Node 24+" />
   <a href="https://github.com/canvasxai/sketch/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/canvasxai/sketch/ci.yml?style=for-the-badge&label=CI" alt="CI" /></a>
   <a href="https://github.com/canvasxai/sketch/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge" alt="PRs Welcome" /></a>
+  <a href="https://getsketch.ai/discord"><img src="https://img.shields.io/badge/Discord-Join%20us-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>
   <a href="https://platform.claude.com/docs/en/agent-sdk/overview"><img src="https://img.shields.io/badge/built%20with-Claude%20Agent%20SDK-D97757?style=for-the-badge" alt="Built with Claude Agent SDK" /></a>
 </p>
 
@@ -45,7 +46,7 @@ Think of it as giving your entire org a shared AI teammate — one that remember
 - **Skills system** — deploy org-wide skills (like ICP discovery or CRM tools) that every team member gets automatically.
 - **Genuinely self-hostable** — a single Node.js process and SQLite. No Kubernetes thesis required.
 
-> Inspired by [OpenClaw](https://github.com/openclaw/openclaw) and [NanoClaw](https://github.com/qwibitai/nanoclaw) — brilliant personal AI assistants. Sketch takes their multi-channel, local-first approach and adds the missing piece: a multi-user org layer.
+> Inspired by [OpenClaw](https://github.com/openclaw/openclaw) — a brilliant personal AI assistant. Sketch takes its multi-channel, local-first approach and adds the missing piece: a multi-user org layer.
 
 ## Quick Start
 

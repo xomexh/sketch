@@ -263,6 +263,7 @@ describe("whatsapp/adapter", () => {
         rawMessage: {},
         isMentioned: false,
         senderJid: "5555@s.whatsapp.net",
+        senderPhone: "+5555",
       });
 
       expect(deps.groupBuffer.append).toHaveBeenCalledWith(
@@ -288,6 +289,7 @@ describe("whatsapp/adapter", () => {
         rawMessage: {},
         isMentioned: false,
         senderJid: "5555@s.whatsapp.net",
+        senderPhone: "+5555",
       });
 
       expect(deps.groupBuffer.append).toHaveBeenCalledWith(
@@ -311,6 +313,7 @@ describe("whatsapp/adapter", () => {
         rawMessage: {},
         isMentioned: true,
         senderJid: "5555@s.whatsapp.net",
+        senderPhone: "+5555",
       });
       await flush();
 
@@ -335,6 +338,7 @@ describe("whatsapp/adapter", () => {
         rawMessage: {},
         isMentioned: true,
         senderJid: "5555@s.whatsapp.net",
+        senderPhone: "+5555",
       });
       await flush();
 
@@ -362,6 +366,7 @@ describe("whatsapp/adapter", () => {
         rawMessage: {},
         isMentioned: true,
         senderJid: "5555@s.whatsapp.net",
+        senderPhone: "+5555",
       });
       await flush();
 
@@ -385,6 +390,7 @@ describe("whatsapp/adapter", () => {
         rawMessage: {},
         isMentioned: true,
         senderJid: "5555@s.whatsapp.net",
+        senderPhone: "+5555",
       });
       await flush();
 
@@ -407,6 +413,7 @@ describe("whatsapp/adapter", () => {
         rawMessage: {},
         isMentioned: true,
         senderJid: "5555@s.whatsapp.net",
+        senderPhone: "+5555",
       });
       await flush();
 
@@ -430,6 +437,7 @@ describe("whatsapp/adapter", () => {
         rawMessage: {},
         isMentioned: true,
         senderJid: "9999@s.whatsapp.net",
+        senderPhone: "+9999",
       });
       await flush();
 
@@ -454,11 +462,67 @@ describe("whatsapp/adapter", () => {
         rawMessage: {},
         isMentioned: true,
         senderJid: "5555@s.whatsapp.net",
+        senderPhone: "+5555",
       });
       await flush();
 
       expect(mock.startComposing).toHaveBeenCalledWith("group@g.us");
       expect(mock.stopComposing).toHaveBeenCalledWith("group@g.us");
+    });
+
+    it("group handler uses senderPhone for user lookup instead of senderJid", async () => {
+      const deps = makeDeps();
+      const { mock, getHandler } = createMockWhatsApp();
+      wireWhatsAppHandlers(mock as never, deps);
+      const handler = getHandler();
+
+      // senderJid is a LID-style JID; senderPhone is the already-resolved phone
+      await handler({
+        type: "group",
+        text: "@bot help",
+        jid: "group@g.us",
+        messageId: "m1",
+        pushName: "Alice",
+        rawMessage: {},
+        isMentioned: true,
+        senderJid: "86702773280883@lid",
+        senderPhone: "+1234567890",
+      });
+      await flush();
+
+      // Should use senderPhone, not a JID-derived number, for the DB lookup
+      expect(deps.repos.users.findByWhatsappNumber).toHaveBeenCalledWith("+1234567890");
+      expect(deps.repos.users.findByWhatsappNumber).not.toHaveBeenCalledWith("+86702773280883");
+    });
+
+    it("group handler falls back to pushName when senderPhone is null", async () => {
+      const deps = makeDeps();
+      // Ensure user lookup is not called (senderPhone is null, so no DB lookup possible)
+      vi.mocked(deps.repos.users.findByWhatsappNumber).mockResolvedValue(undefined);
+      const { mock, getHandler } = createMockWhatsApp();
+      wireWhatsAppHandlers(mock as never, deps);
+      const handler = getHandler();
+
+      await handler({
+        type: "group",
+        text: "@bot help",
+        jid: "group@g.us",
+        messageId: "m1",
+        pushName: "FallbackName",
+        rawMessage: {},
+        isMentioned: true,
+        senderJid: "86702773280883@lid",
+        senderPhone: null,
+      });
+      await flush();
+
+      // When senderPhone is null, skip the DB lookup entirely
+      expect(deps.repos.users.findByWhatsappNumber).not.toHaveBeenCalled();
+
+      // The agent should run using pushName as the sender identity
+      expect(deps.runAgent).toHaveBeenCalledOnce();
+      const agentCall = vi.mocked(deps.runAgent).mock.calls[0][0];
+      expect(agentCall.userMessage).toContain("<sender>FallbackName</sender>");
     });
   });
 });

@@ -19,7 +19,6 @@ import type { Logger } from "../logger";
 import type { QueueManager } from "../queue";
 import type { TaskScheduler } from "../scheduler/service";
 import type { WhatsAppBot } from "./bot";
-import { jidToPhoneNumber } from "./bot";
 import type { GroupBuffer } from "./group-buffer";
 import { createWhatsAppMessageHandler } from "./message-handler";
 
@@ -288,8 +287,7 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
     // --- Group handler ---
 
     if (!message.isMentioned) {
-      const senderPhone = jidToPhoneNumber(message.senderJid);
-      const user = await repos.users.findByWhatsappNumber(senderPhone);
+      const user = message.senderPhone ? await repos.users.findByWhatsappNumber(message.senderPhone) : undefined;
       groupBuffer.append(message.jid, {
         senderName: user?.name ?? message.pushName,
         text: message.text,
@@ -298,8 +296,7 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
       return;
     }
 
-    const senderPhone = jidToPhoneNumber(message.senderJid);
-    const user = await repos.users.findByWhatsappNumber(senderPhone);
+    const user = message.senderPhone ? await repos.users.findByWhatsappNumber(message.senderPhone) : undefined;
     const userName = user?.name ?? message.pushName;
 
     const groupJid = message.jid;

@@ -132,6 +132,8 @@ sketch/
 
 We'd genuinely love your help. Whether it's a new channel adapter, a skill, a bug fix, or telling us our error messages are confusing — all of it matters.
 
+Join us on [Discord](https://getsketch.ai/discord) to chat with the team, ask questions, or just hang out.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, code style, and PR guidelines.
 
 ## License

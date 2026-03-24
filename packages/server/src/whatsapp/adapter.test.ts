@@ -245,6 +245,27 @@ describe("whatsapp/adapter", () => {
       const agentCall = vi.mocked(deps.runAgent).mock.calls[0][0];
       expect(agentCall.integrationMcpServers).toEqual(mcpServers);
     });
+
+    it("passes user phone to agent context in DM", async () => {
+      const deps = makeDeps();
+      const { mock, getHandler } = createMockWhatsApp();
+      wireWhatsAppHandlers(mock as never, deps);
+      const handler = getHandler();
+
+      await handler({
+        type: "dm",
+        text: "hello",
+        jid: "1234@s.whatsapp.net",
+        messageId: "m1",
+        pushName: "Alice",
+        rawMessage: {},
+        phoneNumber: "+1234567890",
+      });
+      await flush();
+
+      const agentCall = vi.mocked(deps.runAgent).mock.calls[0][0];
+      expect(agentCall.userPhone).toBe("+1234567890");
+    });
   });
 
   describe("group handler", () => {
@@ -398,7 +419,7 @@ describe("whatsapp/adapter", () => {
       expect(agentCall.userEmail).toBe("alice@test.com");
     });
 
-    it("includes user email in group mention message", async () => {
+    it("includes user phone and email in group mention message", async () => {
       const deps = makeDeps();
       const { mock, getHandler } = createMockWhatsApp();
       wireWhatsAppHandlers(mock as never, deps);
@@ -413,12 +434,60 @@ describe("whatsapp/adapter", () => {
         rawMessage: {},
         isMentioned: true,
         senderJid: "5555@s.whatsapp.net",
-        senderPhone: "+5555",
+        senderPhone: "+1234567890",
       });
       await flush();
 
       const agentCall = vi.mocked(deps.runAgent).mock.calls[0][0];
-      expect(agentCall.userMessage).toContain("<sender>Alice (alice@test.com)</sender>");
+      expect(agentCall.userMessage).toContain("<sender>Alice (+1234567890, alice@test.com)</sender>");
+    });
+
+    it("passes sender phone to agent context in group mention", async () => {
+      const deps = makeDeps();
+      const { mock, getHandler } = createMockWhatsApp();
+      wireWhatsAppHandlers(mock as never, deps);
+      const handler = getHandler();
+
+      await handler({
+        type: "group",
+        text: "@bot help",
+        jid: "group@g.us",
+        messageId: "m1",
+        pushName: "Alice",
+        rawMessage: {},
+        isMentioned: true,
+        senderJid: "5555@s.whatsapp.net",
+        senderPhone: "+1234567890",
+      });
+      await flush();
+
+      const agentCall = vi.mocked(deps.runAgent).mock.calls[0][0];
+      expect(agentCall.userPhone).toBe("+1234567890");
+    });
+
+    it("does NOT pass phone for unregistered group users", async () => {
+      const deps = makeDeps();
+      vi.mocked(deps.repos.users.findByWhatsappNumber).mockResolvedValue(undefined);
+      const { mock, getHandler } = createMockWhatsApp();
+      wireWhatsAppHandlers(mock as never, deps);
+      const handler = getHandler();
+
+      await handler({
+        type: "group",
+        text: "@bot help",
+        jid: "group@g.us",
+        messageId: "m1",
+        pushName: "Bob",
+        rawMessage: {},
+        isMentioned: true,
+        senderJid: "9999@s.whatsapp.net",
+        senderPhone: "+9999",
+      });
+      await flush();
+
+      const agentCall = vi.mocked(deps.runAgent).mock.calls[0][0];
+      // Phone must not be set for unregistered users — only registered users get phone in context
+      expect(agentCall.userPhone == null).toBe(true);
     });
 
     it("calls buildMcpServers with null for unregistered group users", async () => {

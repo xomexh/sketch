@@ -42,6 +42,7 @@ export interface RunAgentParams {
   workspaceDir: string;
   userName: string;
   userEmail?: string | null;
+  userPhone?: string | null;
   logger: Logger;
   platform: "slack" | "whatsapp";
   onMessage: (text: string) => Promise<void>;
@@ -115,6 +116,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
     platform: params.platform,
     userName,
     userEmail: params.userEmail,
+    userPhone: params.userPhone,
     workspaceDir: absWorkspace,
     orgName: params.orgName,
     botName: params.botName,

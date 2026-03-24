@@ -111,6 +111,7 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
           workspaceDir,
           userName: requester.name,
           userEmail: requester.email,
+          userPhone: requester.whatsapp_number,
           logger,
           platform: "whatsapp",
           onMessage,
@@ -244,6 +245,7 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
             workspaceDir,
             userName: user.name,
             userEmail: user.email,
+            userPhone: user.whatsapp_number ?? message.phoneNumber,
             logger,
             platform: "whatsapp",
             onMessage,
@@ -341,6 +343,7 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
           currentUserName: userName,
           currentMessage: message.text || "See attached files.",
           currentUserEmail: user?.email ?? null,
+          currentUserPhone: user?.whatsapp_number ?? null,
           isSharedContext: true,
         });
 
@@ -355,6 +358,7 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
           workspaceDir,
           userName,
           userEmail: user?.email,
+          userPhone: user?.whatsapp_number ?? null,
           logger,
           platform: "whatsapp",
           onMessage,

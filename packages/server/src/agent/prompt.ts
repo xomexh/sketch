@@ -48,6 +48,7 @@ export interface SketchContextParams {
   currentUserName: string;
   currentMessage: string;
   currentUserEmail?: string | null;
+  currentUserPhone?: string | null;
   header?: string;
   isSharedContext?: boolean;
   pendingOutreach?: OutreachRecord[];
@@ -67,6 +68,7 @@ export function buildSystemContext(params: {
   platform: "slack" | "whatsapp";
   userName: string;
   userEmail?: string | null;
+  userPhone?: string | null;
   workspaceDir: string;
   orgName?: string | null;
   botName?: string | null;
@@ -203,7 +205,9 @@ export function buildSystemContext(params: {
   );
 
   if (!params.channelContext && !params.groupContext) {
-    sections.push("## User", `Name: ${params.userName}`, `Email: ${params.userEmail || "not configured"}`);
+    const userLines = ["## User", `Name: ${params.userName}`, `Email: ${params.userEmail || "not configured"}`];
+    if (params.userPhone) userLines.push(`Phone: ${params.userPhone}`);
+    sections.push(...userLines);
   }
 
   sections.push(
@@ -234,7 +238,8 @@ export function buildSystemContext(params: {
  * so it doesn't invalidate the SDK session cache on every change.
  */
 export function buildSketchContext(params: SketchContextParams): string {
-  const { messages, currentUserName, currentMessage, currentUserEmail, header, isSharedContext } = params;
+  const { messages, currentUserName, currentMessage, currentUserEmail, currentUserPhone, header, isSharedContext } =
+    params;
 
   const sectionParts: string[] = [];
 
@@ -284,7 +289,10 @@ export function buildSketchContext(params: SketchContextParams): string {
 
   // <sender> section — only for shared contexts (channels/groups)
   if (isSharedContext) {
-    const senderContent = currentUserEmail ? `${currentUserName} (${currentUserEmail})` : currentUserName;
+    const contactParts: string[] = [];
+    if (currentUserPhone) contactParts.push(currentUserPhone);
+    if (currentUserEmail) contactParts.push(currentUserEmail);
+    const senderContent = contactParts.length > 0 ? `${currentUserName} (${contactParts.join(", ")})` : currentUserName;
     sectionParts.push(`<sender>${senderContent}</sender>`);
   }
 

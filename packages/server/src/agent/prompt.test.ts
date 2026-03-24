@@ -335,6 +335,62 @@ describe("buildSystemContext", () => {
     });
   });
 
+  describe("user phone", () => {
+    it("includes phone when provided in DM context", () => {
+      const result = buildSystemContext({
+        platform: "whatsapp",
+        userName: "Alice",
+        userPhone: "+1234567890",
+        workspaceDir: "/data/workspaces/u123",
+      });
+      expect(result).toContain("Phone: +1234567890");
+    });
+
+    it("omits phone line when null (no noise for platforms without phone)", () => {
+      const result = buildSystemContext({
+        platform: "whatsapp",
+        userName: "Alice",
+        userPhone: null,
+        workspaceDir: "/data/workspaces/u123",
+      });
+      expect(result).not.toContain("Phone:");
+    });
+
+    it("does not include phone in channel context", () => {
+      const result = buildSystemContext({
+        platform: "slack",
+        userName: "Alice",
+        userPhone: "+1234567890",
+        workspaceDir: "/data/workspaces/channel-C001",
+        channelContext: { channelName: "general" },
+      });
+      expect(result).not.toContain("Phone:");
+    });
+
+    it("does not include phone in group context", () => {
+      const result = buildSystemContext({
+        platform: "whatsapp",
+        userName: "Alice",
+        userPhone: "+1234567890",
+        workspaceDir: "/data/workspaces/wa-group-123",
+        groupContext: { groupName: "Engineering Team" },
+      });
+      expect(result).not.toContain("Phone:");
+    });
+
+    it("phone and email coexist in DM context", () => {
+      const result = buildSystemContext({
+        platform: "whatsapp",
+        userName: "Alice",
+        userEmail: "alice@example.com",
+        userPhone: "+1234567890",
+        workspaceDir: "/data/workspaces/u123",
+      });
+      expect(result).toContain("Email: alice@example.com");
+      expect(result).toContain("Phone: +1234567890");
+    });
+  });
+
   describe("group context without description", () => {
     const result = buildSystemContext({
       platform: "whatsapp",
@@ -453,6 +509,50 @@ describe("buildSketchContext", () => {
     const senderIdx = result.indexOf("<sender>");
     expect(threadIdx).toBeLessThan(senderIdx);
     expect(result).toContain("<sender>Alice (alice@example.com)</sender>");
+  });
+
+  it("includes phone and email in sender tag when both provided", () => {
+    const result = buildSketchContext({
+      messages: [],
+      currentUserName: "Alice",
+      currentMessage: "hello",
+      currentUserEmail: "alice@example.com",
+      currentUserPhone: "+1234567890",
+      isSharedContext: true,
+    });
+    expect(result).toContain("<sender>Alice (+1234567890, alice@example.com)</sender>");
+  });
+
+  it("includes only phone in sender tag when email absent", () => {
+    const result = buildSketchContext({
+      messages: [],
+      currentUserName: "Alice",
+      currentMessage: "hello",
+      currentUserPhone: "+1234567890",
+      isSharedContext: true,
+    });
+    expect(result).toContain("<sender>Alice (+1234567890)</sender>");
+  });
+
+  it("includes only email in sender tag when phone absent", () => {
+    const result = buildSketchContext({
+      messages: [],
+      currentUserName: "Alice",
+      currentMessage: "hello",
+      currentUserEmail: "alice@example.com",
+      isSharedContext: true,
+    });
+    expect(result).toContain("<sender>Alice (alice@example.com)</sender>");
+  });
+
+  it("includes only name in sender tag when both phone and email absent", () => {
+    const result = buildSketchContext({
+      messages: [],
+      currentUserName: "Alice",
+      currentMessage: "hello",
+      isSharedContext: true,
+    });
+    expect(result).toContain("<sender>Alice</sender>");
   });
 
   it("includes attachment formatting inside thread section", () => {

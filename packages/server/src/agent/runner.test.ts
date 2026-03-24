@@ -1,5 +1,36 @@
-import { describe, expect, it } from "vitest";
-import { extractAssistantText } from "./runner";
+import { describe, expect, it, vi } from "vitest";
+import { extractAssistantText, runAgent } from "./runner";
+
+// Mock the SDK so runAgent can be tested without spawning subprocesses
+vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
+  query: vi.fn().mockImplementation(() => {
+    return (async function* () {
+      yield { type: "system", subtype: "init", session_id: "sess-test" };
+      yield { type: "result", session_id: "sess-test", total_cost_usd: 0 };
+    })();
+  }),
+}));
+
+vi.mock("./sessions", () => ({
+  getSessionId: vi.fn().mockResolvedValue(undefined),
+  saveSessionId: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("./sketch-tools", () => {
+  class MockUploadCollector {
+    drain() {
+      return [];
+    }
+  }
+  return {
+    UploadCollector: MockUploadCollector,
+    createSketchMcpServer: vi.fn().mockReturnValue({}),
+  };
+});
+
+vi.mock("./permissions", () => ({
+  createCanUseTool: vi.fn().mockReturnValue(() => ({ behavior: "allow" as const })),
+}));
 
 describe("extractAssistantText", () => {
   it("extracts text from a standard assistant message", () => {
@@ -85,5 +116,40 @@ describe("extractAssistantText", () => {
       message: { content: "not an array" },
     };
     expect(extractAssistantText(message)).toBeNull();
+  });
+});
+
+describe("runAgent", () => {
+  it("forwards userPhone to buildSystemContext (phone appears in system prompt append)", async () => {
+    const { query } = await import("@anthropic-ai/claude-agent-sdk");
+    const capturedOptions: unknown[] = [];
+    vi.mocked(query).mockImplementation(((args: unknown) => {
+      capturedOptions.push(args);
+      return (async function* () {
+        yield { type: "system", subtype: "init", session_id: "sess-phone-test" };
+        yield { type: "result", session_id: "sess-phone-test", total_cost_usd: 0 };
+      })();
+    }) as unknown as typeof query);
+
+    await runAgent({
+      db: {} as Parameters<typeof runAgent>[0]["db"],
+      workspaceKey: "u-phone-test",
+      userMessage: "hello",
+      workspaceDir: "/tmp/ws-phone-test",
+      userName: "Alice",
+      userEmail: "alice@example.com",
+      userPhone: "+1234567890",
+      logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Parameters<
+        typeof runAgent
+      >[0]["logger"],
+      platform: "whatsapp",
+      onMessage: vi.fn().mockResolvedValue(undefined),
+    });
+
+    expect(capturedOptions.length).toBeGreaterThan(0);
+    const callArgs = capturedOptions[capturedOptions.length - 1] as {
+      options: { systemPrompt: { append: string } };
+    };
+    expect(callArgs.options.systemPrompt.append).toContain("Phone: +1234567890");
   });
 });

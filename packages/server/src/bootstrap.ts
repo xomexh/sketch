@@ -31,6 +31,8 @@ import type { SlackBot } from "./slack/bot";
 import { createSlackStartupManager } from "./slack/startup";
 import { ThreadBuffer } from "./slack/thread-buffer";
 import { UserCache } from "./slack/user-cache";
+import { TelemetryEmitter } from "./telemetry/emitter";
+import { SqliteSink } from "./telemetry/sinks/sqlite";
 import { wireWhatsAppHandlers } from "./whatsapp/adapter";
 import { WhatsAppBot } from "./whatsapp/bot";
 import { GroupBuffer } from "./whatsapp/group-buffer";
@@ -71,73 +73,106 @@ export async function createServer(config: Config, options?: CreateServerOptions
   const whatsappGroupsRepo = createWhatsAppGroupRepository(db);
   const outreachRepo = createOutreachRepository(db);
   const agentRunsRepo = createAgentRunsRepo(db);
+  const sqliteSink = new SqliteSink(agentRunsRepo, logger);
+  const emitter = new TelemetryEmitter([sqliteSink], logger);
 
   const trackedRunAgent = async (params: RunAgentParams): Promise<AgentResult> => {
+    const runId = randomUUID();
+    const startTime = Date.now();
     let result: AgentResult | undefined;
 
     try {
       result = await runAgent(params);
     } catch (err) {
-      agentRunsRepo
-        .insertRun({
-          user_id: params.currentUserId ?? null,
+      emitter.emit({
+        eventType: "agent_run",
+        timestamp: startTime,
+        payload: {
+          runId,
+          userId: params.currentUserId ?? null,
           platform: params.platform,
-          context_type: params.contextType ?? "dm",
-          workspace_key: params.workspaceKey,
-          thread_key: params.threadTs ?? null,
-          cost_usd: 0,
-          is_error: 1,
-        })
-        .catch((dbErr) => logger.error({ err: dbErr }, "Failed to persist failed agent run"));
+          contextType: params.contextType ?? "dm",
+          workspaceKey: params.workspaceKey,
+          threadKey: params.threadTs ?? null,
+          sessionId: null,
+          isResumedSession: false,
+          costUsd: 0,
+          durationMs: Date.now() - startTime,
+          durationApiMs: 0,
+          numTurns: 0,
+          stopReason: null,
+          errorSubtype: null,
+          isError: true,
+          messageSent: false,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          webSearchRequests: 0,
+          webFetchRequests: 0,
+          model: null,
+          totalAttachments: 0,
+          imageCount: 0,
+          nonImageCount: 0,
+          mimeTypes: [],
+          fileSizes: [],
+          promptMode: "text",
+          pendingUploads: 0,
+        },
+      });
       throw err;
     }
 
-    const runId = randomUUID();
-    agentRunsRepo
-      .insertRun({
-        id: runId,
-        user_id: params.currentUserId ?? null,
+    // Emit tool call events first (SqliteSink batches per runId)
+    for (const tc of result.toolCalls) {
+      emitter.emit({
+        eventType: "tool_call",
+        timestamp: startTime,
+        payload: {
+          runId,
+          toolName: tc.toolName,
+          skillName: tc.skillName,
+        },
+      });
+    }
+
+    // Emit agent run event (triggers SqliteSink to flush the batch)
+    emitter.emit({
+      eventType: "agent_run",
+      timestamp: startTime,
+      payload: {
+        runId,
+        userId: params.currentUserId ?? null,
         platform: params.platform,
-        context_type: params.contextType ?? "dm",
-        workspace_key: params.workspaceKey,
-        thread_key: params.threadTs ?? null,
-        session_id: result.sessionId,
-        is_resumed_session: result.isResumedSession ? 1 : 0,
-        cost_usd: result.costUsd,
-        duration_ms: result.durationMs,
-        duration_api_ms: result.durationApiMs,
-        num_turns: result.numTurns,
-        stop_reason: result.stopReason,
-        error_subtype: result.errorSubtype,
-        is_error: 0,
-        message_sent: result.messageSent ? 1 : 0,
-        input_tokens: result.inputTokens,
-        output_tokens: result.outputTokens,
-        cache_read_tokens: result.cacheReadTokens,
-        cache_creation_tokens: result.cacheCreationTokens,
-        web_search_requests: result.webSearchRequests,
-        web_fetch_requests: result.webFetchRequests,
+        contextType: params.contextType ?? "dm",
+        workspaceKey: params.workspaceKey,
+        threadKey: params.threadTs ?? null,
+        sessionId: result.sessionId,
+        isResumedSession: result.isResumedSession,
+        costUsd: result.costUsd,
+        durationMs: result.durationMs,
+        durationApiMs: result.durationApiMs,
+        numTurns: result.numTurns,
+        stopReason: result.stopReason,
+        errorSubtype: result.errorSubtype,
+        isError: false,
+        messageSent: result.messageSent,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        cacheReadTokens: result.cacheReadTokens,
+        cacheCreationTokens: result.cacheCreationTokens,
+        webSearchRequests: result.webSearchRequests,
+        webFetchRequests: result.webFetchRequests,
         model: result.model,
-        total_attachments: result.totalAttachments,
-        image_count: result.imageCount,
-        non_image_count: result.nonImageCount,
-        mime_types: JSON.stringify(result.mimeTypes),
-        file_sizes: JSON.stringify(result.fileSizes),
-        prompt_mode: result.promptMode,
-        pending_uploads: result.pendingUploads.length,
-      })
-      .then(() => {
-        if (result.toolCalls.length > 0) {
-          return agentRunsRepo.insertToolCalls(
-            result.toolCalls.map((tc) => ({
-              agent_run_id: runId,
-              tool_name: tc.toolName,
-              skill_name: tc.skillName,
-            })),
-          );
-        }
-      })
-      .catch((dbErr) => logger.error({ err: dbErr }, "Failed to persist agent run usage"));
+        totalAttachments: result.totalAttachments,
+        imageCount: result.imageCount,
+        nonImageCount: result.nonImageCount,
+        mimeTypes: result.mimeTypes,
+        fileSizes: result.fileSizes,
+        promptMode: result.promptMode,
+        pendingUploads: result.pendingUploads.length,
+      },
+    });
 
     return result;
   };
@@ -303,6 +338,8 @@ export async function createServer(config: Config, options?: CreateServerOptions
   // 11. Shutdown handle
   async function shutdown() {
     logger.info("Shutting down...");
+    await emitter.flush();
+    await emitter.close();
     await syncScheduler.stop();
     scheduler.stop();
     if (slack) await slack.stop();

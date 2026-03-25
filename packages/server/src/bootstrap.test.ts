@@ -13,6 +13,11 @@ vi.mock("./agent/runner", () => ({
   runAgent: vi.fn(),
 }));
 
+// Avoid syncing skills from remote repo during tests
+vi.mock("./skills/sync", () => ({
+  syncFeaturedSkills: vi.fn(),
+}));
+
 type ServerHandle = Awaited<ReturnType<typeof createServer>>;
 
 describe("bootstrap", () => {

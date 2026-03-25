@@ -5,6 +5,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
+import { SpanStatusCode, context, trace } from "@opentelemetry/api";
 import { applyLlmEnvFromSettings } from "./agent/llm-env";
 import { type AgentResult, runAgent } from "./agent/runner";
 import type { McpServerConfig, RunAgentParams } from "./agent/runner";
@@ -31,8 +32,7 @@ import type { SlackBot } from "./slack/bot";
 import { createSlackStartupManager } from "./slack/startup";
 import { ThreadBuffer } from "./slack/thread-buffer";
 import { UserCache } from "./slack/user-cache";
-import { TelemetryEmitter } from "./telemetry/emitter";
-import { SqliteSink } from "./telemetry/sinks/sqlite";
+import { initTelemetry } from "./telemetry/setup";
 import { wireWhatsAppHandlers } from "./whatsapp/adapter";
 import { WhatsAppBot } from "./whatsapp/bot";
 import { GroupBuffer } from "./whatsapp/group-buffer";
@@ -73,108 +73,66 @@ export async function createServer(config: Config, options?: CreateServerOptions
   const whatsappGroupsRepo = createWhatsAppGroupRepository(db);
   const outreachRepo = createOutreachRepository(db);
   const agentRunsRepo = createAgentRunsRepo(db);
-  const sqliteSink = new SqliteSink(agentRunsRepo, logger);
-  const emitter = new TelemetryEmitter([sqliteSink], logger);
+  const telemetry = initTelemetry(agentRunsRepo, logger);
+  const tracer = trace.getTracer("sketch");
 
   const trackedRunAgent = async (params: RunAgentParams): Promise<AgentResult> => {
     const runId = randomUUID();
-    const startTime = Date.now();
-    let result: AgentResult | undefined;
+    const span = tracer.startSpan("invoke_agent sketch");
+
+    // Set params-derived attributes before try block (needed for error path — NOT NULL columns)
+    span.setAttribute("gen_ai.operation.name", "invoke_agent");
+    span.setAttribute("gen_ai.provider.name", "anthropic");
+    span.setAttribute("sketch.run_id", runId);
+    span.setAttribute("sketch.platform", params.platform);
+    span.setAttribute("sketch.context_type", params.contextType ?? "dm");
+    span.setAttribute("sketch.user_id", params.currentUserId ?? "");
+    span.setAttribute("sketch.workspace_key", params.workspaceKey);
+    span.setAttribute("sketch.thread_key", params.threadTs ?? "");
 
     try {
-      result = await runAgent(params);
+      const result = await runAgent(params);
+
+      // Set result-derived attributes
+      span.setAttribute("gen_ai.response.model", result.model ?? "");
+      span.setAttribute("gen_ai.usage.input_tokens", result.inputTokens);
+      span.setAttribute("gen_ai.usage.output_tokens", result.outputTokens);
+      span.setAttribute("gen_ai.usage.cache_read_input_tokens", result.cacheReadTokens);
+      span.setAttribute("gen_ai.usage.cache_creation_input_tokens", result.cacheCreationTokens);
+      span.setAttribute("gen_ai.response.finish_reasons", [result.stopReason ?? "unknown"]);
+      span.setAttribute("gen_ai.conversation.id", result.sessionId ?? "");
+      span.setAttribute("sketch.cost_usd", result.costUsd);
+      span.setAttribute("sketch.num_turns", result.numTurns);
+      span.setAttribute("sketch.duration_api_ms", result.durationApiMs);
+      span.setAttribute("sketch.error_subtype", result.errorSubtype ?? "");
+      span.setAttribute("sketch.is_resumed_session", result.isResumedSession);
+      span.setAttribute("sketch.message_sent", result.messageSent);
+      span.setAttribute("sketch.web_search_requests", result.webSearchRequests);
+      span.setAttribute("sketch.web_fetch_requests", result.webFetchRequests);
+      span.setAttribute("sketch.total_attachments", result.totalAttachments);
+      span.setAttribute("sketch.image_count", result.imageCount);
+      span.setAttribute("sketch.non_image_count", result.nonImageCount);
+      span.setAttribute("sketch.mime_types", JSON.stringify(result.mimeTypes));
+      span.setAttribute("sketch.file_sizes", JSON.stringify(result.fileSizes));
+      span.setAttribute("sketch.prompt_mode", result.promptMode);
+      span.setAttribute("sketch.pending_uploads", result.pendingUploads.length);
+
+      // Child spans for tool calls
+      for (const tc of result.toolCalls) {
+        const toolSpan = tracer.startSpan(`execute_tool ${tc.toolName}`, {}, trace.setSpan(context.active(), span));
+        toolSpan.setAttribute("gen_ai.operation.name", "execute_tool");
+        toolSpan.setAttribute("gen_ai.tool.name", tc.toolName);
+        if (tc.skillName) toolSpan.setAttribute("sketch.skill.name", tc.skillName);
+        toolSpan.end();
+      }
+
+      span.end();
+      return result;
     } catch (err) {
-      emitter.emit({
-        eventType: "agent_run",
-        timestamp: startTime,
-        payload: {
-          runId,
-          userId: params.currentUserId ?? null,
-          platform: params.platform,
-          contextType: params.contextType ?? "dm",
-          workspaceKey: params.workspaceKey,
-          threadKey: params.threadTs ?? null,
-          sessionId: null,
-          isResumedSession: false,
-          costUsd: 0,
-          durationMs: Date.now() - startTime,
-          durationApiMs: 0,
-          numTurns: 0,
-          stopReason: null,
-          errorSubtype: null,
-          isError: true,
-          messageSent: false,
-          inputTokens: 0,
-          outputTokens: 0,
-          cacheReadTokens: 0,
-          cacheCreationTokens: 0,
-          webSearchRequests: 0,
-          webFetchRequests: 0,
-          model: null,
-          totalAttachments: 0,
-          imageCount: 0,
-          nonImageCount: 0,
-          mimeTypes: [],
-          fileSizes: [],
-          promptMode: "text",
-          pendingUploads: 0,
-        },
-      });
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      span.end();
       throw err;
     }
-
-    // Emit tool call events first (SqliteSink batches per runId)
-    for (const tc of result.toolCalls) {
-      emitter.emit({
-        eventType: "tool_call",
-        timestamp: startTime,
-        payload: {
-          runId,
-          toolName: tc.toolName,
-          skillName: tc.skillName,
-        },
-      });
-    }
-
-    // Emit agent run event (triggers SqliteSink to flush the batch)
-    emitter.emit({
-      eventType: "agent_run",
-      timestamp: startTime,
-      payload: {
-        runId,
-        userId: params.currentUserId ?? null,
-        platform: params.platform,
-        contextType: params.contextType ?? "dm",
-        workspaceKey: params.workspaceKey,
-        threadKey: params.threadTs ?? null,
-        sessionId: result.sessionId,
-        isResumedSession: result.isResumedSession,
-        costUsd: result.costUsd,
-        durationMs: result.durationMs,
-        durationApiMs: result.durationApiMs,
-        numTurns: result.numTurns,
-        stopReason: result.stopReason,
-        errorSubtype: result.errorSubtype,
-        isError: false,
-        messageSent: result.messageSent,
-        inputTokens: result.inputTokens,
-        outputTokens: result.outputTokens,
-        cacheReadTokens: result.cacheReadTokens,
-        cacheCreationTokens: result.cacheCreationTokens,
-        webSearchRequests: result.webSearchRequests,
-        webFetchRequests: result.webFetchRequests,
-        model: result.model,
-        totalAttachments: result.totalAttachments,
-        imageCount: result.imageCount,
-        nonImageCount: result.nonImageCount,
-        mimeTypes: result.mimeTypes,
-        fileSizes: result.fileSizes,
-        promptMode: result.promptMode,
-        pendingUploads: result.pendingUploads.length,
-      },
-    });
-
-    return result;
   };
 
   // 4. LLM env from DB
@@ -338,8 +296,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
   // 11. Shutdown handle
   async function shutdown() {
     logger.info("Shutting down...");
-    await emitter.flush();
-    await emitter.close();
+    await telemetry.shutdown();
     await syncScheduler.stop();
     scheduler.stop();
     if (slack) await slack.stop();

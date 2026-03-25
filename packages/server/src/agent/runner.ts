@@ -22,11 +22,36 @@ import { buildSystemContext } from "./prompt";
 import { getSessionId, saveSessionId } from "./sessions";
 import { UploadCollector, createSketchMcpServer } from "./sketch-tools";
 
+export interface ToolCallRecord {
+  toolName: string;
+  skillName: string | null;
+}
+
 export interface AgentResult {
   messageSent: boolean;
   sessionId: string;
   costUsd: number;
   pendingUploads: string[];
+  durationMs: number;
+  durationApiMs: number;
+  numTurns: number;
+  stopReason: string | null;
+  errorSubtype: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  webSearchRequests: number;
+  webFetchRequests: number;
+  model: string | null;
+  isResumedSession: boolean;
+  totalAttachments: number;
+  imageCount: number;
+  nonImageCount: number;
+  mimeTypes: string[];
+  fileSizes: number[];
+  promptMode: "text" | "multimodal";
+  toolCalls: ToolCallRecord[];
 }
 
 export interface McpServerConfig {
@@ -73,7 +98,8 @@ export interface RunAgentParams {
     list: () => Promise<Selectable<UsersTable>[]>;
     findById: (id: string) => Promise<Selectable<UsersTable> | undefined>;
   };
-  currentUserId?: string;
+  contextType?: "dm" | "channel_mention" | "scheduled_task" | "outreach";
+  currentUserId?: string | null;
   sendDm?: (params: { userId: string; platform: string; message: string }) => Promise<{
     channelId: string;
     messageRef: string;
@@ -127,6 +153,19 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
   let sessionId = "";
   let messageSent = false;
   let costUsd = 0;
+  let durationMs = 0;
+  let durationApiMs = 0;
+  let numTurns = 0;
+  let stopReason: string | null = null;
+  let errorSubtype: string | null = null;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheCreationTokens = 0;
+  let webSearchRequests = 0;
+  let webFetchRequests = 0;
+  let model: string | null = null;
+  const toolCalls: ToolCallRecord[] = [];
 
   const attachments = params.attachments ?? [];
   const hasImages = attachments.some((a) => isImageAttachment(a));
@@ -170,7 +209,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
     scheduler: params.scheduler,
     outreachRepo: params.outreachRepo,
     userRepo: params.userRepo,
-    currentUserId: params.currentUserId,
+    currentUserId: params.currentUserId ?? undefined,
     sendDm: params.sendDm,
     enqueueMessage: params.enqueueMessage,
   });
@@ -212,9 +251,42 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
       }
     }
 
+    if (message.type === "assistant") {
+      const inner = (message as Record<string, unknown>).message as Record<string, unknown> | undefined;
+      const content = inner?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (block && typeof block === "object" && "type" in block && block.type === "tool_use") {
+            const name = (block as { name: string }).name;
+            const input = (block as { input?: Record<string, unknown> }).input;
+            toolCalls.push({
+              toolName: name,
+              skillName: name === "Skill" && typeof input?.skill === "string" ? input.skill : null,
+            });
+          }
+        }
+      }
+    }
+
     if (message.type === "result") {
       sessionId = message.session_id;
       costUsd = message.total_cost_usd;
+      const resultMsg = message as Record<string, unknown>;
+      durationMs = (resultMsg.duration_ms as number) ?? 0;
+      durationApiMs = (resultMsg.duration_api_ms as number) ?? 0;
+      numTurns = (resultMsg.num_turns as number) ?? 0;
+      stopReason = (resultMsg.stop_reason as string) ?? null;
+      errorSubtype = message.subtype !== "success" ? message.subtype : null;
+      const usage = message.usage as Record<string, unknown> | undefined;
+      inputTokens = (usage?.input_tokens as number) ?? 0;
+      outputTokens = (usage?.output_tokens as number) ?? 0;
+      cacheReadTokens = (usage?.cache_read_input_tokens as number) ?? 0;
+      cacheCreationTokens = (usage?.cache_creation_input_tokens as number) ?? 0;
+      const serverToolUse = usage?.server_tool_use as Record<string, number> | undefined;
+      webSearchRequests = serverToolUse?.web_search_requests ?? 0;
+      webFetchRequests = serverToolUse?.web_fetch_requests ?? 0;
+      const modelKeys = Object.keys((message as Record<string, unknown>).modelUsage ?? {});
+      model = modelKeys.length > 0 ? modelKeys[0] : null;
     }
   }
 
@@ -225,5 +297,30 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
   const pendingUploads = uploadCollector.drain();
   logger.info({ userId: userName, sessionId, costUsd, pendingUploads: pendingUploads.length }, "Agent run completed");
 
-  return { messageSent, sessionId, costUsd, pendingUploads };
+  return {
+    messageSent,
+    sessionId,
+    costUsd,
+    pendingUploads,
+    durationMs,
+    durationApiMs,
+    numTurns,
+    stopReason,
+    errorSubtype,
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheCreationTokens,
+    webSearchRequests,
+    webFetchRequests,
+    model,
+    isResumedSession: existingSessionId !== undefined,
+    totalAttachments: attachments.length,
+    imageCount: images.length,
+    nonImageCount: nonImages.length,
+    mimeTypes: attachments.map((a) => a.mimeType),
+    fileSizes: attachments.map((a) => a.sizeBytes),
+    promptMode: hasImages ? "multimodal" : "text",
+    toolCalls,
+  };
 }

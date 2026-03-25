@@ -3,15 +3,17 @@
  * running server. Extracted from index.ts so the full stack can be instantiated
  * from tests with a custom Config and { connect: false }.
  */
+import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { applyLlmEnvFromSettings } from "./agent/llm-env";
-import { runAgent } from "./agent/runner";
-import type { McpServerConfig } from "./agent/runner";
+import { type AgentResult, runAgent } from "./agent/runner";
+import type { McpServerConfig, RunAgentParams } from "./agent/runner";
 import type { Config } from "./config";
 import { createLlmCallFn } from "./connectors/llm";
 import { startSyncScheduler } from "./connectors/sync";
 import { createDatabase } from "./db/index";
 import { runMigrations } from "./db/migrate";
+import { createAgentRunsRepo } from "./db/repositories/agent-runs";
 import { createChannelRepository } from "./db/repositories/channels";
 import { createMcpServerRepository } from "./db/repositories/mcp-servers";
 import { createOutreachRepository } from "./db/repositories/outreach";
@@ -68,6 +70,77 @@ export async function createServer(config: Config, options?: CreateServerOptions
   const mcpServersRepo = createMcpServerRepository(db);
   const whatsappGroupsRepo = createWhatsAppGroupRepository(db);
   const outreachRepo = createOutreachRepository(db);
+  const agentRunsRepo = createAgentRunsRepo(db);
+
+  const trackedRunAgent = async (params: RunAgentParams): Promise<AgentResult> => {
+    let result: AgentResult | undefined;
+
+    try {
+      result = await runAgent(params);
+    } catch (err) {
+      agentRunsRepo
+        .insertRun({
+          user_id: params.currentUserId ?? null,
+          platform: params.platform,
+          context_type: params.contextType ?? "dm",
+          workspace_key: params.workspaceKey,
+          thread_key: params.threadTs ?? null,
+          cost_usd: 0,
+          is_error: 1,
+        })
+        .catch((dbErr) => logger.error({ err: dbErr }, "Failed to persist failed agent run"));
+      throw err;
+    }
+
+    const runId = randomUUID();
+    agentRunsRepo
+      .insertRun({
+        id: runId,
+        user_id: params.currentUserId ?? null,
+        platform: params.platform,
+        context_type: params.contextType ?? "dm",
+        workspace_key: params.workspaceKey,
+        thread_key: params.threadTs ?? null,
+        session_id: result.sessionId,
+        is_resumed_session: result.isResumedSession ? 1 : 0,
+        cost_usd: result.costUsd,
+        duration_ms: result.durationMs,
+        duration_api_ms: result.durationApiMs,
+        num_turns: result.numTurns,
+        stop_reason: result.stopReason,
+        error_subtype: result.errorSubtype,
+        is_error: 0,
+        message_sent: result.messageSent ? 1 : 0,
+        input_tokens: result.inputTokens,
+        output_tokens: result.outputTokens,
+        cache_read_tokens: result.cacheReadTokens,
+        cache_creation_tokens: result.cacheCreationTokens,
+        web_search_requests: result.webSearchRequests,
+        web_fetch_requests: result.webFetchRequests,
+        model: result.model,
+        total_attachments: result.totalAttachments,
+        image_count: result.imageCount,
+        non_image_count: result.nonImageCount,
+        mime_types: JSON.stringify(result.mimeTypes),
+        file_sizes: JSON.stringify(result.fileSizes),
+        prompt_mode: result.promptMode,
+        pending_uploads: result.pendingUploads.length,
+      })
+      .then(() => {
+        if (result.toolCalls.length > 0) {
+          return agentRunsRepo.insertToolCalls(
+            result.toolCalls.map((tc) => ({
+              agent_run_id: runId,
+              tool_name: tc.toolName,
+              skill_name: tc.skillName,
+            })),
+          );
+        }
+      })
+      .catch((dbErr) => logger.error({ err: dbErr }, "Failed to persist agent run usage"));
+
+    return result;
+  };
 
   // 4. LLM env from DB
   async function applyLlmEnvFromDb() {
@@ -113,7 +186,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
     getSlack: () => slack,
     whatsapp,
     settingsRepo,
-    runAgent,
+    runAgent: trackedRunAgent,
     buildMcpServers,
     findIntegrationProvider: async () => {
       const row = await mcpServersRepo.findIntegrationProvider();
@@ -135,7 +208,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
     repos: { users, channels, settings: settingsRepo },
     queue: queueManager,
     slack: { threadBuffer, userCache },
-    runAgent,
+    runAgent: trackedRunAgent,
     buildMcpServers,
     findIntegrationProvider: async () => {
       const row = await mcpServersRepo.findIntegrationProvider();
@@ -174,7 +247,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
     repos: { users, settings: settingsRepo },
     queue: queueManager,
     groupBuffer,
-    runAgent,
+    runAgent: trackedRunAgent,
     buildMcpServers,
     findIntegrationProvider: async () => {
       const row = await mcpServersRepo.findIntegrationProvider();

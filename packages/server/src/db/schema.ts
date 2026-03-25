@@ -237,6 +237,59 @@ export interface OutreachMessagesTable {
   responded_at: string | null;
 }
 
+export interface AgentRunsTable {
+  id: Generated<string>;
+  user_id: string | null;
+  platform: string;
+  context_type: string;
+  workspace_key: string;
+  thread_key: string | null;
+  channel_type: string | null;
+  session_id: string | null;
+  is_resumed_session: Generated<number>;
+  cost_usd: number;
+  duration_ms: number | null;
+  duration_api_ms: number | null;
+  num_turns: number | null;
+  stop_reason: string | null;
+  error_subtype: string | null;
+  is_error: Generated<number>;
+  message_sent: Generated<number>;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_read_tokens: number | null;
+  cache_creation_tokens: number | null;
+  web_search_requests: Generated<number>;
+  web_fetch_requests: Generated<number>;
+  model: string | null;
+  total_attachments: Generated<number>;
+  image_count: Generated<number>;
+  non_image_count: Generated<number>;
+  mime_types: string | null;
+  file_sizes: string | null;
+  prompt_mode: string | null;
+  pending_uploads: Generated<number>;
+  buffered_message_count: Generated<number>;
+  inter_message_intervals: string | null;
+  created_at: Generated<string>;
+}
+
+export interface ToolCallsTable {
+  id: Generated<number>;
+  agent_run_id: string;
+  tool_name: string;
+  skill_name: string | null;
+  outcome: string | null;
+  denial_reason: string | null;
+  is_mcp: number | null;
+  mcp_server: string | null;
+  app_slug: string | null;
+  component_key: string | null;
+  component_type: string | null;
+  auth_type: string | null;
+  execution_outcome: string | null;
+}
+
 export interface DB {
   users: UsersTable;
   channels: ChannelsTable;
@@ -259,4 +312,6 @@ export interface DB {
   chat_sessions: ChatSessionsTable;
   scheduled_tasks: ScheduledTasksTable;
   outreach_messages: OutreachMessagesTable;
+  agent_runs: AgentRunsTable;
+  tool_calls: ToolCallsTable;
 }

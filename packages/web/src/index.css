@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@sketch/ui/theme.css";
+@import "@sketch/ui/styles.css";
 
 @custom-variant dark (&:is(.dark *));
 

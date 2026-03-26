@@ -1,4 +1,5 @@
 import { type Kysely, sql } from "kysely";
+import { isPg } from "../dialect";
 
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema
@@ -27,26 +28,42 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .execute();
   await db.schema.createIndex("idx_agent_runs_platform").on("agent_runs").columns(["platform"]).execute();
 
-  await db.schema
-    .createTable("tool_calls")
-    .addColumn("id", "integer", (col) => col.primaryKey().autoIncrement())
-    .addColumn("agent_run_id", "text", (col) => col.notNull().references("agent_runs.id").onDelete("cascade"))
-    // Hot-path columns
-    .addColumn("tool_name", "text", (col) => col.notNull())
-    .addColumn("skill_name", "text")
-    // All event attributes as OTLP-aligned JSON
-    .addColumn("attributes", "text", (col) => col.notNull().defaultTo("{}"))
-    // Phase 3 columns (pre-created as nullable, no future migration needed)
-    .addColumn("outcome", "text")
-    .addColumn("denial_reason", "text")
-    .addColumn("is_mcp", "integer")
-    .addColumn("mcp_server", "text")
-    .addColumn("app_slug", "text")
-    .addColumn("component_key", "text")
-    .addColumn("component_type", "text")
-    .addColumn("auth_type", "text")
-    .addColumn("execution_outcome", "text")
-    .execute();
+  if (isPg(db)) {
+    await sql`CREATE TABLE tool_calls (
+      id serial PRIMARY KEY,
+      agent_run_id text NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+      tool_name text NOT NULL,
+      skill_name text,
+      attributes text NOT NULL DEFAULT '{}',
+      outcome text,
+      denial_reason text,
+      is_mcp integer,
+      mcp_server text,
+      app_slug text,
+      component_key text,
+      component_type text,
+      auth_type text,
+      execution_outcome text
+    )`.execute(db);
+  } else {
+    await db.schema
+      .createTable("tool_calls")
+      .addColumn("id", "integer", (col) => col.primaryKey().autoIncrement())
+      .addColumn("agent_run_id", "text", (col) => col.notNull().references("agent_runs.id").onDelete("cascade"))
+      .addColumn("tool_name", "text", (col) => col.notNull())
+      .addColumn("skill_name", "text")
+      .addColumn("attributes", "text", (col) => col.notNull().defaultTo("{}"))
+      .addColumn("outcome", "text")
+      .addColumn("denial_reason", "text")
+      .addColumn("is_mcp", "integer")
+      .addColumn("mcp_server", "text")
+      .addColumn("app_slug", "text")
+      .addColumn("component_key", "text")
+      .addColumn("component_type", "text")
+      .addColumn("auth_type", "text")
+      .addColumn("execution_outcome", "text")
+      .execute();
+  }
 
   await db.schema.createIndex("idx_tool_calls_run_id").on("tool_calls").columns(["agent_run_id"]).execute();
   await db.schema.createIndex("idx_tool_calls_tool_name").on("tool_calls").columns(["tool_name"]).execute();

@@ -4,3 +4,6 @@ dist/
 data
 data/
 .claude/
+.agents/
+skills/
+skills-lock.json

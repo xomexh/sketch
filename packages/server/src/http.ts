@@ -22,6 +22,7 @@ import { setupRoutes } from "./api/setup";
 import { skillsRoutes } from "./api/skills";
 
 import { oauthRoutes } from "./api/oauth";
+import { systemRoutes } from "./api/system";
 import { userRoutes } from "./api/users";
 import { whatsappRoutes } from "./api/whatsapp";
 import { createWorkspaceApi } from "./api/workspace";
@@ -50,14 +51,51 @@ interface AppDeps {
 
 export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   const app = new Hono();
-  const settings = createSettingsRepository(db);
+  const settings = createSettingsRepository(db, config.ENCRYPTION_KEY);
   const users = createUserRepository(db);
   const connectors = createConnectorRepository(db);
   const mcpServers = createMcpServerRepository(db);
   const logger = deps?.logger ?? (console as unknown as Logger);
 
+  // Slack HTTP events endpoint — must come before auth middleware so it doesn't
+  // require JWT authentication. Only registered when SLACK_MODE=http.
+  if (config.SLACK_MODE === "http") {
+    app.post("/slack/events", async (c) => {
+      const slack = deps?.getSlack?.();
+      if (!slack) {
+        return c.json({ error: "Slack not configured" }, 503);
+      }
+
+      const rawBody = await c.req.text();
+      const headers: Record<string, string> = {};
+      c.req.raw.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+
+      try {
+        const result = await slack.processHttpRequest(rawBody, headers);
+        return c.json(result);
+      } catch (_err) {
+        return c.json({ error: "Invalid request" }, 401);
+      }
+    });
+  }
+
   // Auth middleware on all /api/* routes (with setup mode + auth checks)
-  app.use("/api/*", createAuthMiddleware(settings));
+  app.use(
+    "/api/*",
+    createAuthMiddleware(settings, {
+      managedAuthSecret: config.MANAGED_AUTH_SECRET,
+      managedUrl: config.MANAGED_URL,
+      findUserByEmail: config.MANAGED_AUTH_SECRET
+        ? async (email) => {
+            const user = await users.findByEmail(email);
+            if (!user) return null;
+            return { id: user.id, role: user.role as "admin" | "member" };
+          }
+        : undefined,
+    }),
+  );
 
   // API routes
   app.route("/api/health", healthRoutes(db));
@@ -65,6 +103,7 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   app.route(
     "/api/setup",
     setupRoutes(settings, {
+      managedUrl: config.MANAGED_URL,
       onSlackTokensUpdated: deps?.onSlackTokensUpdated,
       onLlmSettingsUpdated: deps?.onLlmSettingsUpdated,
     }),
@@ -103,6 +142,17 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
 
   if (deps?.logger) {
     app.route("/api/oauth", oauthRoutes(settings, identities, connectors, users, db, deps.logger, config.BASE_URL));
+  }
+
+  if (config.SYSTEM_SECRET) {
+    const onSlackTokensUpdated = deps?.onSlackTokensUpdated;
+    app.route(
+      "/api/system",
+      systemRoutes(settings, {
+        systemSecret: config.SYSTEM_SECRET,
+        onSlackTokensUpdated: onSlackTokensUpdated ? () => onSlackTokensUpdated() : undefined,
+      }),
+    );
   }
 
   // Static file serving for the SPA (production only — dev uses Vite dev server)

@@ -277,9 +277,13 @@ describe("runAgent", () => {
     const result = await runAgent(makeBaseParams());
 
     expect(result.toolCalls).toHaveLength(3);
-    expect(result.toolCalls[0]).toEqual({ toolName: "Bash", skillName: null });
-    expect(result.toolCalls[1]).toEqual({ toolName: "Skill", skillName: "canvas" });
-    expect(result.toolCalls[2]).toEqual({ toolName: "mcp__plugin_pipedream__action", skillName: null });
+    expect(result.toolCalls[0]).toEqual(expect.objectContaining({ toolName: "Bash", skillName: null }));
+    expect(result.toolCalls[1]).toEqual(expect.objectContaining({ toolName: "Skill", skillName: "canvas" }));
+    expect(result.toolCalls[2]).toEqual(expect.objectContaining({ toolName: "mcp__plugin_pipedream__action", skillName: null }));
+    for (const tc of result.toolCalls) {
+      expect(tc.startedAt).toBeGreaterThan(0);
+      expect(tc.endedAt).toBeGreaterThanOrEqual(tc.startedAt);
+    }
   });
 
   it("sets skillName to null when Skill tool has no input.skill", async () => {
@@ -300,7 +304,7 @@ describe("runAgent", () => {
     const result = await runAgent(makeBaseParams());
 
     expect(result.toolCalls).toHaveLength(1);
-    expect(result.toolCalls[0]).toEqual({ toolName: "Skill", skillName: null });
+    expect(result.toolCalls[0]).toEqual(expect.objectContaining({ toolName: "Skill", skillName: null }));
   });
 
   it("does not capture tool calls from replayed user messages (EC-8)", async () => {

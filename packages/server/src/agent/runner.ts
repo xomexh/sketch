@@ -25,6 +25,15 @@ import { UploadCollector, createSketchMcpServer } from "./sketch-tools";
 export interface ToolCallRecord {
   toolName: string;
   skillName: string | null;
+  /** Epoch ms when tool execution started (from canUseTool, or message arrival fallback) */
+  startedAt: number;
+  /** Epoch ms when tool execution ended (next canUseTool call, or run end) */
+  endedAt: number;
+}
+
+interface CanUseToolTiming {
+  toolName: string;
+  calledAt: number;
 }
 
 export interface AgentResult {
@@ -214,6 +223,13 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
     enqueueMessage: params.enqueueMessage,
   });
 
+  const baseCanUseTool = createCanUseTool(absWorkspace, logger);
+  const canUseToolTimings: CanUseToolTiming[] = [];
+  const timedCanUseTool = async (toolName: string, input: Record<string, unknown>) => {
+    canUseToolTimings.push({ toolName, calledAt: Date.now() });
+    return baseCanUseTool(toolName, input);
+  };
+
   const run = query({
     prompt,
     options: {
@@ -232,11 +248,21 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
       stderr: (data) => {
         logger.debug({ stderr: data.trim() }, "Agent subprocess");
       },
-      canUseTool: createCanUseTool(absWorkspace, logger),
+      canUseTool: timedCanUseTool,
     },
   });
 
+  let pendingToolCalls: ToolCallRecord[] = [];
+
   for await (const message of run) {
+    // When a new message arrives, any pending tool calls from the previous
+    // iteration have finished executing (the SDK blocks until tool completion).
+    const now = Date.now();
+    for (const tc of pendingToolCalls) {
+      tc.endedAt = now;
+    }
+    pendingToolCalls = [];
+
     if (message.type === "system" && message.subtype === "init") {
       sessionId = message.session_id;
     }
@@ -259,10 +285,14 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
           if (block && typeof block === "object" && "type" in block && block.type === "tool_use") {
             const name = (block as { name: string }).name;
             const input = (block as { input?: Record<string, unknown> }).input;
-            toolCalls.push({
+            const tc: ToolCallRecord = {
               toolName: name,
               skillName: name === "Skill" && typeof input?.skill === "string" ? input.skill : null,
-            });
+              startedAt: now,
+              endedAt: 0,
+            };
+            toolCalls.push(tc);
+            pendingToolCalls.push(tc);
           }
         }
       }
@@ -287,6 +317,24 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
       webFetchRequests = serverToolUse?.web_fetch_requests ?? 0;
       const modelKeys = Object.keys((message as Record<string, unknown>).modelUsage ?? {});
       model = modelKeys.length > 0 ? modelKeys[0] : null;
+    }
+  }
+
+  // Close out any tool calls still pending when the stream ends
+  const endNow = Date.now();
+  for (const tc of pendingToolCalls) {
+    tc.endedAt = endNow;
+  }
+
+  // Merge canUseTool timing: override only startedAt with canUseTool's calledAt
+  // (accurate tool execution start). Keep message-arrival endedAt — it captures when
+  // the next message was yielded after tool execution, which is tighter than
+  // next-canUseTool or run-end timing (those include Claude's thinking time).
+  let timingIdx = 0;
+  for (const tc of toolCalls) {
+    if (timingIdx < canUseToolTimings.length && canUseToolTimings[timingIdx].toolName === tc.toolName) {
+      tc.startedAt = canUseToolTimings[timingIdx].calledAt;
+      timingIdx++;
     }
   }
 

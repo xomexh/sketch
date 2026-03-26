@@ -3,9 +3,14 @@
  *
  * Separates telemetry concerns from business logic in bootstrap.ts.
  * Adding a new telemetry field = add one line here + one in runner.ts.
+ *
+ * Tool calls are recorded in two ways:
+ * - Span events on the parent span (consumed by the SQLite exporter)
+ * - Child spans with real timestamps (consumed by OTLP/Jaeger for waterfall views)
  */
-import type { Span } from "@opentelemetry/api";
+import { type Span, type Tracer, context, trace } from "@opentelemetry/api";
 import type { AgentResult } from "../agent/runner";
+import type { ToolCallRecord } from "../agent/runner";
 import type { RunAgentParams } from "../agent/runner";
 
 export function setAgentRunAttributes(span: Span, params: RunAgentParams, runId: string): void {
@@ -43,11 +48,36 @@ export function setAgentResultAttributes(span: Span, result: AgentResult): void 
   span.setAttribute("sketch.prompt_mode", result.promptMode);
   span.setAttribute("sketch.pending_uploads", result.pendingUploads.length);
 
-  // Tool calls as events on the span (not child spans)
+  // Tool calls as events on the parent span (for the SQLite exporter)
   for (const tc of result.toolCalls) {
     span.addEvent("tool_call", {
       "gen_ai.tool.name": tc.toolName,
       "sketch.skill.name": tc.skillName ?? "",
     });
+  }
+}
+
+/**
+ * Creates child spans for each tool call with real timestamps from the message stream.
+ * These appear as nested bars in Jaeger/OTLP waterfall views.
+ * The SQLite exporter ignores these (it only handles invoke_agent spans).
+ */
+export function createToolCallSpans(
+  tracer: Tracer,
+  parentSpan: Span,
+  runId: string,
+  toolCalls: ToolCallRecord[],
+): void {
+  const parentCtx = trace.setSpan(context.active(), parentSpan);
+  for (const tc of toolCalls) {
+    const childSpan = tracer.startSpan(
+      tc.skillName ? `tool_call ${tc.toolName} (${tc.skillName})` : `tool_call ${tc.toolName}`,
+      { startTime: tc.startedAt },
+      parentCtx,
+    );
+    childSpan.setAttribute("gen_ai.tool.name", tc.toolName);
+    childSpan.setAttribute("sketch.skill.name", tc.skillName ?? "");
+    childSpan.setAttribute("sketch.run_id", runId);
+    childSpan.end(tc.endedAt);
   }
 }

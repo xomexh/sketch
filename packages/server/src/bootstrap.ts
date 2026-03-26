@@ -32,7 +32,7 @@ import type { SlackBot } from "./slack/bot";
 import { createSlackStartupManager } from "./slack/startup";
 import { ThreadBuffer } from "./slack/thread-buffer";
 import { UserCache } from "./slack/user-cache";
-import { setAgentResultAttributes, setAgentRunAttributes } from "./telemetry/instrument";
+import { createToolCallSpans, setAgentResultAttributes, setAgentRunAttributes } from "./telemetry/instrument";
 import { initTelemetry } from "./telemetry/setup";
 import { wireWhatsAppHandlers } from "./whatsapp/adapter";
 import { WhatsAppBot } from "./whatsapp/bot";
@@ -85,6 +85,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
     try {
       const result = await runAgent(params);
       setAgentResultAttributes(span, result);
+      createToolCallSpans(tracer, span, runId, result.toolCalls);
       span.end();
       return result;
     } catch (err) {

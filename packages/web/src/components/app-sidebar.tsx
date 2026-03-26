@@ -32,6 +32,7 @@ import {
   BrainIcon,
   CalendarDotsIcon,
   CaretUpDownIcon,
+  ChartBarIcon,
   ChatCircleIcon,
   DesktopIcon,
   FolderIcon,
@@ -61,6 +62,7 @@ const primaryNav: NavItem[] = [
   { label: "Skills", icon: <BrainIcon size={18} />, href: "/skills" },
   { label: "Workspace", icon: <FolderIcon size={18} />, href: "/workspace" },
   { label: "Connections", icon: <LinkSimpleIcon size={18} />, href: "/connections" },
+  { label: "Usage", icon: <ChartBarIcon size={18} />, href: "/usage" },
 ];
 
 const adminNav: NavItem[] = [

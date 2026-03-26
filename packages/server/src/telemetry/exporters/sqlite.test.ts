@@ -11,6 +11,12 @@ function makeMockRepo() {
   return {
     insertRun: vi.fn().mockResolvedValue("run-id"),
     insertToolCalls: vi.fn().mockResolvedValue(undefined),
+    getMemberSummary: vi.fn(),
+    getMemberSkills: vi.fn(),
+    getOrgSummary: vi.fn(),
+    getOrgSkills: vi.fn(),
+    getOrgByUser: vi.fn(),
+    getDailyBreakdown: vi.fn(),
   };
 }
 

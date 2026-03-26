@@ -625,6 +625,41 @@ export const api = {
       });
     },
   },
+  usage: {
+    me(opts?: { period?: "weekly" | "monthly" | "quarterly"; date?: string }) {
+      const params = new URLSearchParams();
+      if (opts?.period) params.set("period", opts.period);
+      if (opts?.date) params.set("date", opts.date);
+      const qs = params.toString();
+      return request<{
+        period: { from: string; to: string; type: "weekly" | "monthly" | "quarterly" };
+        messages: { total: number; by_platform: { platform: string; count: number }[] };
+        spend: { total_cost_usd: number };
+        skills: { total: number; by_skill: { name: string; count: number }[] };
+        daily_breakdown: { date: string; messages: number; skills: number }[];
+      }>(`/api/usage/me${qs ? `?${qs}` : ""}`);
+    },
+    summary(opts?: { period?: "weekly" | "monthly" | "quarterly"; date?: string }) {
+      const params = new URLSearchParams();
+      if (opts?.period) params.set("period", opts.period);
+      if (opts?.date) params.set("date", opts.date);
+      const qs = params.toString();
+      return request<{
+        period: { from: string; to: string; type: "weekly" | "monthly" | "quarterly" };
+        messages: { total: number; by_platform: { platform: string; count: number }[] };
+        spend: { total_cost_usd: number };
+        skills: { total: number; by_skill: { name: string; count: number }[] };
+        by_user: {
+          userId: string;
+          userName: string | null;
+          userType: string;
+          messageCount: number;
+          costUsd: number;
+          skillCount: number;
+        }[];
+      }>(`/api/usage/summary${qs ? `?${qs}` : ""}`);
+    },
+  },
   workspace: {
     // List directory contents
     async listFiles(scope: WorkspaceScope, path: string): Promise<{ files: FileMetadata[] }> {

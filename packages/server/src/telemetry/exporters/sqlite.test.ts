@@ -1,5 +1,5 @@
 import { ExportResultCode } from "@opentelemetry/core";
-import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
+import type { ReadableSpan, TimedEvent } from "@opentelemetry/sdk-trace-base";
 import { describe, expect, it, vi } from "vitest";
 import { SqliteSpanExporter } from "./sqlite";
 
@@ -14,27 +14,46 @@ function makeMockRepo() {
   };
 }
 
-function makeSpan(
-  attrs: Record<string, unknown>,
-  overrides?: Partial<{ traceId: string; statusCode: number; duration: [number, number] }>,
-): ReadableSpan {
+function makeToolEvent(toolName: string, skillName?: string): TimedEvent {
+  const attrs: Record<string, unknown> = { "gen_ai.tool.name": toolName };
+  if (skillName) attrs["sketch.skill.name"] = skillName;
+  return { name: "tool_call", time: [0, 0], attributes: attrs, droppedAttributesCount: 0 } as TimedEvent;
+}
+
+function makeAgentRunSpan(overrides?: {
+  traceId?: string;
+  statusCode?: number;
+  attrs?: Record<string, unknown>;
+  events?: TimedEvent[];
+  duration?: [number, number];
+}): ReadableSpan {
   return {
     spanContext: () => ({
       traceId: overrides?.traceId ?? "trace-1",
       spanId: "span-1",
       traceFlags: 1,
     }),
-    attributes: attrs,
+    attributes: {
+      "gen_ai.operation.name": "invoke_agent",
+      "gen_ai.provider.name": "anthropic",
+      "gen_ai.response.model": "claude-sonnet-4-20250514",
+      "sketch.run_id": "run-1",
+      "sketch.platform": "slack",
+      "sketch.context_type": "dm",
+      "sketch.user_id": "user-1",
+      "sketch.cost_usd": 0.005,
+      ...overrides?.attrs,
+    },
     duration: overrides?.duration ?? [2, 500000000],
     status: { code: overrides?.statusCode ?? 0 },
-    name: "",
+    events: overrides?.events ?? [],
+    name: "invoke_agent sketch",
     kind: 0,
     startTime: [0, 0],
     endTime: [2, 500000000],
     ended: true,
     resource: { attributes: {} },
     instrumentationLibrary: { name: "test" },
-    events: [],
     links: [],
     parentSpanId: undefined,
     droppedAttributesCount: 0,
@@ -43,60 +62,8 @@ function makeSpan(
   } as unknown as ReadableSpan;
 }
 
-function makeAgentRunSpan(overrides?: {
-  traceId?: string;
-  statusCode?: number;
-  attrs?: Record<string, unknown>;
-}): ReadableSpan {
-  return makeSpan(
-    {
-      "gen_ai.operation.name": "invoke_agent",
-      "gen_ai.provider.name": "anthropic",
-      "gen_ai.response.model": "claude-sonnet-4-20250514",
-      "gen_ai.usage.input_tokens": 500,
-      "gen_ai.usage.output_tokens": 200,
-      "gen_ai.usage.cache_read_input_tokens": 50,
-      "gen_ai.usage.cache_creation_input_tokens": 10,
-      "gen_ai.response.finish_reasons": ["end_turn"],
-      "gen_ai.conversation.id": "sess-1",
-      "sketch.run_id": "run-1",
-      "sketch.platform": "slack",
-      "sketch.context_type": "dm",
-      "sketch.user_id": "user-1",
-      "sketch.workspace_key": "user-1",
-      "sketch.thread_key": "",
-      "sketch.cost_usd": 0.005,
-      "sketch.num_turns": 2,
-      "sketch.duration_api_ms": 1800,
-      "sketch.error_subtype": "",
-      "sketch.is_resumed_session": false,
-      "sketch.message_sent": true,
-      "sketch.web_search_requests": 0,
-      "sketch.web_fetch_requests": 0,
-      "sketch.total_attachments": 0,
-      "sketch.image_count": 0,
-      "sketch.non_image_count": 0,
-      "sketch.mime_types": "[]",
-      "sketch.file_sizes": "[]",
-      "sketch.prompt_mode": "text",
-      "sketch.pending_uploads": 0,
-      ...overrides?.attrs,
-    },
-    { traceId: overrides?.traceId, statusCode: overrides?.statusCode },
-  );
-}
-
-function makeToolCallSpan(toolName: string, skillName: string | null, traceId = "trace-1"): ReadableSpan {
-  const attrs: Record<string, unknown> = {
-    "gen_ai.operation.name": "execute_tool",
-    "gen_ai.tool.name": toolName,
-  };
-  if (skillName) attrs["sketch.skill.name"] = skillName;
-  return makeSpan(attrs, { traceId });
-}
-
 describe("SqliteSpanExporter", () => {
-  it("persists invoke_agent span to repo", async () => {
+  it("persists agent_run span with hot-path columns and attributes JSON", async () => {
     const repo = makeMockRepo();
     const exporter = new SqliteSpanExporter(repo, makeLogger());
 
@@ -109,69 +76,72 @@ describe("SqliteSpanExporter", () => {
     expect(repo.insertRun).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "run-1",
+        trace_id: "trace-1",
+        span_id: "span-1",
         platform: "slack",
         context_type: "dm",
         cost_usd: 0.005,
         is_error: 0,
-        message_sent: 1,
-        model: "claude-sonnet-4-20250514",
-        input_tokens: 500,
-        output_tokens: 200,
         duration_ms: 2500,
+        attributes: expect.any(String),
       }),
     );
+
+    // Verify attributes JSON contains all span attributes
+    const callArgs = repo.insertRun.mock.calls[0][0];
+    const parsed = JSON.parse(callArgs.attributes);
+    expect(parsed["gen_ai.response.model"]).toBe("claude-sonnet-4-20250514");
+    expect(parsed["sketch.user_id"]).toBe("user-1");
   });
 
-  it("buffers tool spans and persists them when parent arrives", async () => {
+  it("reads tool calls from span events and calls insertToolCalls", async () => {
     const repo = makeMockRepo();
     const exporter = new SqliteSpanExporter(repo, makeLogger());
 
-    const toolSpans = [
-      makeToolCallSpan("Bash", null, "trace-2"),
-      makeToolCallSpan("Skill", "canvas", "trace-2"),
-      makeToolCallSpan("Read", null, "trace-2"),
-    ];
-    const parentSpan = makeAgentRunSpan({ traceId: "trace-2", attrs: { "sketch.run_id": "run-2" } });
-
-    // Export tool spans first (no writes yet)
-    await new Promise<void>((resolve) => {
-      exporter.export(toolSpans, () => resolve());
+    const span = makeAgentRunSpan({
+      attrs: { "sketch.run_id": "run-2" },
+      events: [makeToolEvent("Bash"), makeToolEvent("Skill", "canvas"), makeToolEvent("Read")],
     });
-    expect(repo.insertRun).not.toHaveBeenCalled();
 
-    // Export parent span (triggers flush)
     await new Promise<void>((resolve) => {
-      exporter.export([parentSpan], () => resolve());
+      exporter.export([span], () => resolve());
     });
 
     expect(repo.insertRun).toHaveBeenCalledOnce();
     expect(repo.insertToolCalls).toHaveBeenCalledOnce();
     expect(repo.insertToolCalls).toHaveBeenCalledWith([
-      { agent_run_id: "run-2", tool_name: "Bash", skill_name: null },
-      { agent_run_id: "run-2", tool_name: "Skill", skill_name: "canvas" },
-      { agent_run_id: "run-2", tool_name: "Read", skill_name: null },
+      expect.objectContaining({ agent_run_id: "run-2", tool_name: "Bash", skill_name: null }),
+      expect.objectContaining({ agent_run_id: "run-2", tool_name: "Skill", skill_name: "canvas" }),
+      expect.objectContaining({ agent_run_id: "run-2", tool_name: "Read", skill_name: null }),
     ]);
   });
 
-  it("handles all spans in the same batch (tool calls + parent)", async () => {
+  it("tool_calls include attributes JSON", async () => {
     const repo = makeMockRepo();
     const exporter = new SqliteSpanExporter(repo, makeLogger());
 
-    const spans = [
-      makeToolCallSpan("Bash", null, "trace-3"),
-      makeToolCallSpan("Skill", "canvas", "trace-3"),
-      makeAgentRunSpan({ traceId: "trace-3", attrs: { "sketch.run_id": "run-3" } }),
-    ];
+    const span = makeAgentRunSpan({ events: [makeToolEvent("Skill", "canvas")] });
 
     await new Promise<void>((resolve) => {
-      exporter.export(spans, () => resolve());
+      exporter.export([span], () => resolve());
+    });
+
+    const toolCallArgs = repo.insertToolCalls.mock.calls[0][0][0];
+    const parsed = JSON.parse(toolCallArgs.attributes);
+    expect(parsed["gen_ai.tool.name"]).toBe("Skill");
+    expect(parsed["sketch.skill.name"]).toBe("canvas");
+  });
+
+  it("span with no tool events skips insertToolCalls", async () => {
+    const repo = makeMockRepo();
+    const exporter = new SqliteSpanExporter(repo, makeLogger());
+
+    await new Promise<void>((resolve) => {
+      exporter.export([makeAgentRunSpan({ events: [] })], () => resolve());
     });
 
     expect(repo.insertRun).toHaveBeenCalledOnce();
-    expect(repo.insertToolCalls).toHaveBeenCalledWith([
-      { agent_run_id: "run-3", tool_name: "Bash", skill_name: null },
-      { agent_run_id: "run-3", tool_name: "Skill", skill_name: "canvas" },
-    ]);
+    expect(repo.insertToolCalls).not.toHaveBeenCalled();
   });
 
   it("handles error runs (status.code = 2)", async () => {
@@ -185,37 +155,32 @@ describe("SqliteSpanExporter", () => {
     });
 
     expect(repo.insertRun).toHaveBeenCalledWith(expect.objectContaining({ id: "run-err", is_error: 1 }));
-    expect(repo.insertToolCalls).not.toHaveBeenCalled();
   });
 
-  it("keeps tool spans separate between traces", async () => {
+  it("error run attributes JSON has only params-derived fields", async () => {
     const repo = makeMockRepo();
     const exporter = new SqliteSpanExporter(repo, makeLogger());
 
-    const spans = [
-      makeToolCallSpan("Bash", null, "trace-a"),
-      makeToolCallSpan("Read", null, "trace-b"),
-      makeAgentRunSpan({ traceId: "trace-a", attrs: { "sketch.run_id": "run-a" } }),
-    ];
-
-    await new Promise<void>((resolve) => {
-      exporter.export(spans, () => resolve());
+    // Simulate error path: only params-derived attributes, no result fields
+    const span = makeAgentRunSpan({
+      statusCode: 2,
+      attrs: {
+        "sketch.run_id": "run-err-attrs",
+        "sketch.platform": "slack",
+        "sketch.context_type": "dm",
+        "sketch.user_id": "user-1",
+        "gen_ai.response.model": undefined, // not set on error
+      },
     });
 
-    // Only trace-a should be persisted (trace-b's parent hasn't arrived)
-    expect(repo.insertRun).toHaveBeenCalledOnce();
-    expect(repo.insertToolCalls).toHaveBeenCalledWith([{ agent_run_id: "run-a", tool_name: "Bash", skill_name: null }]);
-
-    // Now send trace-b's parent
     await new Promise<void>((resolve) => {
-      exporter.export([makeAgentRunSpan({ traceId: "trace-b", attrs: { "sketch.run_id": "run-b" } })], () => resolve());
+      exporter.export([span], () => resolve());
     });
 
-    expect(repo.insertRun).toHaveBeenCalledTimes(2);
-    expect(repo.insertToolCalls).toHaveBeenCalledTimes(2);
-    expect(repo.insertToolCalls).toHaveBeenLastCalledWith([
-      { agent_run_id: "run-b", tool_name: "Read", skill_name: null },
-    ]);
+    const callArgs = repo.insertRun.mock.calls[0][0];
+    const parsed = JSON.parse(callArgs.attributes);
+    expect(parsed["sketch.platform"]).toBe("slack");
+    expect(parsed["gen_ai.response.model"]).toBeUndefined();
   });
 
   it("awaits DB writes before calling resultCallback", async () => {
@@ -258,34 +223,30 @@ describe("SqliteSpanExporter", () => {
     );
   });
 
-  it("maps boolean attributes to integers correctly", async () => {
-    const repo = makeMockRepo();
-    const exporter = new SqliteSpanExporter(repo, makeLogger());
-
-    const span = makeAgentRunSpan({
-      attrs: { "sketch.is_resumed_session": true, "sketch.message_sent": true },
-    });
-
-    await new Promise<void>((resolve) => {
-      exporter.export([span], () => resolve());
-    });
-
-    expect(repo.insertRun).toHaveBeenCalledWith(
-      expect.objectContaining({ is_resumed_session: 1, message_sent: 1, is_error: 0 }),
-    );
-  });
-
   it("calculates duration from span HrTime correctly", async () => {
     const repo = makeMockRepo();
     const exporter = new SqliteSpanExporter(repo, makeLogger());
 
-    // 3 seconds + 250ms = 3250ms
-    const span = makeSpan({ ...makeAgentRunSpan().attributes }, { duration: [3, 250000000] });
+    const span = makeAgentRunSpan({ duration: [3, 250000000] });
 
     await new Promise<void>((resolve) => {
       exporter.export([span], () => resolve());
     });
 
     expect(repo.insertRun).toHaveBeenCalledWith(expect.objectContaining({ duration_ms: 3250 }));
+  });
+
+  it("ignores non-invoke_agent spans", async () => {
+    const repo = makeMockRepo();
+    const exporter = new SqliteSpanExporter(repo, makeLogger());
+
+    const otherSpan = makeAgentRunSpan({ attrs: { "gen_ai.operation.name": "something_else" } });
+
+    const code = await new Promise<number>((resolve) => {
+      exporter.export([otherSpan], (result) => resolve(result.code));
+    });
+
+    expect(code).toBe(ExportResultCode.SUCCESS);
+    expect(repo.insertRun).not.toHaveBeenCalled();
   });
 });

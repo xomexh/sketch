@@ -5,7 +5,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
-import { SpanStatusCode, context, trace } from "@opentelemetry/api";
+import { SpanStatusCode, trace } from "@opentelemetry/api";
 import { applyLlmEnvFromSettings } from "./agent/llm-env";
 import { type AgentResult, runAgent } from "./agent/runner";
 import type { McpServerConfig, RunAgentParams } from "./agent/runner";
@@ -32,6 +32,7 @@ import type { SlackBot } from "./slack/bot";
 import { createSlackStartupManager } from "./slack/startup";
 import { ThreadBuffer } from "./slack/thread-buffer";
 import { UserCache } from "./slack/user-cache";
+import { setAgentResultAttributes, setAgentRunAttributes } from "./telemetry/instrument";
 import { initTelemetry } from "./telemetry/setup";
 import { wireWhatsAppHandlers } from "./whatsapp/adapter";
 import { WhatsAppBot } from "./whatsapp/bot";
@@ -79,53 +80,11 @@ export async function createServer(config: Config, options?: CreateServerOptions
   const trackedRunAgent = async (params: RunAgentParams): Promise<AgentResult> => {
     const runId = randomUUID();
     const span = tracer.startSpan("invoke_agent sketch");
-
-    // Set params-derived attributes before try block (needed for error path — NOT NULL columns)
-    span.setAttribute("gen_ai.operation.name", "invoke_agent");
-    span.setAttribute("gen_ai.provider.name", "anthropic");
-    span.setAttribute("sketch.run_id", runId);
-    span.setAttribute("sketch.platform", params.platform);
-    span.setAttribute("sketch.context_type", params.contextType ?? "dm");
-    span.setAttribute("sketch.user_id", params.currentUserId ?? "");
-    span.setAttribute("sketch.workspace_key", params.workspaceKey);
-    span.setAttribute("sketch.thread_key", params.threadTs ?? "");
+    setAgentRunAttributes(span, params, runId);
 
     try {
       const result = await runAgent(params);
-
-      // Set result-derived attributes
-      span.setAttribute("gen_ai.response.model", result.model ?? "");
-      span.setAttribute("gen_ai.usage.input_tokens", result.inputTokens);
-      span.setAttribute("gen_ai.usage.output_tokens", result.outputTokens);
-      span.setAttribute("gen_ai.usage.cache_read_input_tokens", result.cacheReadTokens);
-      span.setAttribute("gen_ai.usage.cache_creation_input_tokens", result.cacheCreationTokens);
-      span.setAttribute("gen_ai.response.finish_reasons", [result.stopReason ?? "unknown"]);
-      span.setAttribute("gen_ai.conversation.id", result.sessionId ?? "");
-      span.setAttribute("sketch.cost_usd", result.costUsd);
-      span.setAttribute("sketch.num_turns", result.numTurns);
-      span.setAttribute("sketch.duration_api_ms", result.durationApiMs);
-      span.setAttribute("sketch.error_subtype", result.errorSubtype ?? "");
-      span.setAttribute("sketch.is_resumed_session", result.isResumedSession);
-      span.setAttribute("sketch.message_sent", result.messageSent);
-      span.setAttribute("sketch.web_search_requests", result.webSearchRequests);
-      span.setAttribute("sketch.web_fetch_requests", result.webFetchRequests);
-      span.setAttribute("sketch.total_attachments", result.totalAttachments);
-      span.setAttribute("sketch.image_count", result.imageCount);
-      span.setAttribute("sketch.non_image_count", result.nonImageCount);
-      span.setAttribute("sketch.mime_types", JSON.stringify(result.mimeTypes));
-      span.setAttribute("sketch.file_sizes", JSON.stringify(result.fileSizes));
-      span.setAttribute("sketch.prompt_mode", result.promptMode);
-      span.setAttribute("sketch.pending_uploads", result.pendingUploads.length);
-
-      // Child spans for tool calls
-      for (const tc of result.toolCalls) {
-        const toolSpan = tracer.startSpan(`execute_tool ${tc.toolName}`, {}, trace.setSpan(context.active(), span));
-        toolSpan.setAttribute("gen_ai.operation.name", "execute_tool");
-        toolSpan.setAttribute("gen_ai.tool.name", tc.toolName);
-        if (tc.skillName) toolSpan.setAttribute("sketch.skill.name", tc.skillName);
-        toolSpan.end();
-      }
-
+      setAgentResultAttributes(span, result);
       span.end();
       return result;
     } catch (err) {

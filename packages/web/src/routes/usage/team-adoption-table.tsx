@@ -5,8 +5,6 @@ import { useMemo, useRef, useState } from "react";
 import { ActivityBar, AvatarChip, GroupAvatar, formatLastActive } from "./shared";
 import type { ByGroupEntry, ByUserEntry } from "./shared";
 
-// --- Types & Constants ---
-
 interface TeamMember {
   name: string;
   type: "member";
@@ -38,8 +36,6 @@ interface TeamAgent {
 type TeamEntity = TeamMember | TeamGroup | TeamAgent;
 type TableFilter = "all" | "members" | "groups" | "agents";
 const ROWS_PER_PAGE = 5;
-
-// --- Helpers ---
 
 function buildEntities(
   byUser: ByUserEntry[],
@@ -114,8 +110,6 @@ function buildEntities(
   return { members, groups, agents };
 }
 
-// --- Internal Components ---
-
 function EntityRow({ entity, filter }: { entity: TeamEntity; filter: TableFilter }) {
   const messages = entity.messages;
   const skillsUsed = entity.type !== "agent" ? (entity as TeamMember | TeamGroup).skillsUsed : null;
@@ -178,8 +172,6 @@ function EntityRow({ entity, filter }: { entity: TeamEntity; filter: TableFilter
     </tr>
   );
 }
-
-// --- Exported Component ---
 
 export function TeamAdoptionTable({
   byUser,

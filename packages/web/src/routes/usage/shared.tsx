@@ -1,7 +1,5 @@
 import { cn } from "@sketch/ui/lib/utils";
 
-// --- Types & Constants ---
-
 export type TimePeriod = "Week" | "Month" | "Quarter";
 export type AdminTab = "team" | "my-usage";
 
@@ -30,8 +28,6 @@ export interface ByGroupEntry {
   lastRunAt: string | null;
 }
 
-// --- Helpers ---
-
 export function formatPeriodLabel(period: { from: string; to: string; type: string }): string {
   const from = new Date(period.from);
   const lastDay = new Date(new Date(period.to).getTime() - 24 * 60 * 60 * 1000);
@@ -49,8 +45,6 @@ export function formatLastActive(isoDate: string | null): string {
   if (diffDays === 1) return "Yesterday";
   return `${diffDays}d ago`;
 }
-
-// --- Small Components ---
 
 export function TabButton({ label, isActive, onClick }: { label: string; isActive: boolean; onClick: () => void }) {
   return (

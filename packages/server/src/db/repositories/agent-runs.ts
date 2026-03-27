@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { type Insertable, type Kysely, sql } from "kysely";
+import { isPg } from "../dialect";
 import type { DB } from "../schema";
 
 type NewAgentRun = Insertable<DB["agent_runs"]>;
@@ -49,6 +50,17 @@ export interface DailyBucket {
   skills: number;
 }
 
+/**
+ * Agent runs repository — write path (insertRun, insertToolCalls) and read path (usage queries).
+ *
+ * Usage query design:
+ * - agent_runs and tool_calls are never joined in the same GROUP BY aggregation to prevent
+ *   fan-out (a run with N tool calls would multiply COUNT/SUM by N). Skill counts are always
+ *   fetched in a separate query and merged via Map in application code.
+ * - Per-user queries exclude `context_type = 'channel_mention'` runs. Those are counted
+ *   separately in getGroupBreakdown. Org-level totals (getOrgSummary) count all runs,
+ *   so `by_user_sum + by_group_sum = total`.
+ */
 export function createAgentRunsRepo(db: Kysely<DB>) {
   return {
     async insertRun(run: Omit<NewAgentRun, "id"> & { id?: string }): Promise<string> {
@@ -65,9 +77,8 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
       await db.insertInto("tool_calls").values(calls).execute();
     },
 
+    /** Messages, cost, and skill totals for a single user in a date range. */
     async getMemberSummary(userId: string, from: string, to: string): Promise<MemberSummary> {
-      // Single query: GROUP BY platform gives per-platform counts + cost; totals derived in app code
-      // Excludes channel_mention — those are group/channel usage, not personal DM usage
       const byPlatform = await db
         .selectFrom("agent_runs")
         .select([
@@ -108,6 +119,7 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
       };
     },
 
+    /** Per-skill breakdown for a single user. */
     async getMemberSkills(userId: string, from: string, to: string): Promise<SkillBreakdown[]> {
       const rows = await db
         .selectFrom("tool_calls as tc")
@@ -125,8 +137,8 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
       return rows.map((r) => ({ name: r.skill_name as string, count: Number(r.count) }));
     },
 
+    /** Org-wide totals including all context types (channel_mention + DM). */
     async getOrgSummary(from: string, to: string): Promise<OrgSummary> {
-      // Single query: GROUP BY platform gives per-platform counts + cost; totals derived in app code
       const byPlatform = await db
         .selectFrom("agent_runs")
         .select([
@@ -163,6 +175,7 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
       };
     },
 
+    /** Per-skill breakdown across entire org. */
     async getOrgSkills(from: string, to: string): Promise<SkillBreakdown[]> {
       const rows = await db
         .selectFrom("tool_calls as tc")
@@ -178,8 +191,8 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
       return rows.map((r) => ({ name: r.skill_name as string, count: Number(r.count) }));
     },
 
+    /** Per-user breakdown with skill counts merged from a separate query. */
     async getOrgByUser(from: string, to: string): Promise<UserBreakdown[]> {
-      // Exclude channel_mention runs — those are counted in getGroupBreakdown
       const userRows = await db
         .selectFrom("agent_runs as r")
         .leftJoin("users as u", "u.id", "r.user_id")
@@ -222,10 +235,15 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
       }));
     },
 
+    /**
+     * Aggregates channel_mention runs by workspace key (Slack channel / WhatsApp group).
+     * Resolves display names from channels and whatsapp_groups tables.
+     */
     async getGroupBreakdown(from: string, to: string): Promise<GroupBreakdown[]> {
-      const wsKey = sql<string>`json_extract(r.attributes, '$."sketch.workspace_key"')`;
+      const wsKey = isPg(db)
+        ? sql<string>`(r.attributes::jsonb ->> 'sketch.workspace_key')`
+        : sql<string>`json_extract(r.attributes, '$."sketch.workspace_key"')`;
 
-      // Query 1: messages + last run per workspace_key (channel/group runs only)
       const msgRows = await db
         .selectFrom("agent_runs as r")
         .select([
@@ -244,7 +262,6 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
 
       if (msgRows.length === 0) return [];
 
-      // Query 2: skill counts per workspace_key (separate to avoid fan-out)
       const skillRows = await db
         .selectFrom("tool_calls as tc")
         .innerJoin("agent_runs as r", "r.id", "tc.agent_run_id")
@@ -258,7 +275,6 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
 
       const skillMap = new Map(skillRows.map((r) => [r.workspaceKey, Number(r.skillCount)]));
 
-      // Resolve names: collect slack channel IDs and whatsapp group JIDs
       const slackIds: string[] = [];
       const waJids: string[] = [];
       for (const row of msgRows) {
@@ -311,8 +327,8 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
       });
     },
 
+    /** Sparse per-day message and skill counts. When userId is provided, excludes channel_mention. */
     async getDailyBreakdown(userId: string | null, from: string, to: string): Promise<DailyBucket[]> {
-      // Query 1: messages per day (exclude channel_mention for per-user — those are in group breakdown)
       let msgQuery = db
         .selectFrom("agent_runs")
         .select([sql<string>`DATE(created_at)`.as("date"), sql<number>`COUNT(id)`.as("messages")])
@@ -325,7 +341,6 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
       }
       const msgRows = await msgQuery.execute();
 
-      // Query 2: skills per day (separate to avoid fan-out)
       let skillQuery = db
         .selectFrom("tool_calls as tc")
         .innerJoin("agent_runs as r", "r.id", "tc.agent_run_id")

@@ -16,7 +16,6 @@ export function usageRoutes(db: Kysely<DB>) {
   const routes = new Hono();
   const repo = createAgentRunsRepo(db);
 
-  // GET /me — member's own usage
   routes.get("/me", async (c) => {
     const sub = c.get("sub");
     const period = parsePeriodOrError(c);
@@ -40,7 +39,6 @@ export function usageRoutes(db: Kysely<DB>) {
     });
   });
 
-  // GET /summary — admin org-wide usage
   routes.get("/summary", async (c) => {
     if (c.get("role") !== "admin") {
       return c.json({ error: { code: "FORBIDDEN", message: "Admin access required" } }, 403);
@@ -71,8 +69,6 @@ export function usageRoutes(db: Kysely<DB>) {
 
   return routes;
 }
-
-// --- Helpers ---
 
 function computePeriod(type: PeriodType, date: Date): Period {
   const year = date.getUTCFullYear();

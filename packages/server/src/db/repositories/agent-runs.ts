@@ -34,6 +34,15 @@ export interface UserBreakdown {
   lastRunAt: string | null;
 }
 
+export interface GroupBreakdown {
+  workspaceKey: string;
+  name: string;
+  platform: "slack" | "whatsapp";
+  messageCount: number;
+  skillCount: number;
+  lastRunAt: string | null;
+}
+
 export interface DailyBucket {
   date: string;
   messages: number;
@@ -169,6 +178,7 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
     },
 
     async getOrgByUser(from: string, to: string): Promise<UserBreakdown[]> {
+      // Exclude channel_mention runs — those are counted in getGroupBreakdown
       const userRows = await db
         .selectFrom("agent_runs as r")
         .leftJoin("users as u", "u.id", "r.user_id")
@@ -182,6 +192,7 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
         ])
         .where("r.created_at", ">=", from)
         .where("r.created_at", "<", to)
+        .where("r.context_type", "!=", "channel_mention")
         .groupBy(["r.user_id", "u.name", "u.type"])
         .orderBy("costUsd", "desc")
         .execute();
@@ -192,6 +203,7 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
         .select(["r.user_id", sql<number>`COUNT(tc.id)`.as("skillCount")])
         .where("r.created_at", ">=", from)
         .where("r.created_at", "<", to)
+        .where("r.context_type", "!=", "channel_mention")
         .where("tc.skill_name", "is not", null)
         .groupBy("r.user_id")
         .execute();
@@ -207,6 +219,95 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
         skillCount: skillMap.get(r.userId) ?? 0,
         lastRunAt: r.lastRunAt ?? null,
       }));
+    },
+
+    async getGroupBreakdown(from: string, to: string): Promise<GroupBreakdown[]> {
+      const wsKey = sql<string>`json_extract(r.attributes, '$."sketch.workspace_key"')`;
+
+      // Query 1: messages + last run per workspace_key (channel/group runs only)
+      const msgRows = await db
+        .selectFrom("agent_runs as r")
+        .select([
+          wsKey.as("workspaceKey"),
+          "r.platform",
+          sql<number>`COUNT(r.id)`.as("messageCount"),
+          sql<string>`MAX(r.created_at)`.as("lastRunAt"),
+        ])
+        .where("r.created_at", ">=", from)
+        .where("r.created_at", "<", to)
+        .where("r.context_type", "=", "channel_mention")
+        .where(wsKey, "is not", null)
+        .groupBy([wsKey, "r.platform"])
+        .orderBy("messageCount", "desc")
+        .execute();
+
+      if (msgRows.length === 0) return [];
+
+      // Query 2: skill counts per workspace_key (separate to avoid fan-out)
+      const skillRows = await db
+        .selectFrom("tool_calls as tc")
+        .innerJoin("agent_runs as r", "r.id", "tc.agent_run_id")
+        .select([wsKey.as("workspaceKey"), sql<number>`COUNT(tc.id)`.as("skillCount")])
+        .where("r.created_at", ">=", from)
+        .where("r.created_at", "<", to)
+        .where("r.context_type", "=", "channel_mention")
+        .where("tc.skill_name", "is not", null)
+        .groupBy(wsKey)
+        .execute();
+
+      const skillMap = new Map(skillRows.map((r) => [r.workspaceKey, Number(r.skillCount)]));
+
+      // Resolve names: collect slack channel IDs and whatsapp group JIDs
+      const slackIds: string[] = [];
+      const waJids: string[] = [];
+      for (const row of msgRows) {
+        const wk = row.workspaceKey;
+        if (wk?.startsWith("channel-")) slackIds.push(wk.slice(8));
+        else if (wk?.startsWith("wa-group-")) waJids.push(wk.slice(9));
+      }
+
+      const channelNames = new Map<string, string>();
+      if (slackIds.length > 0) {
+        const rows = await db
+          .selectFrom("channels")
+          .select(["slack_channel_id", "name"])
+          .where("slack_channel_id", "in", slackIds)
+          .execute();
+        for (const r of rows) channelNames.set(r.slack_channel_id, r.name);
+      }
+
+      const groupNames = new Map<string, string>();
+      if (waJids.length > 0) {
+        const rows = await db
+          .selectFrom("whatsapp_groups")
+          .select(["jid", "name"])
+          .where("jid", "in", waJids)
+          .execute();
+        for (const r of rows) groupNames.set(r.jid, r.name);
+      }
+
+      return msgRows.map((r) => {
+        const wk = r.workspaceKey ?? "";
+        let name = wk;
+        let platform: "slack" | "whatsapp" = r.platform as "slack" | "whatsapp";
+        if (wk.startsWith("channel-")) {
+          const slackId = wk.slice(8);
+          name = channelNames.get(slackId) ?? `#${slackId}`;
+          platform = "slack";
+        } else if (wk.startsWith("wa-group-")) {
+          const jid = wk.slice(9);
+          name = groupNames.get(jid) ?? jid;
+          platform = "whatsapp";
+        }
+        return {
+          workspaceKey: wk,
+          name,
+          platform,
+          messageCount: Number(r.messageCount),
+          skillCount: skillMap.get(wk) ?? 0,
+          lastRunAt: r.lastRunAt ?? null,
+        };
+      });
     },
 
     async getDailyBreakdown(userId: string | null, from: string, to: string): Promise<DailyBucket[]> {

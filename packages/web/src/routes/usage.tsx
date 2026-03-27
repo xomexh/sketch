@@ -170,7 +170,12 @@ function TeamView({
       {/* Team adoption table */}
       <div>
         <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Team adoption</p>
-        <TeamAdoptionTable byUser={data?.by_user ?? []} allUsers={usersData?.users ?? []} currentUserId={auth.userId} />
+        <TeamAdoptionTable
+          byUser={data?.by_user ?? []}
+          byGroup={data?.by_group ?? []}
+          allUsers={usersData?.users ?? []}
+          currentUserId={auth.userId}
+        />
       </div>
 
       {/* Activity by channel + Top skills */}
@@ -276,23 +281,11 @@ function MetricCard({
 }
 
 function AmountSpentCard({ value, periodLabel }: { value: number; periodLabel: string }) {
-  const pctOfPlan = Math.min((value / 100) * 100, 100);
-  const isAmber = pctOfPlan >= 80;
-
   return (
     <div className="rounded-lg bg-card p-4 dark:bg-[#111110]">
       <p className="font-mono text-[10px] uppercase tracking-[0.07em] text-muted-foreground">Amount spent</p>
-      <p className={cn("mt-1 text-[26px] font-medium leading-tight", isAmber && "text-amber-600 dark:text-amber-400")}>
-        ${value.toFixed(2)}
-      </p>
+      <p className="mt-1 text-[26px] font-medium leading-tight">${value.toFixed(2)}</p>
       <p className="mt-1 text-[11px] text-muted-foreground">this {periodLabel}</p>
-      <div className="mt-2 h-[7px] w-full overflow-hidden rounded-[4px] bg-[#B4B2A9] dark:bg-[#4A4840]">
-        <div
-          className={cn("h-full rounded-[4px] transition-all", isAmber ? "bg-amber-500" : "bg-[#FEED01]")}
-          style={{ width: `${pctOfPlan}%` }}
-        />
-      </div>
-      <p className="mt-1 font-mono text-[9px] text-muted-foreground">{Math.round(pctOfPlan)}% of plan</p>
     </div>
   );
 }
@@ -538,7 +531,7 @@ interface TeamAgent {
 
 type TeamEntity = TeamMember | TeamGroup | TeamAgent;
 type TableFilter = "all" | "members" | "groups" | "agents";
-const ROWS_PER_PAGE = 20;
+const ROWS_PER_PAGE = 5;
 
 interface ByUserEntry {
   userId: string;
@@ -561,8 +554,18 @@ function formatLastActive(isoDate: string | null): string {
   return `${diffDays}d ago`;
 }
 
+interface ByGroupEntry {
+  workspaceKey: string;
+  name: string;
+  platform: "slack" | "whatsapp";
+  messageCount: number;
+  skillCount: number;
+  lastRunAt: string | null;
+}
+
 function buildEntities(
   byUser: ByUserEntry[],
+  byGroup: ByGroupEntry[],
   allUsers: { id: string; name: string; type: string }[],
   currentUserId: string | undefined,
 ): { members: TeamMember[]; groups: TeamGroup[]; agents: TeamAgent[] } {
@@ -620,16 +623,27 @@ function buildEntities(
     }
   }
 
-  const groups: TeamGroup[] = [];
+  const groups: TeamGroup[] = byGroup.map((g) => ({
+    name: g.name,
+    type: "group",
+    memberCount: 0,
+    messages: g.messageCount,
+    skillsUsed: g.skillCount,
+    lastActive: formatLastActive(g.lastRunAt),
+    activityPct: Math.round((g.messageCount / maxMessages) * 100),
+  }));
+
   return { members, groups, agents };
 }
 
 function TeamAdoptionTable({
   byUser,
+  byGroup,
   allUsers,
   currentUserId,
 }: {
   byUser: ByUserEntry[];
+  byGroup: ByGroupEntry[];
   allUsers: { id: string; name: string; type: string }[];
   currentUserId: string | undefined;
 }) {
@@ -638,8 +652,8 @@ function TeamAdoptionTable({
   const [page, setPage] = useState(1);
 
   const { members, groups, agents } = useMemo(
-    () => buildEntities(byUser, allUsers, currentUserId),
-    [byUser, allUsers, currentUserId],
+    () => buildEntities(byUser, byGroup, allUsers, currentUserId),
+    [byUser, byGroup, allUsers, currentUserId],
   );
   const allEntities: TeamEntity[] = useMemo(() => [...members, ...groups, ...agents], [members, groups, agents]);
 
@@ -693,7 +707,7 @@ function TeamAdoptionTable({
     setPage(1);
   }
 
-  const colCount = filter === "agents" ? 4 : filter === "groups" ? 6 : 5;
+  const colCount = 5;
 
   return (
     <div className="overflow-hidden rounded-lg border-[0.5px] border-border bg-card">
@@ -748,59 +762,57 @@ function TeamAdoptionTable({
         </div>
       </div>
 
-      <table className="w-full text-[13px]">
-        <thead>
-          <tr className="border-b border-border text-left">
-            <th className="px-4 py-2.5 font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
-              {filter === "groups" ? "Group" : filter === "agents" ? "Agent" : "Member"}
-            </th>
-            {filter === "groups" ? (
-              <th className="px-4 py-2.5 text-right font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
-                Members
+      {/* Fixed-height body: header + 5 rows = stable height regardless of content */}
+      <div className="h-[245px]">
+        <table className="w-full text-[13px]">
+          <colgroup>
+            <col />
+            <col className="w-[100px]" />
+            <col className="w-[100px]" />
+            <col className="w-[110px]" />
+            <col className="w-[110px]" />
+          </colgroup>
+          <thead>
+            <tr className="border-b border-border text-left">
+              <th className="px-4 py-2.5 font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
+                {filter === "groups" ? "Group" : filter === "agents" ? "Agent" : "Member"}
               </th>
-            ) : null}
-            <th className="px-4 py-2.5 text-right font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
-              Messages
-            </th>
-            {filter !== "agents" ? (
+              <th className="px-4 py-2.5 text-right font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
+                Messages
+              </th>
               <th className="px-4 py-2.5 text-right font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
                 Skills used
               </th>
-            ) : null}
-            <th className="px-4 py-2.5 font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
-              Last active
-            </th>
-            <th className="px-4 py-2.5 font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
-              Activity
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {pagedEntities.length === 0 ? (
-            <tr>
-              <td colSpan={colCount} className="px-4 py-8 text-center text-[13px] text-muted-foreground">
-                {search ? <>No results for &ldquo;{search}&rdquo;</> : "No usage data yet"}
-              </td>
+              <th className="px-4 py-2.5 font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
+                Last active
+              </th>
+              <th className="px-4 py-2.5 font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
+                Activity
+              </th>
             </tr>
-          ) : (
-            pagedEntities.map((entity) => (
-              <EntityRow
-                key={entity.name}
-                entity={entity}
-                showSkills={filter !== "agents"}
-                showMembers={filter === "groups"}
-              />
-            ))
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {pagedEntities.length === 0 ? (
+              <tr>
+                <td colSpan={colCount} className="px-4 pt-16 text-center text-[13px] text-muted-foreground">
+                  {search ? <>No results for &ldquo;{search}&rdquo;</> : "No usage data yet"}
+                </td>
+              </tr>
+            ) : (
+              pagedEntities.map((entity) => <EntityRow key={entity.name} entity={entity} />)
+            )}
+          </tbody>
+        </table>
+      </div>
 
-      {/* Pagination */}
-      {filteredEntities.length > 0 ? (
-        <div className="flex items-center justify-between border-t border-border px-4 py-2.5 font-mono text-[10px] uppercase text-muted-foreground">
-          <span>
-            Showing {Math.min(pagedEntities.length, ROWS_PER_PAGE)} of {filteredEntities.length}
-          </span>
+      {/* Pagination — always rendered for stable height */}
+      <div className="flex items-center justify-between border-t border-border px-4 py-2.5 font-mono text-[10px] uppercase text-muted-foreground">
+        <span>
+          {filteredEntities.length > 0
+            ? `Showing ${Math.min(pagedEntities.length, ROWS_PER_PAGE)} of ${filteredEntities.length}`
+            : "\u00A0"}
+        </span>
+        {totalPages > 1 ? (
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -848,21 +860,18 @@ function TeamAdoptionTable({
               <CaretRightIcon size={12} />
             </button>
           </div>
-        </div>
-      ) : null}
+        ) : (
+          <span>&nbsp;</span>
+        )}
+      </div>
     </div>
   );
 }
 
-function EntityRow({
-  entity,
-  showSkills,
-  showMembers,
-}: { entity: TeamEntity; showSkills: boolean; showMembers: boolean }) {
+function EntityRow({ entity }: { entity: TeamEntity }) {
   const messages = entity.messages;
   const skillsUsed = entity.type !== "agent" ? (entity as TeamMember | TeamGroup).skillsUsed : null;
   const isCurrentUser = entity.type === "member" && (entity as TeamMember).isCurrentUser;
-  const memberCount = entity.type === "group" ? (entity as TeamGroup).memberCount : null;
 
   return (
     <tr className="cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-secondary/50 dark:hover:bg-muted/30">
@@ -885,39 +894,24 @@ function EntityRow({
             </Badge>
           ) : null}
           {entity.type === "group" ? (
-            <>
-              <Badge
-                variant="secondary"
-                className="rounded-[4px] bg-muted px-1.5 py-0 text-[9px] text-muted-foreground"
-              >
-                Group
-              </Badge>
-              {memberCount !== null ? (
-                <span className="text-[11px] text-muted-foreground">&middot; {memberCount} members</span>
-              ) : null}
-            </>
+            <Badge variant="secondary" className="rounded-[4px] bg-muted px-1.5 py-0 text-[9px] text-muted-foreground">
+              Group
+            </Badge>
           ) : null}
         </div>
       </td>
-      {showMembers ? (
-        <td className="px-4 py-2.5 text-right text-xs text-muted-foreground tabular-nums">
-          {memberCount !== null ? `${memberCount}` : <span className="text-muted-foreground">&mdash;</span>}
-        </td>
-      ) : null}
       <td className="px-4 py-2.5 text-right tabular-nums">
         {messages !== null ? messages : <span className="text-muted-foreground">&mdash;</span>}
       </td>
-      {showSkills ? (
-        <td className="px-4 py-2.5 text-right tabular-nums">
-          {entity.type === "agent" ? (
-            <span className="text-muted-foreground">&mdash;</span>
-          ) : skillsUsed !== null ? (
-            skillsUsed
-          ) : (
-            <span className="text-muted-foreground">&mdash;</span>
-          )}
-        </td>
-      ) : null}
+      <td className="px-4 py-2.5 text-right tabular-nums">
+        {entity.type === "agent" ? (
+          <span className="text-muted-foreground">&mdash;</span>
+        ) : skillsUsed !== null ? (
+          skillsUsed
+        ) : (
+          <span className="text-muted-foreground">&mdash;</span>
+        )}
+      </td>
       <td className="px-4 py-2.5 text-muted-foreground">{entity.lastActive}</td>
       <td className="px-4 py-2.5">
         <ActivityBar pct={entity.activityPct} />

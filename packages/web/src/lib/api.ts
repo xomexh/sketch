@@ -658,6 +658,14 @@ export const api = {
           skillCount: number;
           lastRunAt: string | null;
         }[];
+        by_group: {
+          workspaceKey: string;
+          name: string;
+          platform: "slack" | "whatsapp";
+          messageCount: number;
+          skillCount: number;
+          lastRunAt: string | null;
+        }[];
       }>(`/api/usage/summary${qs ? `?${qs}` : ""}`);
     },
   },

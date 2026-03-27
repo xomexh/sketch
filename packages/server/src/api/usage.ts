@@ -49,10 +49,11 @@ export function usageRoutes(db: Kysely<DB>) {
     const period = parsePeriodOrError(c);
     if ("error" in period) return c.json({ error: { code: "BAD_REQUEST", message: period.error } }, 400);
 
-    const [summary, skills, byUser] = await Promise.all([
+    const [summary, skills, byUser, byGroup] = await Promise.all([
       repo.getOrgSummary(period.from, period.to),
       repo.getOrgSkills(period.from, period.to),
       repo.getOrgByUser(period.from, period.to),
+      repo.getGroupBreakdown(period.from, period.to),
     ]);
 
     return c.json({
@@ -64,6 +65,7 @@ export function usageRoutes(db: Kysely<DB>) {
       spend: { total_cost_usd: round2(summary.totalCostUsd) },
       skills: { total: summary.totalSkills, by_skill: skills },
       by_user: byUser.map((u) => ({ ...u, costUsd: round2(u.costUsd) })),
+      by_group: byGroup,
     });
   });
 

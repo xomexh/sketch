@@ -16,6 +16,7 @@ function makeMockRepo() {
     getOrgSummary: vi.fn(),
     getOrgSkills: vi.fn(),
     getOrgByUser: vi.fn(),
+    getGroupBreakdown: vi.fn(),
     getDailyBreakdown: vi.fn(),
   };
 }

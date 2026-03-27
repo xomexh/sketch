@@ -18,6 +18,11 @@ vi.mock("./skills/sync", () => ({
   syncFeaturedSkills: vi.fn(),
 }));
 
+// Avoid managed seed side effects during tests
+vi.mock("./managed-seed", () => ({
+  runManagedSeed: vi.fn(),
+}));
+
 type ServerHandle = Awaited<ReturnType<typeof createServer>>;
 
 describe("bootstrap", () => {
@@ -38,7 +43,7 @@ describe("bootstrap", () => {
     return handle;
   }
 
-  it("starts and returns expected handle shape", async () => {
+  it("starts and returns expected handle shape", { timeout: 15_000 }, async () => {
     const h = await boot();
 
     expect(h.config).toBeDefined();

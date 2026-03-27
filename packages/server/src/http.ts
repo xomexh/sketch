@@ -23,6 +23,7 @@ import { skillsRoutes } from "./api/skills";
 
 import { oauthRoutes } from "./api/oauth";
 import { systemRoutes } from "./api/system";
+import { usageRoutes } from "./api/usage";
 import { userRoutes } from "./api/users";
 import { whatsappRoutes } from "./api/whatsapp";
 import { createWorkspaceApi } from "./api/workspace";
@@ -132,6 +133,8 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   }
 
   app.route("/api/channels/email", emailRoutes(settings));
+
+  app.route("/api/usage", usageRoutes(db));
 
   if (deps?.logger) {
     app.route("/api/connectors", connectorRoutes(connectors, db, deps.logger));

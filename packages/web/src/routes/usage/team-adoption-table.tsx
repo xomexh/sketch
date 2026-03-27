@@ -1,5 +1,5 @@
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { Badge } from "@sketch/ui/components/badge";
+import { cn } from "@sketch/ui/lib/utils";
 import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
 import { useMemo, useRef, useState } from "react";
 import { ActivityBar, AvatarChip, GroupAvatar, formatLastActive } from "./shared";

@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@sketch/ui/lib/utils";
 
 // --- Types & Constants ---
 

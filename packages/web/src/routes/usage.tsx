@@ -3,7 +3,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useDashboardAuth } from "@/routes/dashboard";
 import { ArrowDownIcon, ArrowUpIcon, CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { createRoute } from "@tanstack/react-router";
 import {
   CategoryScale,
@@ -129,6 +129,7 @@ function TeamView({
   const { data } = useQuery({
     queryKey: ["usage", "summary", apiPeriod],
     queryFn: () => api.usage.summary({ period: apiPeriod }),
+    placeholderData: keepPreviousData,
   });
 
   const { data: usersData } = useQuery({
@@ -201,6 +202,7 @@ function PersonalView({
   const { data } = useQuery({
     queryKey: ["usage", "me", apiPeriod],
     queryFn: () => api.usage.me({ period: apiPeriod }),
+    placeholderData: keepPreviousData,
   });
 
   const channels = useMemo(() => {
@@ -492,7 +494,7 @@ function UsageOverTimeChart({
           </span>
         </div>
       </div>
-      <div className="h-[120px]">
+      <div className="h-[240px]">
         <Chart type="line" data={graphData} options={options} />
       </div>
     </div>
@@ -799,7 +801,7 @@ function TeamAdoptionTable({
                 </td>
               </tr>
             ) : (
-              pagedEntities.map((entity) => <EntityRow key={entity.name} entity={entity} />)
+              pagedEntities.map((entity) => <EntityRow key={entity.name} entity={entity} filter={filter} />)
             )}
           </tbody>
         </table>
@@ -868,10 +870,11 @@ function TeamAdoptionTable({
   );
 }
 
-function EntityRow({ entity }: { entity: TeamEntity }) {
+function EntityRow({ entity, filter }: { entity: TeamEntity; filter: TableFilter }) {
   const messages = entity.messages;
   const skillsUsed = entity.type !== "agent" ? (entity as TeamMember | TeamGroup).skillsUsed : null;
   const isCurrentUser = entity.type === "member" && (entity as TeamMember).isCurrentUser;
+  const memberCount = entity.type === "group" ? (entity as TeamGroup).memberCount : null;
 
   return (
     <tr className="cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-secondary/50 dark:hover:bg-muted/30">
@@ -888,15 +891,25 @@ function EntityRow({ entity }: { entity: TeamEntity }) {
               You
             </Badge>
           ) : null}
-          {entity.type === "agent" ? (
+          {entity.type === "agent" && filter !== "agents" ? (
             <Badge variant="secondary" className="rounded-[4px] px-1.5 py-0 text-[9px]">
               Agent
             </Badge>
           ) : null}
           {entity.type === "group" ? (
-            <Badge variant="secondary" className="rounded-[4px] bg-muted px-1.5 py-0 text-[9px] text-muted-foreground">
-              Group
-            </Badge>
+            <>
+              {filter !== "groups" ? (
+                <Badge
+                  variant="secondary"
+                  className="rounded-[4px] bg-muted px-1.5 py-0 text-[9px] text-muted-foreground"
+                >
+                  Group
+                </Badge>
+              ) : null}
+              {memberCount !== null ? (
+                <span className="text-[11px] text-muted-foreground">&middot; {memberCount} members</span>
+              ) : null}
+            </>
           ) : null}
         </div>
       </td>

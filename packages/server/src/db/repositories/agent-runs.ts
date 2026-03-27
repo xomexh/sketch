@@ -66,6 +66,7 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
     },
 
     async getMemberSummary(userId: string, from: string, to: string): Promise<MemberSummary> {
+      // Exclude channel_mention — those are group/channel usage, not personal DM usage
       const totals = await db
         .selectFrom("agent_runs")
         .select([
@@ -75,6 +76,7 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
         .where("user_id", "=", userId)
         .where("created_at", ">=", from)
         .where("created_at", "<", to)
+        .where("context_type", "!=", "channel_mention")
         .executeTakeFirstOrThrow();
 
       const byPlatform = await db
@@ -83,6 +85,7 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
         .where("user_id", "=", userId)
         .where("created_at", ">=", from)
         .where("created_at", "<", to)
+        .where("context_type", "!=", "channel_mention")
         .groupBy("platform")
         .execute();
 
@@ -93,6 +96,7 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
         .where("r.user_id", "=", userId)
         .where("r.created_at", ">=", from)
         .where("r.created_at", "<", to)
+        .where("r.context_type", "!=", "channel_mention")
         .where("tc.skill_name", "is not", null)
         .executeTakeFirstOrThrow();
 
@@ -115,6 +119,7 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
         .where("r.user_id", "=", userId)
         .where("r.created_at", ">=", from)
         .where("r.created_at", "<", to)
+        .where("r.context_type", "!=", "channel_mention")
         .where("tc.skill_name", "is not", null)
         .groupBy("tc.skill_name")
         .orderBy("count", "desc")
@@ -311,7 +316,7 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
     },
 
     async getDailyBreakdown(userId: string | null, from: string, to: string): Promise<DailyBucket[]> {
-      // Query 1: messages per day
+      // Query 1: messages per day (exclude channel_mention for per-user — those are in group breakdown)
       let msgQuery = db
         .selectFrom("agent_runs")
         .select([sql<string>`DATE(created_at)`.as("date"), sql<number>`COUNT(id)`.as("messages")])
@@ -320,7 +325,7 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
         .groupBy(sql`DATE(created_at)`)
         .orderBy(sql`DATE(created_at)`);
       if (userId !== null) {
-        msgQuery = msgQuery.where("user_id", "=", userId);
+        msgQuery = msgQuery.where("user_id", "=", userId).where("context_type", "!=", "channel_mention");
       }
       const msgRows = await msgQuery.execute();
 
@@ -335,7 +340,7 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
         .groupBy(sql`DATE(r.created_at)`)
         .orderBy(sql`DATE(r.created_at)`);
       if (userId !== null) {
-        skillQuery = skillQuery.where("r.user_id", "=", userId);
+        skillQuery = skillQuery.where("r.user_id", "=", userId).where("r.context_type", "!=", "channel_mention");
       }
       const skillRows = await skillQuery.execute();
 

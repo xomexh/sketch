@@ -15,7 +15,7 @@ import {
   PointElement,
   Tooltip,
 } from "chart.js";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Chart } from "react-chartjs-2";
 import { dashboardRoute } from "./dashboard";
 
@@ -356,7 +356,7 @@ function UsageOverTimeChart({
       } else {
         // Month: label every 3rd day
         const dayNum = d.getUTCDate();
-        labels.push(dayNum % 3 === 1 ? `${d.toLocaleString("en", { month: "short" })} ${dayNum}` : "");
+        labels.push(dayNum % 3 === 1 ? `${d.toLocaleString("en", { month: "short", timeZone: "UTC" })} ${dayNum}` : "");
       }
 
       messages.push(msgMap.get(dateKey) ?? 0);
@@ -516,7 +516,7 @@ interface TeamMember {
 interface TeamGroup {
   name: string;
   type: "group";
-  memberCount: number;
+  memberCount: number | null;
   messages: number | null;
   skillsUsed: number | null;
   lastActive: string;
@@ -628,7 +628,7 @@ function buildEntities(
   const groups: TeamGroup[] = byGroup.map((g) => ({
     name: g.name,
     type: "group",
-    memberCount: 0,
+    memberCount: null,
     messages: g.messageCount,
     skillsUsed: g.skillCount,
     lastActive: formatLastActive(g.lastRunAt),
@@ -658,6 +658,13 @@ function TeamAdoptionTable({
     [byUser, byGroup, allUsers, currentUserId],
   );
   const allEntities: TeamEntity[] = useMemo(() => [...members, ...groups, ...agents], [members, groups, agents]);
+
+  // Reset page when underlying data changes (e.g. period switch)
+  const prevEntitiesRef = useRef(allEntities);
+  if (prevEntitiesRef.current !== allEntities) {
+    prevEntitiesRef.current = allEntities;
+    if (page !== 1) setPage(1);
+  }
 
   const filteredEntities = useMemo(() => {
     let entities: TeamEntity[];
@@ -801,7 +808,9 @@ function TeamAdoptionTable({
                 </td>
               </tr>
             ) : (
-              pagedEntities.map((entity) => <EntityRow key={entity.name} entity={entity} filter={filter} />)
+              pagedEntities.map((entity) => (
+                <EntityRow key={`${entity.type}-${entity.name}`} entity={entity} filter={filter} />
+              ))
             )}
           </tbody>
         </table>
@@ -1085,7 +1094,8 @@ function TopSkills({
 
 function formatPeriodLabel(period: { from: string; to: string; type: string }): string {
   const from = new Date(period.from);
-  const to = new Date(period.to);
-  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-  return `${from.toLocaleDateString("en-US", opts)} – ${to.toLocaleDateString("en-US", opts)}`;
+  // Subtract 1 day from half-open `to` to show the inclusive last day
+  const lastDay = new Date(new Date(period.to).getTime() - 24 * 60 * 60 * 1000);
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", timeZone: "UTC" };
+  return `${from.toLocaleDateString("en-US", opts)} – ${lastDay.toLocaleDateString("en-US", opts)}`;
 }

@@ -118,6 +118,9 @@ function parsePeriodOrError(c: {
 
   let date = new Date();
   if (rawDate) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+      return { error: `Invalid date: "${rawDate}". Must be YYYY-MM-DD.` };
+    }
     date = new Date(rawDate);
     if (Number.isNaN(date.getTime())) {
       return { error: `Invalid date: "${rawDate}". Must be YYYY-MM-DD.` };

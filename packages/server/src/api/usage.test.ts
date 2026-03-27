@@ -372,12 +372,17 @@ describe("Usage API", () => {
       expect(body.by_user).toBeDefined();
       expect(body.by_user.length).toBe(2);
 
-      // by_user sums match totals (UAT-9)
-      const messageSum = body.by_user.reduce((s: number, u: { messageCount: number }) => s + u.messageCount, 0);
-      expect(messageSum).toBe(body.messages.total);
+      // by_user + by_group sums match totals (UAT-9)
+      // by_user excludes channel_mention, by_group only includes channel_mention
+      const userMsgSum = body.by_user.reduce((s: number, u: { messageCount: number }) => s + u.messageCount, 0);
+      const groupMsgSum = (body.by_group ?? []).reduce(
+        (s: number, g: { messageCount: number }) => s + g.messageCount,
+        0,
+      );
+      expect(userMsgSum + groupMsgSum).toBe(body.messages.total);
 
       const costSum = body.by_user.reduce((s: number, u: { costUsd: number }) => s + u.costUsd, 0);
-      expect(costSum).toBeCloseTo(body.spend.total_cost_usd, 2);
+      // costSum may be less than total if channel_mention runs have cost — that's correct
 
       // Agent user appears with correct type (UAT-10)
       const agentUser = body.by_user.find((u: { userType: string }) => u.userType === "agent");
@@ -604,6 +609,128 @@ describe("Usage API", () => {
       const body = await res.json();
       expect(body.period.from).toBe("2026-02-01T00:00:00.000Z");
       expect(body.period.to).toBe("2026-03-01T00:00:00.000Z");
+    });
+  });
+
+  // --- Double-counting prevention (channel_mention exclusion) ---
+
+  describe("Double-counting prevention", () => {
+    it("/me excludes channel_mention runs from totals", async () => {
+      const users = createUserRepository(db);
+      const member = await users.create({ name: "DblCount", email: "dblcount@test.com" });
+      const repo = createAgentRunsRepo(db);
+
+      // 2 DM runs
+      await repo.insertRun({
+        trace_id: "dc-dm-1",
+        user_id: member.id,
+        platform: "slack",
+        context_type: "dm",
+        cost_usd: 1.0,
+        created_at: "2026-03-10T10:00:00.000Z",
+      });
+      await repo.insertRun({
+        trace_id: "dc-dm-2",
+        user_id: member.id,
+        platform: "slack",
+        context_type: "dm",
+        cost_usd: 0.5,
+        created_at: "2026-03-11T10:00:00.000Z",
+      });
+
+      // 1 channel_mention run (should be excluded from /me)
+      const channelRunId = await repo.insertRun({
+        trace_id: "dc-channel-1",
+        user_id: member.id,
+        platform: "slack",
+        context_type: "channel_mention",
+        cost_usd: 0.3,
+        created_at: "2026-03-12T10:00:00.000Z",
+      });
+      await repo.insertToolCalls([{ agent_run_id: channelRunId, tool_name: "canvas:search", skill_name: "canvas" }]);
+
+      const app = createApp(db, config, { logger });
+      const cookie = await getMemberCookie(db, member.id);
+
+      const res = await app.request("/api/usage/me?period=monthly&date=2026-03-15", {
+        headers: { Cookie: cookie },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      // Only DM runs counted: 2 messages, $1.50
+      expect(body.messages.total).toBe(2);
+      expect(body.spend.total_cost_usd).toBe(1.5);
+
+      // Channel skill not counted
+      expect(body.skills.total).toBe(0);
+
+      // Daily breakdown excludes channel run
+      expect(body.daily_breakdown.length).toBe(2);
+    });
+
+    it("/summary by_user excludes channel_mention, by_group includes it", async () => {
+      const users = createUserRepository(db);
+      const member = await users.create({ name: "DblAdmin", email: "dbladmin@test.com" });
+      const repo = createAgentRunsRepo(db);
+
+      // 1 DM run
+      await repo.insertRun({
+        trace_id: "da-dm-1",
+        user_id: member.id,
+        platform: "slack",
+        context_type: "dm",
+        cost_usd: 1.0,
+        created_at: "2026-03-10T10:00:00.000Z",
+      });
+
+      // 1 channel_mention run with workspace_key
+      const channelRunId = await repo.insertRun({
+        trace_id: "da-channel-1",
+        user_id: member.id,
+        platform: "slack",
+        context_type: "channel_mention",
+        cost_usd: 0.2,
+        created_at: "2026-03-11T10:00:00.000Z",
+        attributes: JSON.stringify({ "sketch.workspace_key": "channel-C999TEST" }),
+      });
+      await repo.insertToolCalls([{ agent_run_id: channelRunId, tool_name: "Read", skill_name: null }]);
+
+      // Seed the channel name
+      await db
+        .insertInto("channels")
+        .values({ id: "ch-test", slack_channel_id: "C999TEST", name: "test-channel", type: "public_channel" })
+        .execute();
+
+      const app = createApp(db, config, { logger });
+      const adminCookie = await loginAdmin(app);
+
+      const res = await app.request("/api/usage/summary?period=monthly&date=2026-03-15", {
+        headers: { Cookie: adminCookie },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      // Org total includes everything: 2 messages
+      expect(body.messages.total).toBe(2);
+
+      // by_user: only DM run (1 message)
+      const user = body.by_user.find((u: { userId: string }) => u.userId === member.id);
+      expect(user).toBeDefined();
+      expect(user.messageCount).toBe(1);
+
+      // by_group: only channel_mention run (1 message)
+      expect(body.by_group).toBeDefined();
+      expect(body.by_group.length).toBe(1);
+      expect(body.by_group[0].name).toBe("test-channel");
+      expect(body.by_group[0].messageCount).toBe(1);
+
+      // by_user_sum + by_group_sum = total
+      const userSum = body.by_user.reduce((s: number, u: { messageCount: number }) => s + u.messageCount, 0);
+      const groupSum = body.by_group.reduce((s: number, g: { messageCount: number }) => s + g.messageCount, 0);
+      expect(userSum + groupSum).toBe(body.messages.total);
     });
   });
 

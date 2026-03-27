@@ -6,6 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { SpanStatusCode, trace } from "@opentelemetry/api";
+import type { Kysely } from "kysely";
 import { applyLlmEnvFromSettings } from "./agent/llm-env";
 import { type AgentResult, runAgent } from "./agent/runner";
 import type { McpServerConfig, RunAgentParams } from "./agent/runner";
@@ -21,9 +22,11 @@ import { createOutreachRepository } from "./db/repositories/outreach";
 import { createSettingsRepository } from "./db/repositories/settings";
 import { createUserRepository } from "./db/repositories/users";
 import { createWhatsAppGroupRepository } from "./db/repositories/whatsapp-groups";
+import type { DB } from "./db/schema";
 import { createApp } from "./http";
 import { buildMcpConfig } from "./integrations/factory";
 import { createLogger } from "./logger";
+import { runManagedSeed } from "./managed-seed";
 import { QueueManager } from "./queue";
 import { TaskScheduler } from "./scheduler/service";
 import { syncFeaturedSkills } from "./skills/sync";
@@ -41,7 +44,7 @@ import { GroupBuffer } from "./whatsapp/group-buffer";
 export interface ServerHandle {
   config: Config;
   server: ReturnType<typeof serve>;
-  db: ReturnType<typeof createDatabase>;
+  db: Kysely<DB>;
   whatsapp: WhatsAppBot;
   getSlack: () => SlackBot | null;
   shutdown: () => Promise<void>;
@@ -59,7 +62,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
   const logger = createLogger(config);
 
   // 2. Database
-  const db = createDatabase(config);
+  const db = await createDatabase(config);
   await runMigrations(db);
   logger.info("Database ready");
 
@@ -69,7 +72,8 @@ export async function createServer(config: Config, options?: CreateServerOptions
   // 3. Repositories
   const users = createUserRepository(db);
   const channels = createChannelRepository(db);
-  const settingsRepo = createSettingsRepository(db);
+  const settingsRepo = createSettingsRepository(db, config.ENCRYPTION_KEY);
+  await runManagedSeed(config, settingsRepo);
   const mcpServersRepo = createMcpServerRepository(db);
   const whatsappGroupsRepo = createWhatsAppGroupRepository(db);
   const outreachRepo = createOutreachRepository(db);
@@ -174,6 +178,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
 
   const startSlackBotIfConfigured = createSlackStartupManager({
     logger,
+    slackMode: config.SLACK_MODE,
     getSettingsTokens: async () => {
       const settingsRow = await settingsRepo.get();
       return {
@@ -217,7 +222,6 @@ export async function createServer(config: Config, options?: CreateServerOptions
     getSlack: () => slack,
     scheduler,
     onSlackTokensUpdated: async (tokens) => {
-      if (!tokens) return;
       await startSlackBotIfConfigured(tokens);
     },
     onSlackDisconnect: async () => {

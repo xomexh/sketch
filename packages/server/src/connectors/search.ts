@@ -3,16 +3,22 @@
  *
  * Combines three search layers:
  * 1. Metadata filtering (time, source, content type, tags)
- * 2. FTS5 keyword search (BM25 ranking)
- * 3. Vector similarity search (sqlite-vec, embeddings)
+ * 2. FTS5 keyword search (BM25 ranking) — SQLite only
+ * 3. Vector similarity search (sqlite-vec / pgvector embeddings)
  *
  * Results are merged using reciprocal rank fusion (RRF).
  *
- * Uses raw SQL for FTS5 and vec queries because Kysely's typed query builder
- * doesn't support virtual table joins natively.
+ * Uses raw SQL for the FTS5/tsvector and vec/pgvector queries because:
+ * - Kysely's typed query builder doesn't support virtual table joins (FTS5, sqlite-vec) natively.
+ * - Postgres-specific operators (@@ plainto_tsquery, <=> halfvec cosine distance) have no
+ *   Kysely equivalents. The two dialects use entirely different WHERE clauses, JOIN patterns,
+ *   and ranking functions (bm25 vs ts_rank, sqlite-vec MATCH vs pgvector KNN), so a shared
+ *   query builder abstraction would add complexity without benefit.
  */
 import type { Kysely, SqlBool } from "kysely";
 import { sql } from "kysely";
+import { isPg } from "../db/dialect";
+import { EMBEDDING_DIMENSIONS } from "../db/index";
 import type { DB } from "../db/schema";
 
 export interface SearchResult {
@@ -56,9 +62,6 @@ export interface SearchOptions {
 export async function searchFiles(db: Kysely<DB>, query: string, opts?: SearchOptions): Promise<SearchResult[]> {
   const limit = opts?.limit ?? 10;
 
-  const ftsQuery = sanitizeFtsQuery(query);
-  if (!ftsQuery) return [];
-
   // Build user-level access filter (3-tier model):
   // 1. Unrestricted: no scope AND no file_access rows → visible to all
   // 2. Scope-level: user's email in access_scope_members for the file's scope
@@ -87,6 +90,36 @@ export async function searchFiles(db: Kysely<DB>, query: string, opts?: SearchOp
 				)
 			)`
       : sql``;
+
+  if (isPg(db)) {
+    const tsQuery = sanitizeTsQuery(query);
+    if (!tsQuery) return [];
+
+    const pgQuery = sql<SearchResult>`
+      SELECT
+        indexed_files.id,
+        indexed_files.file_name as "fileName",
+        indexed_files.source,
+        indexed_files.content_category as "contentCategory",
+        indexed_files.summary,
+        indexed_files.provider_url as "providerUrl",
+        indexed_files.source_path as "sourcePath",
+        indexed_files.source_updated_at as "sourceUpdatedAt",
+        ts_rank(indexed_files.search_vector, plainto_tsquery('english', ${query})) as relevance
+      FROM indexed_files
+      WHERE indexed_files.search_vector @@ plainto_tsquery('english', ${query})
+      AND indexed_files.is_archived = 0
+      ${userFilter}
+      ${opts?.source ? sql`AND indexed_files.source = ${opts.source}` : sql``}
+      ${opts?.category ? sql`AND indexed_files.content_category = ${opts.category}` : sql``}
+      ORDER BY relevance DESC
+      LIMIT ${limit}
+    `;
+    return (await pgQuery.execute(db)).rows;
+  }
+
+  const ftsQuery = sanitizeFtsQuery(query);
+  if (!ftsQuery) return [];
 
   const baseQuery = sql<SearchResult>`
 		SELECT
@@ -238,6 +271,23 @@ export async function listIndexedSources(
 }
 
 /**
+ * Sanitize user input for Postgres tsquery / plainto_tsquery.
+ * plainto_tsquery is quite robust, but we strip operator characters that could
+ * cause issues when passed through string interpolation.
+ */
+function sanitizeTsQuery(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+
+  const cleaned = trimmed
+    .replace(/[&|!<>():*\\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return cleaned || "";
+}
+
+/**
  * Sanitize user input for FTS5 queries.
  * Strips characters that would cause FTS5 syntax errors.
  */
@@ -330,26 +380,45 @@ export async function hybridSearch(
   const ftsResults = new Map<string, { rank: number; snippet: string | null }>();
   const vecResults = new Map<string, { rank: number; similarity: number; snippet: string | null }>();
 
-  // ── 1. FTS5 keyword search ──────────────────────────────────
-  const ftsQuery = sanitizeFtsQuery(query);
-  if (ftsQuery) {
-    // BM25 weights: file_name=10, summary=5, tags=3, source=1
-    const ftsRows = await sql<{
-      id: string;
-      rank: number;
-    }>`
-      SELECT indexed_files.id, bm25(indexed_files_fts, 10.0, 5.0, 3.0, 1.0, 3.0) as rank
-      FROM indexed_files
-      INNER JOIN indexed_files_fts ON indexed_files.rowid = indexed_files_fts.rowid
-      WHERE indexed_files_fts MATCH ${ftsQuery}
-      AND indexed_files.is_archived = 0
-      ORDER BY rank
-      LIMIT ${limit * 3}
-    `.execute(db);
+  // ── 1. FTS keyword search ───────────────────────────────────
+  if (isPg(db)) {
+    const tsQuery = sanitizeTsQuery(query);
+    if (tsQuery) {
+      const pgFtsRows = await sql<{ id: string; rank: number }>`
+        SELECT indexed_files.id, ts_rank(indexed_files.search_vector, plainto_tsquery('english', ${query})) as rank
+        FROM indexed_files
+        WHERE indexed_files.search_vector @@ plainto_tsquery('english', ${query})
+        AND indexed_files.is_archived = 0
+        ORDER BY rank DESC
+        LIMIT ${limit * 3}
+      `.execute(db);
 
-    for (let i = 0; i < ftsRows.rows.length; i++) {
-      const row = ftsRows.rows[i];
-      ftsResults.set(row.id, { rank: i + 1, snippet: null });
+      for (let i = 0; i < pgFtsRows.rows.length; i++) {
+        const row = pgFtsRows.rows[i];
+        ftsResults.set(row.id, { rank: i + 1, snippet: null });
+      }
+    }
+  } else {
+    const ftsQuery = sanitizeFtsQuery(query);
+    if (ftsQuery) {
+      // BM25 weights: file_name=10, summary=5, tags=3, source=1
+      const ftsRows = await sql<{
+        id: string;
+        rank: number;
+      }>`
+        SELECT indexed_files.id, bm25(indexed_files_fts, 10.0, 5.0, 3.0, 1.0, 3.0) as rank
+        FROM indexed_files
+        INNER JOIN indexed_files_fts ON indexed_files.rowid = indexed_files_fts.rowid
+        WHERE indexed_files_fts MATCH ${ftsQuery}
+        AND indexed_files.is_archived = 0
+        ORDER BY rank
+        LIMIT ${limit * 3}
+      `.execute(db);
+
+      for (let i = 0; i < ftsRows.rows.length; i++) {
+        const row = ftsRows.rows[i];
+        ftsResults.set(row.id, { rank: i + 1, snippet: null });
+      }
     }
   }
 
@@ -358,36 +427,62 @@ export async function hybridSearch(
     const embeddingJson = JSON.stringify(opts.queryEmbedding);
     const vecLimit = limit * 3;
 
-    // Search chunk embeddings (text documents)
-    const chunkRows = await sql<{
-      indexed_file_id: string;
-      chunk_content: string;
-      distance: number;
-    }>`
-      SELECT
-        dc.indexed_file_id,
-        dc.content as chunk_content,
-        ce.distance
-      FROM chunk_embeddings ce
-      INNER JOIN document_chunks dc ON dc.id = ce.chunk_id
-      WHERE ce.embedding MATCH ${embeddingJson}
-        AND k = ${vecLimit}
-      ORDER BY ce.distance ASC
-    `.execute(db);
+    let chunkRows: { rows: Array<{ indexed_file_id: string; chunk_content: string; distance: number }> };
+    let fileRows: { rows: Array<{ indexed_file_id: string; distance: number }> };
 
-    // Search file embeddings (images)
-    const fileRows = await sql<{
-      indexed_file_id: string;
-      distance: number;
-    }>`
-      SELECT
-        fe.indexed_file_id,
-        fe.distance
-      FROM file_embeddings fe
-      WHERE fe.embedding MATCH ${embeddingJson}
-        AND k = ${vecLimit}
-      ORDER BY fe.distance ASC
-    `.execute(db);
+    if (isPg(db)) {
+      const dims = EMBEDDING_DIMENSIONS;
+      chunkRows = await sql<{ indexed_file_id: string; chunk_content: string; distance: number }>`
+        SELECT
+          dc.indexed_file_id,
+          dc.content as chunk_content,
+          (ce.embedding::halfvec(${sql.lit(dims)}) <=> ${embeddingJson}::halfvec(${sql.lit(dims)})) as distance
+        FROM chunk_embeddings ce
+        INNER JOIN document_chunks dc ON dc.id = ce.chunk_id
+        ORDER BY ce.embedding::halfvec(${sql.lit(dims)}) <=> ${embeddingJson}::halfvec(${sql.lit(dims)})
+        LIMIT ${vecLimit}
+      `.execute(db);
+
+      fileRows = await sql<{ indexed_file_id: string; distance: number }>`
+        SELECT
+          fe.indexed_file_id,
+          (fe.embedding::halfvec(${sql.lit(dims)}) <=> ${embeddingJson}::halfvec(${sql.lit(dims)})) as distance
+        FROM file_embeddings fe
+        ORDER BY fe.embedding::halfvec(${sql.lit(dims)}) <=> ${embeddingJson}::halfvec(${sql.lit(dims)})
+        LIMIT ${vecLimit}
+      `.execute(db);
+    } else {
+      // Search chunk embeddings (text documents)
+      chunkRows = await sql<{
+        indexed_file_id: string;
+        chunk_content: string;
+        distance: number;
+      }>`
+        SELECT
+          dc.indexed_file_id,
+          dc.content as chunk_content,
+          ce.distance
+        FROM chunk_embeddings ce
+        INNER JOIN document_chunks dc ON dc.id = ce.chunk_id
+        WHERE ce.embedding MATCH ${embeddingJson}
+          AND k = ${vecLimit}
+        ORDER BY ce.distance ASC
+      `.execute(db);
+
+      // Search file embeddings (images)
+      fileRows = await sql<{
+        indexed_file_id: string;
+        distance: number;
+      }>`
+        SELECT
+          fe.indexed_file_id,
+          fe.distance
+        FROM file_embeddings fe
+        WHERE fe.embedding MATCH ${embeddingJson}
+          AND k = ${vecLimit}
+        ORDER BY fe.distance ASC
+      `.execute(db);
+    }
 
     // Merge vector results — keep best distance per file
     let vecRank = 1;

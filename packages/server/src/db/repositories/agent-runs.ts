@@ -66,22 +66,15 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
     },
 
     async getMemberSummary(userId: string, from: string, to: string): Promise<MemberSummary> {
-      // Exclude channel_mention — those are group/channel usage, not personal DM usage
-      const totals = await db
-        .selectFrom("agent_runs")
-        .select([
-          db.fn.count<number>("id").as("totalMessages"),
-          sql<number>`ROUND(COALESCE(SUM(cost_usd), 0), 6)`.as("totalCostUsd"),
-        ])
-        .where("user_id", "=", userId)
-        .where("created_at", ">=", from)
-        .where("created_at", "<", to)
-        .where("context_type", "!=", "channel_mention")
-        .executeTakeFirstOrThrow();
-
+      // Single query: GROUP BY platform gives per-platform counts + cost; totals derived in app code
+      // Excludes channel_mention — those are group/channel usage, not personal DM usage
       const byPlatform = await db
         .selectFrom("agent_runs")
-        .select(["platform", db.fn.count<number>("id").as("count")])
+        .select([
+          "platform",
+          sql<number>`COUNT(id)`.as("count"),
+          sql<number>`ROUND(COALESCE(SUM(cost_usd), 0), 6)`.as("cost"),
+        ])
         .where("user_id", "=", userId)
         .where("created_at", ">=", from)
         .where("created_at", "<", to)
@@ -100,13 +93,17 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
         .where("tc.skill_name", "is not", null)
         .executeTakeFirstOrThrow();
 
+      let totalMessages = 0;
+      let totalCostUsd = 0;
+      for (const r of byPlatform) {
+        totalMessages += Number(r.count);
+        totalCostUsd += Number(r.cost);
+      }
+
       return {
-        totalMessages: Number(totals.totalMessages) || 0,
-        messagesByPlatform: byPlatform.map((r) => ({
-          platform: r.platform,
-          count: Number(r.count),
-        })),
-        totalCostUsd: Number(totals.totalCostUsd) || 0,
+        totalMessages,
+        messagesByPlatform: byPlatform.map((r) => ({ platform: r.platform, count: Number(r.count) })),
+        totalCostUsd,
         totalSkills: Number(skillTotal.count) || 0,
       };
     },
@@ -129,19 +126,14 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
     },
 
     async getOrgSummary(from: string, to: string): Promise<OrgSummary> {
-      const totals = await db
-        .selectFrom("agent_runs")
-        .select([
-          db.fn.count<number>("id").as("totalMessages"),
-          sql<number>`ROUND(COALESCE(SUM(cost_usd), 0), 6)`.as("totalCostUsd"),
-        ])
-        .where("created_at", ">=", from)
-        .where("created_at", "<", to)
-        .executeTakeFirstOrThrow();
-
+      // Single query: GROUP BY platform gives per-platform counts + cost; totals derived in app code
       const byPlatform = await db
         .selectFrom("agent_runs")
-        .select(["platform", db.fn.count<number>("id").as("count")])
+        .select([
+          "platform",
+          sql<number>`COUNT(id)`.as("count"),
+          sql<number>`ROUND(COALESCE(SUM(cost_usd), 0), 6)`.as("cost"),
+        ])
         .where("created_at", ">=", from)
         .where("created_at", "<", to)
         .groupBy("platform")
@@ -156,13 +148,17 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
         .where("tc.skill_name", "is not", null)
         .executeTakeFirstOrThrow();
 
+      let totalMessages = 0;
+      let totalCostUsd = 0;
+      for (const r of byPlatform) {
+        totalMessages += Number(r.count);
+        totalCostUsd += Number(r.cost);
+      }
+
       return {
-        totalMessages: Number(totals.totalMessages) || 0,
-        messagesByPlatform: byPlatform.map((r) => ({
-          platform: r.platform,
-          count: Number(r.count),
-        })),
-        totalCostUsd: Number(totals.totalCostUsd) || 0,
+        totalMessages,
+        messagesByPlatform: byPlatform.map((r) => ({ platform: r.platform, count: Number(r.count) })),
+        totalCostUsd,
         totalSkills: Number(skillTotal.count) || 0,
       };
     },

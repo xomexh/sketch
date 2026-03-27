@@ -113,8 +113,7 @@ function parsePeriodOrError(c: {
     return { error: `Invalid period: "${rawPeriod}". Must be weekly, monthly, or quarterly.` };
   }
 
-  const periodType: PeriodType =
-    rawPeriod && VALID_PERIODS.includes(rawPeriod as PeriodType) ? (rawPeriod as PeriodType) : "monthly";
+  const periodType: PeriodType = rawPeriod ? (rawPeriod as PeriodType) : "monthly";
 
   let date = new Date();
   if (rawDate) {

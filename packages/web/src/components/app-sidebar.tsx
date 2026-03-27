@@ -13,7 +13,6 @@ import {
   DesktopIcon,
   FolderIcon,
   FolderSimpleIcon,
-  GearIcon,
   LinkSimpleIcon,
   MoonIcon,
   SignOutIcon,
@@ -64,11 +63,6 @@ const primaryNav: NavItem[] = [
   { label: "Workspace", icon: <FolderIcon size={18} />, href: "/workspace" },
   { label: "Connections", icon: <LinkSimpleIcon size={18} />, href: "/connections" },
   { label: "Usage", icon: <ChartBarIcon size={18} />, href: "/usage" },
-];
-
-const adminNav: NavItem[] = [
-  { label: "Connections", icon: <LinkSimpleIcon size={18} />, href: "/connections" },
-  { label: "Settings", icon: <GearIcon size={18} />, href: "/settings", disabled: true },
 ];
 
 export function AppSidebar({

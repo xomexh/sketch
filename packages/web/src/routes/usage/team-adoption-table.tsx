@@ -123,7 +123,7 @@ function EntityRow({ entity, filter }: { entity: TeamEntity; filter: TableFilter
   const memberCount = entity.type === "group" ? (entity as TeamGroup).memberCount : null;
 
   return (
-    <tr className="cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-secondary/50 dark:hover:bg-muted/30">
+    <tr className="border-b border-border transition-colors last:border-b-0 hover:bg-secondary/50 dark:hover:bg-muted/30">
       <td className="px-4 py-2.5">
         <div className="flex items-center gap-2">
           {entity.type === "group" ? (

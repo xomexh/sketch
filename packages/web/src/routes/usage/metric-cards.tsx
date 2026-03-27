@@ -1,5 +1,5 @@
-import { cn } from "@sketch/ui/lib/utils";
 import { ArrowDownIcon, ArrowUpIcon } from "@phosphor-icons/react";
+import { cn } from "@sketch/ui/lib/utils";
 
 export function MetricCard({
   label,

@@ -123,11 +123,17 @@ function TeamView({
   timePeriod: TimePeriod;
   onTimePeriodChange: (v: TimePeriod) => void;
 }) {
+  const auth = useDashboardAuth();
   const apiPeriod = PERIOD_MAP[timePeriod];
 
   const { data } = useQuery({
     queryKey: ["usage", "summary", apiPeriod],
     queryFn: () => api.usage.summary({ period: apiPeriod }),
+  });
+
+  const { data: usersData } = useQuery({
+    queryKey: ["users"],
+    queryFn: () => api.users.list(),
   });
 
   const channels = useMemo(() => {
@@ -162,12 +168,10 @@ function TeamView({
       </div>
 
       {/* Team adoption table */}
-      {data?.by_user ? (
-        <div>
-          <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Team adoption</p>
-          <TeamAdoptionTable users={data.by_user} />
-        </div>
-      ) : null}
+      <div>
+        <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Team adoption</p>
+        <TeamAdoptionTable byUser={data?.by_user ?? []} allUsers={usersData?.users ?? []} currentUserId={auth.userId} />
+      </div>
 
       {/* Activity by channel + Top skills */}
       <div className="grid gap-6 sm:grid-cols-2">
@@ -504,50 +508,183 @@ function UsageOverTimeChart({
 
 // --- Team Adoption Table ---
 
-interface TeamUser {
+interface TeamMember {
+  name: string;
+  type: "member";
+  isCurrentUser: boolean;
+  messages: number | null;
+  skillsUsed: number | null;
+  lastActive: string;
+  activityPct: number;
+}
+
+interface TeamGroup {
+  name: string;
+  type: "group";
+  memberCount: number;
+  messages: number | null;
+  skillsUsed: number | null;
+  lastActive: string;
+  activityPct: number;
+}
+
+interface TeamAgent {
+  name: string;
+  type: "agent";
+  messages: number | null;
+  lastActive: string;
+  activityPct: number;
+}
+
+type TeamEntity = TeamMember | TeamGroup | TeamAgent;
+type TableFilter = "all" | "members" | "groups" | "agents";
+const ROWS_PER_PAGE = 20;
+
+interface ByUserEntry {
   userId: string;
   userName: string | null;
   userType: string;
   messageCount: number;
   costUsd: number;
   skillCount: number;
+  lastRunAt: string | null;
 }
 
-type TableFilter = "all" | "members" | "agents";
-const ROWS_PER_PAGE = 20;
+function formatLastActive(isoDate: string | null): string {
+  if (!isoDate) return "Never";
+  const now = new Date();
+  const d = new Date(isoDate);
+  const diffMs = now.getTime() - d.getTime();
+  const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  return `${diffDays}d ago`;
+}
 
-function TeamAdoptionTable({ users }: { users: TeamUser[] }) {
+function buildEntities(
+  byUser: ByUserEntry[],
+  allUsers: { id: string; name: string; type: string }[],
+  currentUserId: string | undefined,
+): { members: TeamMember[]; groups: TeamGroup[]; agents: TeamAgent[] } {
+  const usageMap = new Map(byUser.map((u) => [u.userId, u]));
+  const maxMessages = Math.max(...byUser.map((u) => u.messageCount), 1);
+
+  const members: TeamMember[] = [];
+  const agents: TeamAgent[] = [];
+
+  const seenIds = new Set<string>();
+  for (const user of allUsers) {
+    seenIds.add(user.id);
+    const usage = usageMap.get(user.id);
+    const msgs = usage?.messageCount ?? null;
+    const actPct = msgs !== null ? Math.round((msgs / maxMessages) * 100) : 0;
+    const lastActive = formatLastActive(usage?.lastRunAt ?? null);
+
+    if (user.type === "agent") {
+      agents.push({ name: user.name, type: "agent", messages: msgs, lastActive, activityPct: actPct });
+    } else {
+      members.push({
+        name: user.name,
+        type: "member",
+        isCurrentUser: user.id === currentUserId,
+        messages: msgs,
+        skillsUsed: usage?.skillCount ?? null,
+        lastActive,
+        activityPct: actPct,
+      });
+    }
+  }
+
+  for (const usage of byUser) {
+    if (seenIds.has(usage.userId)) continue;
+    const actPct = Math.round((usage.messageCount / maxMessages) * 100);
+    const lastActive = formatLastActive(usage.lastRunAt);
+    if (usage.userType === "agent") {
+      agents.push({
+        name: usage.userName ?? usage.userId,
+        type: "agent",
+        messages: usage.messageCount,
+        lastActive,
+        activityPct: actPct,
+      });
+    } else {
+      members.push({
+        name: usage.userName ?? usage.userId,
+        type: "member",
+        isCurrentUser: false,
+        messages: usage.messageCount,
+        skillsUsed: usage.skillCount,
+        lastActive,
+        activityPct: actPct,
+      });
+    }
+  }
+
+  const groups: TeamGroup[] = [];
+  return { members, groups, agents };
+}
+
+function TeamAdoptionTable({
+  byUser,
+  allUsers,
+  currentUserId,
+}: {
+  byUser: ByUserEntry[];
+  allUsers: { id: string; name: string; type: string }[];
+  currentUserId: string | undefined;
+}) {
   const [filter, setFilter] = useState<TableFilter>("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
-  const filteredUsers = useMemo(() => {
-    let list = users;
-    if (filter === "members") list = list.filter((u) => u.userType !== "agent");
-    if (filter === "agents") list = list.filter((u) => u.userType === "agent");
+  const { members, groups, agents } = useMemo(
+    () => buildEntities(byUser, allUsers, currentUserId),
+    [byUser, allUsers, currentUserId],
+  );
+  const allEntities: TeamEntity[] = useMemo(() => [...members, ...groups, ...agents], [members, groups, agents]);
+
+  const filteredEntities = useMemo(() => {
+    let entities: TeamEntity[];
+    switch (filter) {
+      case "members":
+        entities = members;
+        break;
+      case "groups":
+        entities = groups;
+        break;
+      case "agents":
+        entities = agents;
+        break;
+      default:
+        entities = allEntities;
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter((u) => (u.userName ?? u.userId).toLowerCase().includes(q));
+      entities = entities.filter((e) => e.name.toLowerCase().includes(q));
     }
-    return list;
-  }, [users, filter, search]);
+    return entities;
+  }, [filter, search, members, groups, agents, allEntities]);
 
-  const counts = useMemo(() => {
+  const totalPages = Math.max(1, Math.ceil(filteredEntities.length / ROWS_PER_PAGE));
+  const pagedEntities = filteredEntities.slice((page - 1) * ROWS_PER_PAGE, page * ROWS_PER_PAGE);
+
+  const filteredCounts = useMemo(() => {
+    if (!search.trim()) {
+      return { all: allEntities.length, members: members.length, groups: groups.length, agents: agents.length };
+    }
     const q = search.toLowerCase();
-    const filtered = search.trim() ? users.filter((u) => (u.userName ?? u.userId).toLowerCase().includes(q)) : users;
     return {
-      all: filtered.length,
-      members: filtered.filter((u) => u.userType !== "agent").length,
-      agents: filtered.filter((u) => u.userType === "agent").length,
+      all: allEntities.filter((e) => e.name.toLowerCase().includes(q)).length,
+      members: members.filter((e) => e.name.toLowerCase().includes(q)).length,
+      groups: groups.filter((e) => e.name.toLowerCase().includes(q)).length,
+      agents: agents.filter((e) => e.name.toLowerCase().includes(q)).length,
     };
-  }, [users, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / ROWS_PER_PAGE));
-  const pagedUsers = filteredUsers.slice((page - 1) * ROWS_PER_PAGE, page * ROWS_PER_PAGE);
+  }, [search, allEntities, members, groups, agents]);
 
   const filterTabs: { key: TableFilter; label: string }[] = [
     { key: "all", label: "All" },
     { key: "members", label: "Members" },
+    { key: "groups", label: "Groups" },
     { key: "agents", label: "Agents" },
   ];
 
@@ -555,6 +692,8 @@ function TeamAdoptionTable({ users }: { users: TeamUser[] }) {
     setFilter(f);
     setPage(1);
   }
+
+  const colCount = filter === "agents" ? 4 : filter === "groups" ? 6 : 5;
 
   return (
     <div className="overflow-hidden rounded-lg border-[0.5px] border-border bg-card">
@@ -580,7 +719,7 @@ function TeamAdoptionTable({ users }: { users: TeamUser[] }) {
                   filter === tab.key ? "text-muted-foreground" : "text-muted-foreground/60",
                 )}
               >
-                {counts[tab.key]}
+                {filteredCounts[tab.key]}
               </span>
             </button>
           ))}
@@ -613,60 +752,54 @@ function TeamAdoptionTable({ users }: { users: TeamUser[] }) {
         <thead>
           <tr className="border-b border-border text-left">
             <th className="px-4 py-2.5 font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
-              {filter === "agents" ? "Agent" : "Member"}
+              {filter === "groups" ? "Group" : filter === "agents" ? "Agent" : "Member"}
             </th>
+            {filter === "groups" ? (
+              <th className="px-4 py-2.5 text-right font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
+                Members
+              </th>
+            ) : null}
             <th className="px-4 py-2.5 text-right font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
               Messages
             </th>
-            <th className="px-4 py-2.5 text-right font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
-              Skills used
+            {filter !== "agents" ? (
+              <th className="px-4 py-2.5 text-right font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
+                Skills used
+              </th>
+            ) : null}
+            <th className="px-4 py-2.5 font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
+              Last active
             </th>
-            <th className="px-4 py-2.5 text-right font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
-              Cost
+            <th className="px-4 py-2.5 font-mono text-[10px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
+              Activity
             </th>
           </tr>
         </thead>
         <tbody>
-          {pagedUsers.length === 0 ? (
+          {pagedEntities.length === 0 ? (
             <tr>
-              <td colSpan={4} className="px-4 py-8 text-center text-[13px] text-muted-foreground">
+              <td colSpan={colCount} className="px-4 py-8 text-center text-[13px] text-muted-foreground">
                 {search ? <>No results for &ldquo;{search}&rdquo;</> : "No usage data yet"}
               </td>
             </tr>
           ) : (
-            pagedUsers.map((user) => (
-              <tr
-                key={user.userId}
-                className="border-b border-border transition-colors last:border-b-0 hover:bg-secondary/50 dark:hover:bg-muted/30"
-              >
-                <td className="px-4 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <AvatarChip
-                      name={user.userName ?? user.userId}
-                      type={user.userType === "agent" ? "agent" : "member"}
-                    />
-                    <span className="text-[13px] font-medium">{user.userName ?? user.userId}</span>
-                    {user.userType === "agent" ? (
-                      <Badge variant="secondary" className="rounded-[4px] px-1.5 py-0 text-[9px]">
-                        Agent
-                      </Badge>
-                    ) : null}
-                  </div>
-                </td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{user.messageCount}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{user.skillCount}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">${user.costUsd.toFixed(2)}</td>
-              </tr>
+            pagedEntities.map((entity) => (
+              <EntityRow
+                key={entity.name}
+                entity={entity}
+                showSkills={filter !== "agents"}
+                showMembers={filter === "groups"}
+              />
             ))
           )}
         </tbody>
       </table>
 
       {/* Pagination */}
-      {filteredUsers.length > ROWS_PER_PAGE ? (
+      {filteredEntities.length > 0 ? (
         <div className="flex items-center justify-between border-t border-border px-4 py-2.5 font-mono text-[10px] uppercase text-muted-foreground">
           <span>
-            Showing {pagedUsers.length} of {filteredUsers.length}
+            Showing {Math.min(pagedEntities.length, ROWS_PER_PAGE)} of {filteredEntities.length}
           </span>
           <div className="flex items-center gap-1">
             <button
@@ -693,7 +826,19 @@ function TeamAdoptionTable({ users }: { users: TeamUser[] }) {
                 </button>
               );
             })}
-            {totalPages > 5 ? <span className="px-1">...</span> : null}
+            {totalPages > 5 ? <span className="px-1">&hellip;</span> : null}
+            {totalPages > 5 ? (
+              <button
+                type="button"
+                onClick={() => setPage(totalPages)}
+                className={cn(
+                  "min-w-[24px] rounded px-1.5 py-0.5 font-mono text-[10px]",
+                  page === totalPages ? "bg-muted font-medium text-foreground" : "hover:bg-muted",
+                )}
+              >
+                {totalPages}
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={page >= totalPages}
@@ -709,7 +854,98 @@ function TeamAdoptionTable({ users }: { users: TeamUser[] }) {
   );
 }
 
+function EntityRow({
+  entity,
+  showSkills,
+  showMembers,
+}: { entity: TeamEntity; showSkills: boolean; showMembers: boolean }) {
+  const messages = entity.messages;
+  const skillsUsed = entity.type !== "agent" ? (entity as TeamMember | TeamGroup).skillsUsed : null;
+  const isCurrentUser = entity.type === "member" && (entity as TeamMember).isCurrentUser;
+  const memberCount = entity.type === "group" ? (entity as TeamGroup).memberCount : null;
+
+  return (
+    <tr className="cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-secondary/50 dark:hover:bg-muted/30">
+      <td className="px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          {entity.type === "group" ? (
+            <GroupAvatar name={entity.name} />
+          ) : (
+            <AvatarChip name={entity.name} type={entity.type === "agent" ? "agent" : "member"} />
+          )}
+          <span className="text-[13px] font-medium">{entity.name}</span>
+          {isCurrentUser ? (
+            <Badge className="rounded-[4px] bg-[#E6F1FB] px-1.5 py-0 text-[10px] text-[#185FA5] dark:bg-[#0C447C] dark:text-[#85B7EB]">
+              You
+            </Badge>
+          ) : null}
+          {entity.type === "agent" ? (
+            <Badge variant="secondary" className="rounded-[4px] px-1.5 py-0 text-[9px]">
+              Agent
+            </Badge>
+          ) : null}
+          {entity.type === "group" ? (
+            <>
+              <Badge
+                variant="secondary"
+                className="rounded-[4px] bg-muted px-1.5 py-0 text-[9px] text-muted-foreground"
+              >
+                Group
+              </Badge>
+              {memberCount !== null ? (
+                <span className="text-[11px] text-muted-foreground">&middot; {memberCount} members</span>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      </td>
+      {showMembers ? (
+        <td className="px-4 py-2.5 text-right text-xs text-muted-foreground tabular-nums">
+          {memberCount !== null ? `${memberCount}` : <span className="text-muted-foreground">&mdash;</span>}
+        </td>
+      ) : null}
+      <td className="px-4 py-2.5 text-right tabular-nums">
+        {messages !== null ? messages : <span className="text-muted-foreground">&mdash;</span>}
+      </td>
+      {showSkills ? (
+        <td className="px-4 py-2.5 text-right tabular-nums">
+          {entity.type === "agent" ? (
+            <span className="text-muted-foreground">&mdash;</span>
+          ) : skillsUsed !== null ? (
+            skillsUsed
+          ) : (
+            <span className="text-muted-foreground">&mdash;</span>
+          )}
+        </td>
+      ) : null}
+      <td className="px-4 py-2.5 text-muted-foreground">{entity.lastActive}</td>
+      <td className="px-4 py-2.5">
+        <ActivityBar pct={entity.activityPct} />
+      </td>
+    </tr>
+  );
+}
+
 // --- Shared components ---
+
+function GroupAvatar({ name }: { name: string }) {
+  const initial = name[0]?.toUpperCase() ?? "G";
+  return (
+    <div className="flex size-[24px] shrink-0 items-center justify-center rounded-[6px] border-[0.5px] border-border bg-muted text-[9px] font-medium text-muted-foreground dark:bg-muted/50">
+      {initial}
+    </div>
+  );
+}
+
+function ActivityBar({ pct }: { pct: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-[7px] w-[80px] overflow-hidden rounded-[4px] bg-[#B4B2A9] dark:bg-[#4A4840]">
+        {pct > 0 ? <div className="h-full rounded-[4px] bg-[#FEED01]" style={{ width: `${pct}%` }} /> : null}
+      </div>
+    </div>
+  );
+}
 
 function AvatarChip({ name, type = "member" }: { name: string; type?: "member" | "agent" }) {
   const initials = name

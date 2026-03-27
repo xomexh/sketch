@@ -31,6 +31,7 @@ export interface UserBreakdown {
   messageCount: number;
   costUsd: number;
   skillCount: number;
+  lastRunAt: string | null;
 }
 
 export interface DailyBucket {
@@ -177,6 +178,7 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
           "u.type as userType",
           sql<number>`COUNT(r.id)`.as("messageCount"),
           sql<number>`ROUND(COALESCE(SUM(r.cost_usd), 0), 6)`.as("costUsd"),
+          sql<string>`MAX(r.created_at)`.as("lastRunAt"),
         ])
         .where("r.created_at", ">=", from)
         .where("r.created_at", "<", to)
@@ -203,6 +205,7 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
         messageCount: Number(r.messageCount),
         costUsd: Number(r.costUsd),
         skillCount: skillMap.get(r.userId) ?? 0,
+        lastRunAt: r.lastRunAt ?? null,
       }));
     },
 

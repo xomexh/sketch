@@ -656,6 +656,7 @@ export const api = {
           messageCount: number;
           costUsd: number;
           skillCount: number;
+          lastRunAt: string | null;
         }[];
       }>(`/api/usage/summary${qs ? `?${qs}` : ""}`);
     },

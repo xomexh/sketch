@@ -7,6 +7,15 @@
  * Tool calls are recorded in two ways:
  * - Span events on the parent span (consumed by the SQLite exporter)
  * - Child spans with real timestamps (consumed by OTLP/Jaeger for waterfall views)
+ *
+ * PostHog-specific attributes:
+ * - gen_ai.operation.name must be "chat" for PostHog to classify as $ai_generation
+ * - posthog.distinct_id maps the span to a PostHog person (used with a server-side
+ *   transformation that copies sketch.user_id → distinct_id)
+ * - $ai_total_cost_usd overrides PostHog's auto-calculated cost which only prices
+ *   input/output tokens and ignores Anthropic cache tokens
+ * - $ai_tools_called populates the TOOLS column since PostHog can't auto-extract
+ *   tool calls without $ai_output_choices (we don't send response content)
  */
 import { type Span, type Tracer, context, trace } from "@opentelemetry/api";
 import type { AgentResult } from "../agent/runner";
@@ -34,7 +43,6 @@ export function setAgentResultAttributes(span: Span, result: AgentResult): void 
   span.setAttribute("gen_ai.response.finish_reasons", [result.stopReason ?? "unknown"]);
   span.setAttribute("gen_ai.conversation.id", result.sessionId ?? "");
   span.setAttribute("sketch.cost_usd", result.costUsd);
-  // Override PostHog's auto-calculated cost — it only prices input/output tokens
   span.setAttribute("$ai_total_cost_usd", result.costUsd);
   span.setAttribute("sketch.num_turns", result.numTurns);
   span.setAttribute("sketch.duration_api_ms", result.durationApiMs);
@@ -51,7 +59,6 @@ export function setAgentResultAttributes(span: Span, result: AgentResult): void 
   span.setAttribute("sketch.prompt_mode", result.promptMode);
   span.setAttribute("sketch.pending_uploads", result.pendingUploads.length);
 
-  // Populate PostHog's TOOLS column — so set $ai_tools_called directly.
   if (result.toolCalls.length > 0) {
     span.setAttribute(
       "$ai_tools_called",
@@ -59,7 +66,6 @@ export function setAgentResultAttributes(span: Span, result: AgentResult): void 
     );
   }
 
-  // Tool calls as events on the parent span (for the SQLite exporter)
   for (const tc of result.toolCalls) {
     span.addEvent("tool_call", {
       "gen_ai.tool.name": tc.toolName,

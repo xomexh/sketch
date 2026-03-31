@@ -12,6 +12,7 @@ import { authRoutes } from "./api/auth";
 import { channelRoutes } from "./api/channels";
 import { connectorRoutes } from "./api/connectors";
 import { emailRoutes } from "./api/email";
+import { entityRoutes } from "./api/entities";
 import { healthRoutes } from "./api/health";
 import { mcpServerRoutes } from "./api/mcp-servers";
 import { createAuthMiddleware } from "./api/middleware";
@@ -103,11 +104,15 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   app.route("/api/auth", authRoutes(settings, db, { config, logger }));
   app.route(
     "/api/setup",
-    setupRoutes(settings, {
-      managedUrl: config.MANAGED_URL,
-      onSlackTokensUpdated: deps?.onSlackTokensUpdated,
-      onLlmSettingsUpdated: deps?.onLlmSettingsUpdated,
-    }),
+    setupRoutes(
+      settings,
+      {
+        managedUrl: config.MANAGED_URL,
+        onSlackTokensUpdated: deps?.onSlackTokensUpdated,
+        onLlmSettingsUpdated: deps?.onLlmSettingsUpdated,
+      },
+      config.EXPERIMENTAL_FLAG,
+    ),
   );
   app.route("/api/settings", settingsRoutes(settings, db, deps?.logger));
   app.route("/api/skills", skillsRoutes(config));
@@ -135,6 +140,10 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   app.route("/api/channels/email", emailRoutes(settings));
 
   app.route("/api/usage", usageRoutes(db));
+
+  if (config.EXPERIMENTAL_FLAG) {
+    app.route("/api/entities", entityRoutes(db));
+  }
 
   if (deps?.logger) {
     app.route("/api/connectors", connectorRoutes(connectors, db, deps.logger));

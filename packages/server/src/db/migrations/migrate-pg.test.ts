@@ -26,7 +26,7 @@ describe("runMigrations on Postgres — full sequence", () => {
     await db.destroy();
   });
 
-  it("runs all 025 migrations on a fresh Postgres database without error", async () => {
+  it("runs all 027 migrations on a fresh Postgres database without error", async () => {
     // createTestPgDb() already ran migrations — just verify no error was thrown.
     const rows = await sql<{ name: string }>`
       SELECT name FROM kysely_migration ORDER BY name ASC
@@ -34,11 +34,11 @@ describe("runMigrations on Postgres — full sequence", () => {
     expect(rows.rows.length).toBeGreaterThan(0);
   });
 
-  it("records all 26 migration entries in kysely_migration", async () => {
+  it("records all 27 migration entries in kysely_migration", async () => {
     const rows = await sql<{ name: string }>`
       SELECT name FROM kysely_migration ORDER BY name ASC
     `.execute(db);
-    expect(rows.rows).toHaveLength(26);
+    expect(rows.rows).toHaveLength(27);
   });
 
   it("records migrations with correct names in order", async () => {
@@ -58,6 +58,7 @@ describe("runMigrations on Postgres — full sequence", () => {
     expect(names[23]).toBe("024-settings-enrichment");
     expect(names[24]).toBe("025-agent-usage");
     expect(names[25]).toBe("026-normalize-created-at");
+    expect(names[26]).toBe("027-entities");
   });
 
   it("running migrations twice is idempotent", async () => {
@@ -66,7 +67,7 @@ describe("runMigrations on Postgres — full sequence", () => {
     const rows = await sql<{ name: string }>`
       SELECT name FROM kysely_migration ORDER BY name ASC
     `.execute(db);
-    expect(rows.rows).toHaveLength(26);
+    expect(rows.rows).toHaveLength(27);
   });
 
   it("creates the users table", async () => {

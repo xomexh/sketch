@@ -3,9 +3,12 @@
  *
  * Runs after sync completes. For each file with embedding_status = 'pending':
  * 1. Chunk text content
- * 2. Extract tags + timeframes (deterministic for structured, LLM for unstructured)
- * 3. Generate embeddings (text chunks or images)
- * 4. Store everything in DB
+ * 2. Gather extra context (shared-with, sibling files)
+ * 3. Inject known hot entities into the tagging prompt for entity linking
+ * 4. Extract summary + timeframes + entity links (deterministic for structured, LLM for unstructured)
+ * 5. Store entity mentions and resolve new people / entities
+ * 6. Store timeframes
+ * 7. Generate and store embeddings (text chunks or images)
  *
  * Images are downloaded temporarily from Google Drive, embedded, then discarded.
  */
@@ -14,9 +17,11 @@ import type { Kysely } from "kysely";
 import { sql } from "kysely";
 import type { Logger } from "pino";
 import { isPg } from "../db/dialect";
+import { createEntityRepository } from "../db/repositories/entities";
 import type { DB } from "../db/schema";
 import { chunkText } from "./chunking";
 import type { EmbeddingProvider } from "./embeddings/types";
+import { formatEntitiesForPrompt, getHotEntitiesForPrompt, resolveNewPerson } from "./entity-linking";
 import type { LlmCallResult } from "./llm";
 import {
   type FileContext,
@@ -70,7 +75,6 @@ export async function runEnrichment(deps: EnrichmentDeps): Promise<EnrichmentRes
     errors: [],
   };
 
-  // Find files needing enrichment
   let query = db
     .selectFrom("indexed_files")
     .select([
@@ -111,14 +115,14 @@ export async function runEnrichment(deps: EnrichmentDeps): Promise<EnrichmentRes
     const file = pendingFiles[idx];
     const fileStart = Date.now();
     try {
-      // Optimistic lock: only claim the file if it's still in a claimable state.
-      // Concurrent enrichment runs racing on the same file will each attempt this UPDATE;
-      // only the first one to execute it will see numUpdatedRows > 0.
+      const claimableStatuses = deps.fileIds
+        ? ["pending", "failed", "processing", "done"]
+        : ["pending", "failed", "processing"];
       const claimResult = await db
         .updateTable("indexed_files")
         .set({ embedding_status: "processing" })
         .where("id", "=", file.id)
-        .where("embedding_status", "in", ["pending", "failed", "processing"])
+        .where("embedding_status", "in", claimableStatuses)
         .executeTakeFirst();
       if (claimResult.numUpdatedRows === BigInt(0)) {
         result.filesSkipped++;
@@ -128,7 +132,6 @@ export async function runEnrichment(deps: EnrichmentDeps): Promise<EnrichmentRes
       const isImage = file.mime_type?.startsWith("image/") || file.file_type === "image";
       const isStructured = file.content_category === "structured";
 
-      // Track tokens for this file via a wrapper
       let fileInputTokens = 0;
       let fileOutputTokens = 0;
       const trackedDeps: EnrichmentDeps = {
@@ -146,13 +149,11 @@ export async function runEnrichment(deps: EnrichmentDeps): Promise<EnrichmentRes
       } else if (file.content) {
         await enrichTextDocument(file as typeof file & { content: string }, isStructured, trackedDeps);
       } else {
-        // No content and not an image — skip
         await db.updateTable("indexed_files").set({ embedding_status: "skipped" }).where("id", "=", file.id).execute();
         result.filesSkipped++;
         continue;
       }
 
-      // Mark as done
       await db.updateTable("indexed_files").set({ embedding_status: "done" }).where("id", "=", file.id).execute();
 
       totalInputTokens += fileInputTokens;
@@ -211,7 +212,6 @@ async function enrichTextDocument(
 ): Promise<void> {
   const { db, logger, embeddingProvider, llmCall } = deps;
 
-  // For structured data (CSV/sheets), only use the head for tagging — no chunking, no embedding
   if (isStructured) {
     const taggingResult = tagStructuredContent(file.content, file.file_name, file.source_path);
 
@@ -295,40 +295,101 @@ async function enrichTextDocument(
       .execute();
   }
 
-  // 3. Extract tags + timeframes
+  const hotEntities = await getHotEntitiesForPrompt(db, file.content);
+  const knownEntitiesBlock = formatEntitiesForPrompt(hotEntities);
+
   let taggingResult: TaggingResult;
 
   const wordCount = file.content.split(/\s+/).length;
+  const emptyResult: TaggingResult = {
+    tags: [],
+    summary: "",
+    timeframes: [],
+    entityLinks: [],
+    newPeople: [],
+    newEntities: [],
+  };
 
   if (wordCount < 100) {
-    // Short content — deterministic tagging, no LLM needed
     taggingResult = tagShortContent(file.content, file.file_name, file.source_path);
   } else {
-    // LLM-based tagging
     const totalTokens = chunks.reduce((sum, c) => sum + c.tokenCount, 0);
 
     if (totalTokens <= SINGLE_CALL_TOKEN_LIMIT) {
-      // Small doc — single LLM call
-      const prompt = buildTaggingPrompt(chunks, file.file_name, deps.orgContext, fileContext);
+      const prompt = buildTaggingPrompt(chunks, file.file_name, deps.orgContext, fileContext, knownEntitiesBlock);
       const response = await llmCall(prompt);
-      taggingResult = parseTaggingResponse(response.text) ?? { tags: [], summary: "", timeframes: [] };
+      taggingResult = parseTaggingResponse(response.text) ?? emptyResult;
     } else {
-      // Large doc — batch then rollup
-      taggingResult = await batchTagDocument(chunks, file.file_name, llmCall, logger, deps.orgContext, fileContext);
+      taggingResult = await batchTagDocument(
+        chunks,
+        file.file_name,
+        llmCall,
+        logger,
+        deps.orgContext,
+        fileContext,
+        knownEntitiesBlock,
+      );
     }
   }
 
-  // 4. Update indexed_files with tags + summary
   await db
     .updateTable("indexed_files")
     .set({
-      tags: JSON.stringify(taggingResult.tags),
+      tags: taggingResult.tags.length > 0 ? JSON.stringify(taggingResult.tags) : null,
       summary: taggingResult.summary || null,
     })
     .where("id", "=", file.id)
     .execute();
 
-  // 5. Store timeframes (batch insert)
+  const entityRepo = createEntityRepository(db);
+  await entityRepo.deleteMentionsForFile(file.id);
+
+  for (const link of taggingResult.entityLinks) {
+    const entity = await entityRepo.getEntity(link.entityId);
+    if (entity) {
+      await entityRepo.createMention({
+        entityId: link.entityId,
+        indexedFileId: file.id,
+        chunkIndex: link.chunkIndex,
+        contextSnippet: chunks[link.chunkIndex]?.content?.slice(0, 300) ?? null,
+      });
+      await entityRepo.updateHotness(link.entityId);
+    }
+  }
+
+  for (const person of taggingResult.newPeople) {
+    const resolved = await resolveNewPerson(db, person.name);
+    await entityRepo.createMention({
+      entityId: resolved.id,
+      indexedFileId: file.id,
+      chunkIndex: null,
+      contextSnippet: person.contextHint,
+    });
+    await entityRepo.updateHotness(resolved.id);
+  }
+
+  for (const newEntity of taggingResult.newEntities) {
+    const existing = await entityRepo.searchEntities(newEntity.name, { limit: 1 });
+    const match = existing.find((e) => e.name.toLowerCase() === newEntity.name.toLowerCase());
+
+    const entity = match
+      ? match
+      : await entityRepo.upsertEntity({
+          name: newEntity.name,
+          sourceType: newEntity.type,
+          status: "tentative",
+        });
+
+    await entityRepo.createMention({
+      entityId: entity.id,
+      indexedFileId: file.id,
+      chunkIndex: null,
+      contextSnippet: newEntity.contextHint,
+    });
+    await entityRepo.updateHotness(entity.id);
+  }
+
+  // 6. Store timeframes (batch insert)
   await clearFileTimeframes(db, file.id);
   if (taggingResult.timeframes.length > 0) {
     await db
@@ -360,9 +421,6 @@ async function enrichTextDocument(
 
       const isPostgres = isPg(db);
 
-      // Batch embedding inserts — chunk_embeddings is a vec0 virtual table that
-      // only supports single-row INSERT, so we must still insert one at a time.
-      // We use Promise.all to overlap the async overhead rather than a for-await loop.
       await Promise.all(
         storedChunks
           .filter((_, i) => !!embeddings[i])
@@ -400,7 +458,6 @@ async function enrichImage(
   const { db, embeddingProvider, downloadImage } = deps;
 
   if (!embeddingProvider?.supportsImages || !embeddingProvider.embedImage) {
-    // No multimodal embedding available — skip image
     await db.updateTable("indexed_files").set({ embedding_status: "skipped" }).where("id", "=", file.id).execute();
     return;
   }
@@ -410,7 +467,6 @@ async function enrichImage(
     return;
   }
 
-  // Download image temporarily
   const { buffer, mimeType } = await downloadImage(file.provider_file_id, file.connector_config_id);
 
   // Embed
@@ -450,8 +506,16 @@ async function batchTagDocument(
   logger: Logger,
   orgContext?: string,
   fileContext?: FileContext,
+  knownEntitiesBlock?: string,
 ): Promise<TaggingResult> {
-  const batchResults: Array<{ tags: string[]; summary: string; temporal_references: unknown[] }> = [];
+  const batchResults: Array<{
+    tags: string[];
+    summary: string;
+    temporal_references: unknown[];
+    entity_links: unknown[];
+    new_people: unknown[];
+    new_entities: unknown[];
+  }> = [];
 
   // Group chunks into batches by token count
   const batches: (typeof chunks)[] = [];
@@ -484,7 +548,7 @@ async function batchTagDocument(
 
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
-    const prompt = buildTaggingPrompt(batch, fileName, orgContext, fileContext);
+    const prompt = buildTaggingPrompt(batch, fileName, orgContext, fileContext, knownEntitiesBlock);
 
     try {
       const response = await llmCall(prompt);
@@ -498,6 +562,20 @@ async function batchTagDocument(
             end_date: tf.endDate,
             context: tf.context,
           })),
+          entity_links: parsed.entityLinks.map((el) => ({
+            entity_name: el.entityName,
+            entity_id: el.entityId,
+            chunk_index: el.chunkIndex,
+          })),
+          new_people: parsed.newPeople.map((p) => ({
+            name: p.name,
+            context_hint: p.contextHint,
+          })),
+          new_entities: parsed.newEntities.map((e) => ({
+            name: e.name,
+            type: e.type,
+            context_hint: e.contextHint,
+          })),
         });
       }
     } catch (err) {
@@ -506,17 +584,35 @@ async function batchTagDocument(
   }
 
   if (batchResults.length === 0) {
-    return { tags: [], summary: "", timeframes: [] };
+    return { tags: [], summary: "", timeframes: [], entityLinks: [], newPeople: [], newEntities: [] };
   }
 
   if (batchResults.length === 1) {
-    return parseTaggingResponse(JSON.stringify(batchResults[0])) ?? { tags: [], summary: "", timeframes: [] };
+    return (
+      parseTaggingResponse(JSON.stringify(batchResults[0])) ?? {
+        tags: [],
+        summary: "",
+        timeframes: [],
+        entityLinks: [],
+        newPeople: [],
+        newEntities: [],
+      }
+    );
   }
 
   // Rollup: merge all batch results
   const rollupPrompt = buildRollupPrompt(batchResults, fileName);
   const rollupResponse = await llmCall(rollupPrompt);
-  return parseTaggingResponse(rollupResponse.text) ?? { tags: [], summary: "", timeframes: [] };
+  return (
+    parseTaggingResponse(rollupResponse.text) ?? {
+      tags: [],
+      summary: "",
+      timeframes: [],
+      entityLinks: [],
+      newPeople: [],
+      newEntities: [],
+    }
+  );
 }
 
 /**
@@ -566,6 +662,9 @@ async function clearFileTimeframes(db: Kysely<DB>, fileId: string): Promise<void
 export async function clearEnrichmentData(db: Kysely<DB>, fileId: string): Promise<void> {
   await clearFileChunks(db, fileId);
   await clearFileTimeframes(db, fileId);
+  // Clear entity mentions for this file (will be re-linked during enrichment)
+  const entityRepo = createEntityRepository(db);
+  await entityRepo.deleteMentionsForFile(fileId);
   // file_embeddings is a vec0 virtual table (sqlite-vec). Gracefully skip if unavailable.
   try {
     await sql`DELETE FROM file_embeddings WHERE indexed_file_id = ${fileId}`.execute(db);

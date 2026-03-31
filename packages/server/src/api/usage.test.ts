@@ -290,6 +290,46 @@ describe("Usage API", () => {
       expect(body.skills.by_skill).toEqual([]);
     });
 
+    it("weekly period includes data on period start date", async () => {
+      const users = createUserRepository(db);
+      const member = await users.create({ name: "WeekBug", email: "weekbug@test.com" });
+      const repo = createAgentRunsRepo(db);
+
+      await repo.insertRun({
+        trace_id: "trace-week-1",
+        user_id: member.id,
+        platform: "slack",
+        context_type: "dm",
+        cost_usd: 1.0,
+        created_at: "2026-03-30T10:15:23.000Z",
+      });
+      await repo.insertRun({
+        trace_id: "trace-week-2",
+        user_id: member.id,
+        platform: "slack",
+        context_type: "dm",
+        cost_usd: 0.52,
+        created_at: "2026-03-30T14:30:00.000Z",
+      });
+
+      const app = createApp(db, config, { logger });
+      const cookie = await getMemberCookie(db, member.id);
+
+      // 2026-03-30 is a Monday — weekly period should be [Mar 30, Apr 6)
+      const res = await app.request("/api/usage/me?period=weekly&date=2026-03-30", {
+        headers: { Cookie: cookie },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.period.from).toBe("2026-03-30T00:00:00.000Z");
+      expect(body.period.to).toBe("2026-04-06T00:00:00.000Z");
+      expect(body.messages.total).toBe(2);
+      expect(body.spend.total_cost_usd).toBe(1.52);
+      expect(body.daily_breakdown).toHaveLength(1);
+      expect(body.daily_breakdown[0].date).toBe("2026-03-30");
+    });
+
     it("excludes out-of-range data (UAT-12 — weekly <= monthly)", async () => {
       const users = createUserRepository(db);
       const member = await users.create({ name: "Frank", email: "frank@test.com" });

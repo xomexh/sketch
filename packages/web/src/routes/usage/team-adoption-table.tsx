@@ -307,7 +307,7 @@ export function TeamAdoptionTable({
       </div>
 
       {/* Fixed-height body: header + 5 rows = stable height regardless of content */}
-      <div className="h-[245px]">
+      <div className="h-[274px]">
         <table className="w-full text-[13px]">
           <colgroup>
             <col />

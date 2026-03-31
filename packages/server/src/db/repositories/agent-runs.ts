@@ -65,9 +65,10 @@ export function createAgentRunsRepo(db: Kysely<DB>) {
   return {
     async insertRun(run: Omit<NewAgentRun, "id"> & { id?: string }): Promise<string> {
       const id = run.id ?? randomUUID();
+      const created_at = run.created_at ?? new Date().toISOString();
       await db
         .insertInto("agent_runs")
-        .values({ ...run, id })
+        .values({ ...run, id, created_at })
         .execute();
       return id;
     },

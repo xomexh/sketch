@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here.
 
+## [0.15.0-alpha.1] — 2026-03-31
+
+- Managed onboarding system API: PUT /system/identity (admin account + user row), PUT /system/llm (Anthropic/Bedrock with verification), GET/DELETE /system/whatsapp/pair (SSE pairing), POST /system/onboarding/complete
+- Fix managed SSO auth: use JWT `email` claim for user lookup instead of `sub` (UUID)
+- Wire system route deps: userRepo and WhatsApp pairing functions passed to systemRoutes
+- Extend settings.create() with optional orgName and botName fields
+- Anthropic API key verification on LLM credential save
+- Usage analytics API and dashboard with team adoption table
+- PostHog LLM analytics integration
+- Files feature with entity explorer (experimental)
+- Agent run timestamp normalization migration
+- 1,223 tests (1,121 server + 102 frontend)
+
 ## [0.14.0] — 2026-03-24
 
 - Connectors: Google Drive, ClickUp, Notion, and Linear file sync with hybrid semantic search (LLM tagging + vector embeddings) and auto-enrichment pipeline

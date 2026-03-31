@@ -369,13 +369,16 @@ describe("PUT /api/system/identity", () => {
 
 describe("PUT /api/system/llm", () => {
   let db: Kysely<DB>;
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     db = await createTestDb();
     await seedAdmin(db);
+    fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
   });
 
   afterEach(async () => {
+    fetchSpy.mockRestore();
     await db.destroy();
   });
 
@@ -459,6 +462,48 @@ describe("PUT /api/system/llm", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toBeDefined();
+  });
+
+  it("returns 400 when Anthropic API key verification fails (401)", async () => {
+    fetchSpy.mockResolvedValueOnce(new Response("{}", { status: 401 }));
+    const settingsRepo = createSettingsRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET });
+
+    const res = await app.request("/api/system/llm", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ provider: "anthropic", apiKey: "sk-ant-bad-key" }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("INVALID_LLM_CREDENTIALS");
+
+    const settings = await settingsRepo.get();
+    expect(settings?.anthropic_api_key).toBeNull();
+  });
+
+  it("returns 400 when Anthropic API key verification fails (500)", async () => {
+    fetchSpy.mockResolvedValueOnce(new Response("{}", { status: 500 }));
+    const settingsRepo = createSettingsRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET });
+
+    const res = await app.request("/api/system/llm", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ provider: "anthropic", apiKey: "sk-ant-bad-key" }),
+    });
+
+    expect(res.status).toBe(400);
+
+    const settings = await settingsRepo.get();
+    expect(settings?.anthropic_api_key).toBeNull();
   });
 
   it("encrypts sensitive fields when ENCRYPTION_KEY is set", async () => {

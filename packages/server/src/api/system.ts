@@ -48,6 +48,30 @@ const llmSchema = z.discriminatedUnion("provider", [
   }),
 ]);
 
+async function verifyAnthropicApiKey(apiKey: string): Promise<void> {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5",
+      max_tokens: 1,
+      messages: [{ role: "user", content: "Ping" }],
+    }),
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("invalid_auth");
+  }
+
+  if (!response.ok) {
+    throw new Error("verification_failed");
+  }
+}
+
 export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
   const routes = new Hono();
 
@@ -128,11 +152,17 @@ export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
 
     const data = parsed.data;
     if (data.provider === "anthropic") {
+      try {
+        await verifyAnthropicApiKey(data.apiKey);
+      } catch {
+        return c.json({ error: { code: "INVALID_LLM_CREDENTIALS", message: "Invalid Anthropic API key" } }, 400);
+      }
       await settings.update({
         llmProvider: "anthropic",
         anthropicApiKey: data.apiKey,
       });
     } else {
+      // TODO: Bedrock credential verification deferred -- no existing verification logic for AWS credentials
       await settings.update({
         llmProvider: "bedrock",
         awsAccessKeyId: data.accessKeyId,

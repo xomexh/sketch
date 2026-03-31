@@ -5,7 +5,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { serveStatic } from "@hono/node-server/serve-static";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import type { Kysely } from "kysely";
 import type { Logger } from "pino";
 import { authRoutes } from "./api/auth";
@@ -158,11 +159,56 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
 
   if (config.SYSTEM_SECRET) {
     const onSlackTokensUpdated = deps?.onSlackTokensUpdated;
+    const whatsapp = deps?.whatsapp;
+
+    let pairingInProgress = false;
+    let pairingSettled: Promise<void> | null = null;
+
     app.route(
       "/api/system",
       systemRoutes(settings, {
         systemSecret: config.SYSTEM_SECRET,
         onSlackTokensUpdated: onSlackTokensUpdated ? () => onSlackTokensUpdated() : undefined,
+        userRepo: users,
+        startWhatsAppPairing: whatsapp
+          ? (c: Context) => {
+              if (whatsapp.isConnected) {
+                return c.json({ error: { code: "ALREADY_CONNECTED", message: "WhatsApp is already connected" } }, 400);
+              }
+              if (pairingInProgress) {
+                return c.json(
+                  { error: { code: "PAIRING_IN_PROGRESS", message: "A pairing attempt is already active" } },
+                  409,
+                );
+              }
+              pairingInProgress = true;
+
+              return streamSSE(c, async (stream) => {
+                try {
+                  pairingSettled = whatsapp.startPairing({
+                    onQr: async (qr) => {
+                      await stream.writeSSE({ event: "qr", data: JSON.stringify({ qr }) });
+                    },
+                    onConnected: async (phoneNumber) => {
+                      await stream.writeSSE({ event: "connected", data: JSON.stringify({ phoneNumber }) });
+                    },
+                    onError: async (message) => {
+                      await stream.writeSSE({ event: "error", data: JSON.stringify({ message }) });
+                    },
+                  });
+                  await pairingSettled;
+                } finally {
+                  pairingInProgress = false;
+                  pairingSettled = null;
+                }
+              });
+            }
+          : undefined,
+        cancelWhatsAppPairing: whatsapp
+          ? () => {
+              whatsapp.cancelPairing();
+            }
+          : undefined,
       }),
     );
   }

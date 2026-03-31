@@ -108,18 +108,18 @@ export function createAuthMiddleware(settings: SettingsRepo, opts?: AuthMiddlewa
       const platformToken = getCookie(c, PLATFORM_COOKIE);
       if (platformToken) {
         const payload = await verifyJwt(platformToken, opts.managedAuthSecret);
-        if (!payload) {
+        if (!payload || !payload.email) {
           const loginUrl = opts.managedUrl ? `${opts.managedUrl}/login` : "/login";
           return c.redirect(loginUrl);
         }
 
-        const user = await opts.findUserByEmail?.(payload.sub);
+        const user = await opts.findUserByEmail?.(payload.email);
         if (!user) {
           return c.json({ error: { code: "FORBIDDEN", message: "User not found in this tenant" } }, 403);
         }
 
         c.set("role", user.role);
-        c.set("sub", payload.sub);
+        c.set("sub", payload.email);
         return next();
       }
     }

@@ -106,6 +106,23 @@ describe("auth middleware - managed SSO", () => {
     return null;
   });
 
+  /**
+   * Creates a platform-style JWT with UUID in `sub` and email in `email` claim,
+   * matching the format the management plane issues.
+   */
+  async function makePlatformToken(
+    email: string,
+    role: "admin" | "member",
+    secret: string,
+    sub = "550e8400-e29b-41d4-a716-446655440000",
+  ): Promise<string> {
+    return new SignJWT({ sub, email, role })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("7d")
+      .sign(new TextEncoder().encode(secret));
+  }
+
   beforeEach(() => {
     findUserByEmail.mockClear();
   });
@@ -132,7 +149,7 @@ describe("auth middleware - managed SSO", () => {
       managedUrl: MANAGED_URL,
       findUserByEmail,
     });
-    const token = await signJwt("admin@test.com", "admin", MANAGED_AUTH_SECRET);
+    const token = await makePlatformToken("admin@test.com", "admin", MANAGED_AUTH_SECRET);
     const res = await app.request("/api/test", {
       headers: { Cookie: `sketch_platform_session=${token}` },
     });
@@ -143,13 +160,67 @@ describe("auth middleware - managed SSO", () => {
     expect(findUserByEmail).toHaveBeenCalledWith("admin@test.com");
   });
 
+  it("when email claim is present, middleware calls findUserByEmail(payload.email) not payload.sub", async () => {
+    const app = createTestApp(mockSettings, {
+      managedAuthSecret: MANAGED_AUTH_SECRET,
+      managedUrl: MANAGED_URL,
+      findUserByEmail,
+    });
+    const uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+    const token = await makePlatformToken("admin@test.com", "admin", MANAGED_AUTH_SECRET, uuid);
+    const res = await app.request("/api/test", {
+      headers: { Cookie: `sketch_platform_session=${token}` },
+    });
+    expect(res.status).toBe(200);
+    // Must be called with the email, NOT the UUID sub
+    expect(findUserByEmail).toHaveBeenCalledWith("admin@test.com");
+    expect(findUserByEmail).not.toHaveBeenCalledWith(uuid);
+  });
+
+  it("when email claim is absent (local JWT in platform cookie), falls through to local auth", async () => {
+    const app = createTestApp(mockSettings, {
+      managedAuthSecret: MANAGED_AUTH_SECRET,
+      managedUrl: MANAGED_URL,
+      findUserByEmail,
+    });
+    // Local-style JWT: email in sub, no email claim
+    const localToken = await signJwt("admin@test.com", "admin", LOCAL_JWT_SECRET);
+    const res = await app.request("/api/test", {
+      headers: { Cookie: `sketch_session=${localToken}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.role).toBe("admin");
+    expect(body.sub).toBe("admin@test.com");
+    expect(findUserByEmail).not.toHaveBeenCalled();
+  });
+
+  it("platform JWT with UUID in sub and email in email claim correctly authenticates", async () => {
+    const app = createTestApp(mockSettings, {
+      managedAuthSecret: MANAGED_AUTH_SECRET,
+      managedUrl: MANAGED_URL,
+      findUserByEmail,
+    });
+    const uuid = "d47f2e3a-1b5c-4890-9def-abcdef123456";
+    const token = await makePlatformToken("member@test.com", "member", MANAGED_AUTH_SECRET, uuid);
+    const res = await app.request("/api/test", {
+      headers: { Cookie: `sketch_platform_session=${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.role).toBe("member");
+    // sub in context should be the email (for downstream compatibility), not the UUID
+    expect(body.sub).toBe("member@test.com");
+    expect(findUserByEmail).toHaveBeenCalledWith("member@test.com");
+  });
+
   it("returns 403 when platform cookie email has no matching local user", async () => {
     const app = createTestApp(mockSettings, {
       managedAuthSecret: MANAGED_AUTH_SECRET,
       managedUrl: MANAGED_URL,
       findUserByEmail,
     });
-    const token = await signJwt("unknown@test.com", "member", MANAGED_AUTH_SECRET);
+    const token = await makePlatformToken("unknown@test.com", "member", MANAGED_AUTH_SECRET);
     const res = await app.request("/api/test", {
       headers: { Cookie: `sketch_platform_session=${token}` },
     });
@@ -162,7 +233,7 @@ describe("auth middleware - managed SSO", () => {
       managedUrl: MANAGED_URL,
       findUserByEmail,
     });
-    const badToken = await signJwt("admin@test.com", "admin", "wrong-secret-that-is-at-least-32chars");
+    const badToken = await makePlatformToken("admin@test.com", "admin", "wrong-secret-that-is-at-least-32chars");
     const res = await app.request("/api/test", {
       headers: { Cookie: `sketch_platform_session=${badToken}` },
     });
@@ -207,7 +278,7 @@ describe("auth middleware - managed SSO", () => {
       managedUrl: MANAGED_URL,
       findUserByEmail,
     });
-    const platformToken = await signJwt("member@test.com", "member", MANAGED_AUTH_SECRET);
+    const platformToken = await makePlatformToken("member@test.com", "member", MANAGED_AUTH_SECRET);
     const localToken = await signJwt("admin@test.com", "admin", LOCAL_JWT_SECRET);
     const res = await app.request("/api/test", {
       headers: {

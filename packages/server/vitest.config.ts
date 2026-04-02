@@ -5,5 +5,14 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     environment: "node",
     setupFiles: ["src/test-setup.ts"],
+    env: {
+      DATA_DIR: "/tmp/sketch-test-data",
+    },
+    pool: "forks",
+    poolOptions: {
+      forks: {
+        maxForks: 4,
+      },
+    },
   },
 });

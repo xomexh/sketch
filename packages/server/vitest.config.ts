@@ -8,11 +8,6 @@ export default defineConfig({
     env: {
       DATA_DIR: "/tmp/sketch-test-data",
     },
-    pool: "forks",
-    poolOptions: {
-      forks: {
-        maxForks: 4,
-      },
-    },
+    maxWorkers: 2,
   },
 });

@@ -36,9 +36,9 @@ export const configSchema = z.object({
   SYSTEM_SECRET: z.string().optional(),
 
   // Bootstrap (managed seed)
-  BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
-  BOOTSTRAP_ADMIN_PASSWORD_HASH: z.string().optional(),
-  BOOTSTRAP_SLACK_BOT_TOKEN: z.string().optional(),
+  BOOTSTRAP_ADMIN_EMAIL: z.preprocess((v) => (v === "" ? undefined : v), z.string().email().optional()),
+  BOOTSTRAP_ADMIN_PASSWORD_HASH: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  BOOTSTRAP_SLACK_BOT_TOKEN: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
 
   // Managed mode
   MANAGED_URL: z.string().optional(),

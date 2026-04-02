@@ -17,7 +17,7 @@ export let sqliteVecAvailable = false;
 export async function createDatabase(config: Config): Promise<Kysely<DB>> {
   if (config.DB_TYPE === "postgres") {
     const { Pool } = await import("pg");
-    const pool = new Pool({ connectionString: config.DATABASE_URL, max: 5 });
+    const pool = new Pool({ connectionString: config.DATABASE_URL, max: 5, ssl: { rejectUnauthorized: false } });
     return new Kysely<DB>({
       dialect: new PostgresDialect({ pool }),
     });

@@ -19,6 +19,7 @@ import { createEmailTransport, sendMagicLinkEmail } from "../email";
 import { getSmtpConfig, resolveBaseUrl } from "./shared";
 
 export const SESSION_COOKIE = "sketch_session";
+const PLATFORM_COOKIE = "sketch_platform_session";
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
 
 type SettingsRepo = ReturnType<typeof createSettingsRepository>;
@@ -84,47 +85,71 @@ export function authRoutes(settings: SettingsRepo, db: Kysely<DB>, deps: { confi
     return c.json({ authenticated: false });
   });
 
+  /**
+   * Two-phase session check: local sketch_session first, then managed
+   * sketch_platform_session (when MANAGED_AUTH_SECRET is configured).
+   * Falls through from local to managed so an expired local cookie
+   * doesn't block a valid platform session.
+   */
   routes.get("/session", async (c) => {
     const token = getCookie(c, SESSION_COOKIE);
-    if (!token) {
-      return c.json({ authenticated: false });
-    }
+    if (token) {
+      const row = await settings.get();
+      if (row?.jwt_secret) {
+        const payload = await verifyJwt(token, row.jwt_secret);
+        if (payload) {
+          await createSession(c, payload.sub, payload.role, row.jwt_secret);
 
-    const row = await settings.get();
-    if (!row?.jwt_secret) {
-      deleteCookie(c, SESSION_COOKIE, { path: "/" });
-      return c.json({ authenticated: false });
-    }
-
-    const payload = await verifyJwt(token, row.jwt_secret);
-    if (!payload) {
-      deleteCookie(c, SESSION_COOKIE, { path: "/" });
-      return c.json({ authenticated: false });
-    }
-
-    // Sliding renewal — issue a fresh JWT to extend the session
-    await createSession(c, payload.sub, payload.role, row.jwt_secret);
-
-    if (payload.role === "member") {
-      const user = await db.selectFrom("users").selectAll().where("id", "=", payload.sub).executeTakeFirst();
-      if (!user) {
-        deleteCookie(c, SESSION_COOKIE, { path: "/" });
-        return c.json({ authenticated: false });
+          if (payload.role === "member") {
+            const user = await db.selectFrom("users").selectAll().where("id", "=", payload.sub).executeTakeFirst();
+            if (user) {
+              return c.json({
+                authenticated: true,
+                role: "member" as const,
+                userId: user.id,
+                name: user.name,
+                email: user.email,
+              });
+            }
+          } else {
+            return c.json({
+              authenticated: true,
+              role: "admin" as const,
+              email: payload.sub,
+            });
+          }
+        }
       }
-      return c.json({
-        authenticated: true,
-        role: "member" as const,
-        userId: user.id,
-        name: user.name,
-        email: user.email,
-      });
+      deleteCookie(c, SESSION_COOKIE, { path: "/" });
     }
 
-    return c.json({
-      authenticated: true,
-      role: "admin" as const,
-      email: payload.sub,
-    });
+    if (deps.config.MANAGED_AUTH_SECRET) {
+      const platformToken = getCookie(c, PLATFORM_COOKIE);
+      if (platformToken) {
+        const payload = await verifyJwt(platformToken, deps.config.MANAGED_AUTH_SECRET);
+        if (payload?.email) {
+          const user = await db.selectFrom("users").selectAll().where("email", "=", payload.email).executeTakeFirst();
+          if (user) {
+            if (user.role === "member") {
+              return c.json({
+                authenticated: true,
+                role: "member" as const,
+                userId: user.id,
+                name: user.name,
+                email: user.email,
+              });
+            }
+            return c.json({
+              authenticated: true,
+              role: "admin" as const,
+              email: user.email,
+            });
+          }
+        }
+      }
+    }
+
+    return c.json({ authenticated: false });
   });
 
   routes.get("/verify-email", async (c) => {

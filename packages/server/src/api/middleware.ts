@@ -119,7 +119,7 @@ export function createAuthMiddleware(settings: SettingsRepo, opts?: AuthMiddlewa
         }
 
         c.set("role", user.role);
-        c.set("sub", payload.email);
+        c.set("sub", user.id);
         return next();
       }
     }

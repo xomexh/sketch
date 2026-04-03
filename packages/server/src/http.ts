@@ -6,9 +6,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { type Context, Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import type { Kysely } from "kysely";
 import type { Logger } from "pino";
+import { verifyJwt } from "./auth/jwt";
 import { authRoutes } from "./api/auth";
 import { channelRoutes } from "./api/channels";
 import { connectorRoutes } from "./api/connectors";
@@ -221,6 +223,27 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   const webDistDir = existsSync(bundledDir) ? bundledDir : monorepoDir;
 
   if (existsSync(webDistDir)) {
+    if (config.MANAGED_URL) {
+      app.use("*", async (c, next) => {
+        const path = c.req.path;
+        if (path.startsWith("/api/") || path === "/health") {
+          return next();
+        }
+
+        const platformToken = getCookie(c, "sketch_platform_session");
+        const isValidPlatformSession =
+          !!platformToken &&
+          !!config.MANAGED_AUTH_SECRET &&
+          !!(await verifyJwt(platformToken, config.MANAGED_AUTH_SECRET));
+
+        if (!isValidPlatformSession) {
+          return c.redirect(`${config.MANAGED_URL}/login`);
+        }
+
+        return next();
+      });
+    }
+
     // Serve hashed assets (JS, CSS, images)
     app.use("/assets/*", serveStatic({ root: webDistDir }));
 

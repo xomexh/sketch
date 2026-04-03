@@ -367,6 +367,132 @@ describe("PUT /api/system/identity", () => {
   });
 });
 
+describe("POST /api/system/users", () => {
+  let db: Kysely<DB>;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+  });
+
+  afterEach(async () => {
+    await db.destroy();
+  });
+
+  it("returns 401 without Authorization header", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const userRepo = createUserRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
+
+    const res = await app.request("/api/system/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "member@acme.com", name: "Member Name" }),
+    });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("creates a verified member user and returns userId", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const userRepo = createUserRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
+
+    const res = await app.request("/api/system/users", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: "member@acme.com", name: "Member Name" }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(typeof body.userId).toBe("string");
+
+    const user = await userRepo.findByEmail("member@acme.com");
+    expect(user).toBeDefined();
+    expect(user?.role).toBe("member");
+    expect(user?.name).toBe("Member Name");
+    expect(user?.email_verified_at).toBeTruthy();
+    expect(body.userId).toBe(user?.id);
+  });
+
+  it("returns the existing user when the email already exists", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const userRepo = createUserRepository(db);
+    const existing = await userRepo.create({
+      email: "member@acme.com",
+      name: "Existing Member",
+      role: "member",
+      emailVerified: true,
+    });
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
+
+    const res = await app.request("/api/system/users", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: "member@acme.com", name: "New Name" }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ ok: true, userId: existing.id });
+
+    const user = await userRepo.findByEmail("member@acme.com");
+    expect(user?.id).toBe(existing.id);
+    expect(user?.name).toBe("Existing Member");
+  });
+
+  it("returns 400 when email is missing or invalid", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const userRepo = createUserRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
+
+    const missingEmailRes = await app.request("/api/system/users", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name: "Member Name" }),
+    });
+
+    const invalidEmailRes = await app.request("/api/system/users", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: "not-an-email", name: "Member Name" }),
+    });
+
+    expect(missingEmailRes.status).toBe(400);
+    expect(invalidEmailRes.status).toBe(400);
+  });
+
+  it("returns 400 when name is missing", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const userRepo = createUserRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
+
+    const res = await app.request("/api/system/users", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: "member@acme.com" }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("PUT /api/system/llm", () => {
   let db: Kysely<DB>;
   let fetchSpy: ReturnType<typeof vi.spyOn>;

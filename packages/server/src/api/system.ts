@@ -48,6 +48,11 @@ const llmSchema = z.discriminatedUnion("provider", [
   }),
 ]);
 
+const systemUserSchema = z.object({
+  email: z.string().email(),
+  name: z.string().trim().min(1),
+});
+
 async function verifyAnthropicApiKey(apiKey: string): Promise<void> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -172,6 +177,33 @@ export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
     }
 
     return c.json({ ok: true });
+  });
+
+  routes.post("/users", async (c) => {
+    if (!deps.userRepo) {
+      return c.json({ error: { code: "NOT_FOUND", message: "User management not available" } }, 404);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const parsed = systemUserSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: { code: "BAD_REQUEST", message: parsed.error.message } }, 400);
+    }
+
+    const email = parsed.data.email.toLowerCase();
+    const existing = await deps.userRepo.findByEmail(email);
+    if (existing) {
+      return c.json({ ok: true, userId: existing.id });
+    }
+
+    const user = await deps.userRepo.create({
+      email,
+      name: parsed.data.name,
+      role: "member",
+      emailVerified: true,
+    });
+
+    return c.json({ ok: true, userId: user.id });
   });
 
   routes.get("/whatsapp/pair", async (c) => {

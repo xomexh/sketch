@@ -76,6 +76,98 @@ describe("HTTP health endpoint", () => {
   });
 });
 
+describe("managed login redirect", () => {
+  let db: Kysely<DB>;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    await seedAdmin(db);
+    const settings = createSettingsRepository(db);
+    await settings.update({ onboardingCompletedAt: new Date().toISOString() });
+  });
+
+  afterEach(async () => {
+    try {
+      await db.destroy();
+    } catch {}
+  });
+
+  async function makePlatformToken(email: string, role: "admin" | "member") {
+    return new SignJWT({ sub: "user-123", email, role })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("7d")
+      .sign(new TextEncoder().encode("managed-secret-at-least-32chars-long"));
+  }
+
+  it("redirects /login to MANAGED_URL/login when no valid platform session exists", async () => {
+    const app = createApp(
+      db,
+      createTestConfig({
+        MANAGED_URL: "https://app.getsketch.ai",
+        MANAGED_AUTH_SECRET: "managed-secret-at-least-32chars-long",
+      }),
+    );
+
+    const res = await app.request("/login");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("https://app.getsketch.ai/login");
+  });
+
+  it("redirects non-API HTML routes to MANAGED_URL/login when no valid platform session exists", async () => {
+    const app = createApp(
+      db,
+      createTestConfig({
+        MANAGED_URL: "https://app.getsketch.ai",
+        MANAGED_AUTH_SECRET: "managed-secret-at-least-32chars-long",
+      }),
+    );
+
+    const res = await app.request("/channels");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("https://app.getsketch.ai/login");
+  });
+
+  it("does not affect API routes", async () => {
+    const app = createApp(
+      db,
+      createTestConfig({
+        MANAGED_URL: "https://app.getsketch.ai",
+        MANAGED_AUTH_SECRET: "managed-secret-at-least-32chars-long",
+      }),
+    );
+
+    const res = await app.request("/api/users");
+    expect([401, 403]).toContain(res.status);
+  });
+
+  it("allows HTML routes through when the platform session cookie is valid", async () => {
+    const app = createApp(
+      db,
+      createTestConfig({
+        MANAGED_URL: "https://app.getsketch.ai",
+        MANAGED_AUTH_SECRET: "managed-secret-at-least-32chars-long",
+      }),
+    );
+    const token = await makePlatformToken("admin@test.com", "admin");
+
+    const res = await app.request("/channels", {
+      headers: { Cookie: `sketch_platform_session=${token}` },
+    });
+
+    expect([200, 404]).toContain(res.status);
+    expect(res.status).not.toBe(302);
+  });
+
+  it("serves the normal login page when MANAGED_URL is not set", async () => {
+    const app = createApp(db, createTestConfig());
+    const res = await app.request("/login");
+
+    expect([200, 404]).toContain(res.status);
+    expect(res.status).not.toBe(302);
+  });
+});
+
 describe("WhatsApp endpoints", () => {
   let db: Kysely<DB>;
 

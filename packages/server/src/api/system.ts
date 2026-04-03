@@ -33,6 +33,7 @@ const identitySchema = z.object({
   adminPasswordHash: z.string().min(1),
   orgName: z.string().optional(),
   botName: z.string().optional(),
+  name: z.string().optional(),
 });
 
 const llmSchema = z.discriminatedUnion("provider", [
@@ -136,12 +137,12 @@ export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
     }
 
     if (deps.userRepo) {
+      const displayName = parsed.data.name || adminEmail.split("@")[0];
       const existingUser = await deps.userRepo.findByEmail(adminEmail);
       if (existingUser) {
-        await deps.userRepo.update(existingUser.id, { role: "admin" });
+        await deps.userRepo.update(existingUser.id, { name: displayName, role: "admin", emailVerified: true });
       } else {
-        const namePart = adminEmail.split("@")[0];
-        await deps.userRepo.create({ name: namePart, email: adminEmail, role: "admin" });
+        await deps.userRepo.create({ name: displayName, email: adminEmail, role: "admin", emailVerified: true });
       }
     }
 

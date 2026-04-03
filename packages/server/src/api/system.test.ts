@@ -264,7 +264,7 @@ describe("PUT /api/system/identity", () => {
     expect(settings?.org_name).toBe("Acme Updated");
   });
 
-  it("creates admin user row when no user with that email exists", async () => {
+  it("creates admin user row with name derived from email when name not provided", async () => {
     const settingsRepo = createSettingsRepository(db);
     const userRepo = createUserRepository(db);
     const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
@@ -289,9 +289,38 @@ describe("PUT /api/system/identity", () => {
     expect(user?.email).toBe("newadmin@acme.com");
     expect(user?.role).toBe("admin");
     expect(user?.name).toBe("newadmin");
+    expect(user?.email_verified_at).not.toBeNull();
   });
 
-  it("updates existing user row when user with that email already exists", async () => {
+  it("creates admin user row with real name when name is provided", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const userRepo = createUserRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
+
+    const hash = await hashPassword("password");
+    const res = await app.request("/api/system/identity", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        adminEmail: "roopak@acme.com",
+        adminPasswordHash: hash,
+        name: "Roopak Nijhara",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+
+    const user = await userRepo.findByEmail("roopak@acme.com");
+    expect(user).toBeDefined();
+    expect(user?.name).toBe("Roopak Nijhara");
+    expect(user?.role).toBe("admin");
+    expect(user?.email_verified_at).not.toBeNull();
+  });
+
+  it("updates existing user row with name and verified email when user already exists", async () => {
     const settingsRepo = createSettingsRepository(db);
     const userRepo = createUserRepository(db);
     await userRepo.create({ name: "Old Name", email: "existing@acme.com", role: "member" });
@@ -309,6 +338,7 @@ describe("PUT /api/system/identity", () => {
         adminEmail: "existing@acme.com",
         adminPasswordHash: hash,
         orgName: "Acme",
+        name: "New Name",
       }),
     });
 
@@ -317,6 +347,8 @@ describe("PUT /api/system/identity", () => {
     const user = await userRepo.findByEmail("existing@acme.com");
     expect(user).toBeDefined();
     expect(user?.role).toBe("admin");
+    expect(user?.name).toBe("New Name");
+    expect(user?.email_verified_at).not.toBeNull();
   });
 
   it("validates adminEmail as a valid email", async () => {

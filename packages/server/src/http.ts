@@ -10,7 +10,6 @@ import { getCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import type { Kysely } from "kysely";
 import type { Logger } from "pino";
-import { verifyJwt } from "./auth/jwt";
 import { authRoutes } from "./api/auth";
 import { channelRoutes } from "./api/channels";
 import { connectorRoutes } from "./api/connectors";
@@ -24,6 +23,7 @@ import { scheduledTaskRoutes } from "./api/scheduled-tasks";
 import { settingsRoutes } from "./api/settings";
 import { setupRoutes } from "./api/setup";
 import { skillsRoutes } from "./api/skills";
+import { verifyJwt } from "./auth/jwt";
 
 import { oauthRoutes } from "./api/oauth";
 import { systemRoutes } from "./api/system";

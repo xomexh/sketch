@@ -38,7 +38,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
         VALUES (${userId}, ${name}, ${email}, ${now}, 'human')
       `.execute(db);
     } catch (err: unknown) {
-      if (err instanceof Error && err.message.includes("UNIQUE")) return;
+      if (err instanceof Error && err.message.toLowerCase().includes("unique")) return;
       throw err;
     }
   }

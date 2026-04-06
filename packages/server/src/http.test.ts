@@ -693,7 +693,7 @@ describe("Auth endpoints", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.authenticated).toBe(true);
-      expect(body.role).toBe("admin");
+      expect(body.role).toBe("member");
       expect(body.userId).toBe(adminUser.id);
       expect(body.name).toBe("admin");
       expect(body.email).toBe("admin@test.com");
@@ -735,7 +735,7 @@ describe("Auth endpoints", () => {
       const body = await res.json();
       expect(body.authenticated).toBe(true);
       expect(body.email).toBe("platform@test.com");
-      expect(body.role).toBe("admin");
+      expect(body.role).toBe("member");
     });
 
     it("returns authenticated with member details for member users", async () => {
@@ -753,7 +753,7 @@ describe("Auth endpoints", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.authenticated).toBe(true);
-      expect(body.role).toBe("admin");
+      expect(body.role).toBe("member");
       expect(body.userId).toBe(user.id);
       expect(body.name).toBe("Member User");
       expect(body.email).toBe("member@test.com");
@@ -827,7 +827,7 @@ describe("Auth endpoints", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.authenticated).toBe(true);
-      expect(body.role).toBe("admin");
+      expect(body.role).toBe("member");
       expect(body.userId).toBe(adminUser.id);
       expect(body.email).toBe("admin@test.com");
     });

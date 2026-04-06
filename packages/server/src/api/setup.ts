@@ -201,7 +201,7 @@ export function setupRoutes(settings: SettingsRepo, deps: SetupDeps = {}, experi
       const adminUser = await deps.userRepo.findByEmail(parsed.data.email.toLowerCase());
       if (adminUser) sub = adminUser.id;
     }
-    await createSession(c, sub, "admin", row.jwt_secret);
+    await createSession(c, sub, "member", row.jwt_secret);
     return c.json({ success: true });
   });
 

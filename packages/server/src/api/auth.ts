@@ -84,7 +84,7 @@ export function authRoutes(
     // Look up admin user row to use UUID as sub
     const adminUser = await deps.userRepo.findByEmail(row.admin_email.toLowerCase());
     const sub = adminUser?.id ?? row.admin_email;
-    await createSession(c, sub, "admin", jwtSecret);
+    await createSession(c, sub, "member", jwtSecret);
     return c.json({ authenticated: true, email: row.admin_email });
   });
 
@@ -114,7 +114,7 @@ export function authRoutes(
           if (user) {
             return c.json({
               authenticated: true,
-              role: "admin" as const,
+              role: "member" as const,
               userId: user.id,
               name: user.name,
               email: user.email,
@@ -126,7 +126,7 @@ export function authRoutes(
           if (payload.sub.includes("@")) {
             return c.json({
               authenticated: true,
-              role: "admin" as const,
+              role: "member" as const,
               email: payload.sub,
             });
           }
@@ -144,7 +144,7 @@ export function authRoutes(
           if (user) {
             return c.json({
               authenticated: true,
-              role: "admin" as const,
+              role: "member" as const,
               userId: user.id,
               name: user.name,
               email: user.email,
@@ -224,7 +224,7 @@ export function authRoutes(
       return c.redirect("/login?error=server_error");
     }
 
-    await createSession(c, userId, "admin", settingsRow.jwt_secret);
+    await createSession(c, userId, "member", settingsRow.jwt_secret);
     return c.redirect("/");
   });
 

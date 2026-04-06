@@ -70,11 +70,9 @@ const allPrimaryNav: NavItem[] = [
 export function AppSidebar({
   displayName,
   displayIdentifier,
-  role,
 }: {
   displayName: string;
   displayIdentifier: string;
-  role: "admin" | "member";
 }) {
   const location = useLocation();
   const navigate = useNavigate();

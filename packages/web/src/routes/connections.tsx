@@ -19,7 +19,6 @@ import { McpServersSection } from "@/components/connections/mcp-servers-section"
 import { RemoveMcpDialog } from "@/components/connections/remove-mcp-dialog";
 import { LoadingSkeleton } from "@/components/connections/shared";
 import { api } from "@/lib/api";
-import { useDashboardAuth } from "@/routes/dashboard";
 import type { McpServerRecord } from "@sketch/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createRoute } from "@tanstack/react-router";
@@ -60,10 +59,7 @@ function ConnectionsCallback() {
 // ---------------------------------------------------------------------------
 
 function ConnectionsPage() {
-  const auth = useDashboardAuth();
   const queryClient = useQueryClient();
-  const isAdmin = auth.role === "admin";
-  const isMember = auth.role === "member";
 
   const serversQuery = useQuery({
     queryKey: ["mcp-servers"],
@@ -109,47 +105,42 @@ function ConnectionsPage() {
         ) : (
           <>
             {!provider ? (
-              isAdmin ? (
-                <ConnectionsBanner onConnect={() => setShowProviderSelector(true)} />
-              ) : null
+              <ConnectionsBanner onConnect={() => setShowProviderSelector(true)} />
             ) : (
               <IntegrationsSection
                 provider={provider}
                 connections={connections}
                 isLoadingConnections={connectionsQuery.isLoading}
-                isMember={isMember}
                 onAdd={() => setShowAddIntegrationDialog(true)}
                 providerId={provider.id}
                 onDisconnect={invalidateAll}
               />
             )}
 
-            {isAdmin && (
-              <McpServersSection
-                servers={servers}
-                onAdd={() => setShowAddMcpDialog(true)}
-                onEdit={(server) => {
-                  if (server.type) {
-                    setEditingProvider(server);
+            <McpServersSection
+              servers={servers}
+              onAdd={() => setShowAddMcpDialog(true)}
+              onEdit={(server) => {
+                if (server.type) {
+                  setEditingProvider(server);
+                } else {
+                  setEditingServer(server);
+                }
+              }}
+              onRemove={setRemovingServer}
+              onTestConnection={async (server) => {
+                try {
+                  const result = await api.mcpServers.testConnectionById(server.id);
+                  if (result.status === "ok") {
+                    toast.success(`Connection OK. ${result.toolCount} tools available.`);
                   } else {
-                    setEditingServer(server);
+                    toast.error(result.error ?? "Connection failed");
                   }
-                }}
-                onRemove={setRemovingServer}
-                onTestConnection={async (server) => {
-                  try {
-                    const result = await api.mcpServers.testConnectionById(server.id);
-                    if (result.status === "ok") {
-                      toast.success(`Connection OK. ${result.toolCount} tools available.`);
-                    } else {
-                      toast.error(result.error ?? "Connection failed");
-                    }
-                  } catch (err) {
-                    toast.error(err instanceof Error ? err.message : "Connection test failed");
-                  }
-                }}
-              />
-            )}
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Connection test failed");
+                }
+              }}
+            />
           </>
         )}
       </div>

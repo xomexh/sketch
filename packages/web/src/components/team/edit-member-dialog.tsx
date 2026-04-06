@@ -1,7 +1,6 @@
 /**
  * EditMemberDialog — update an existing member's name, role, description,
- * reports-to, and contact details. Admins can edit all fields; members can
- * only edit their own record (and cannot change their own email).
+ * reports-to, and contact details.
  *
  * Also includes RemoveMemberDialog and LinkProviderDialog as they share
  * the same import surface and are only used together with this dialog.
@@ -45,13 +44,11 @@ const editMemberSchema = z.object({
 export function EditMemberDialog({
   user,
   users,
-  isMember,
   onOpenChange,
   onSuccess,
 }: {
   user: User | null;
   users: User[];
-  isMember: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }) {
@@ -87,7 +84,7 @@ export function EditMemberDialog({
         ...(isAgent
           ? {}
           : {
-              ...(isMember ? {} : { email: email.trim() || null }),
+              email: email.trim() || null,
               whatsappNumber: phone.trim() || null,
             }),
       }),
@@ -220,9 +217,8 @@ export function EditMemberDialog({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@example.com"
-                  disabled={updateMutation.isPending || isMember}
+                  disabled={updateMutation.isPending}
                 />
-                {isMember && <p className="text-xs text-muted-foreground">Contact your admin to change your email.</p>}
                 {user?.email && email === user.email && (
                   <div className="flex items-center gap-1.5">
                     {user.email_verified_at ? (

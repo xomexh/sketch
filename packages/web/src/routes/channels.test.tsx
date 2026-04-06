@@ -10,7 +10,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
   return {
     ...mod,
     useRouteContext: () => ({
-      auth: { role: "admin", displayName: "Admin", displayIdentifier: "admin@test.com" },
+      auth: { displayName: "User", displayIdentifier: "user@test.com" },
     }),
   };
 });
@@ -165,7 +165,6 @@ describe("ChannelsPage", () => {
         expect(screen.getByText("Connect Slack")).toBeInTheDocument();
       });
 
-      // The Connect button inside the dialog (second one)
       const connectButtons = screen.getAllByRole("button", { name: "Connect" });
       const dialogConnectBtn = connectButtons[connectButtons.length - 1];
       expect(dialogConnectBtn).toBeDisabled();
@@ -183,7 +182,6 @@ describe("ChannelsPage", () => {
         expect(screen.getByText("Connected")).toBeInTheDocument();
       });
 
-      // Open the dropdown menu
       const menuTrigger = screen.getAllByRole("button").find((btn) => btn.querySelector("svg")) as HTMLElement;
       await user.click(menuTrigger);
 
@@ -215,7 +213,6 @@ describe("ChannelsPage", () => {
         expect(screen.getByText("Connected")).toBeInTheDocument();
       });
 
-      // Open dropdown → click Disconnect
       const menuTrigger = screen.getAllByRole("button").find((btn) => btn.querySelector("svg")) as HTMLElement;
       await user.click(menuTrigger);
       await waitFor(() => {
@@ -223,7 +220,6 @@ describe("ChannelsPage", () => {
       });
       await user.click(screen.getByText("Disconnect"));
 
-      // Confirm in dialog
       await waitFor(() => {
         expect(screen.getByText("Disconnect Slack?")).toBeInTheDocument();
       });

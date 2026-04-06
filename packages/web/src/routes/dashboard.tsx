@@ -5,7 +5,6 @@ import { Outlet, createRoute, redirect, useRouteContext } from "@tanstack/react-
 import { rootRoute } from "./root";
 
 export interface AuthContext {
-  role: "admin" | "member";
   email?: string;
   userId?: string;
   name?: string;
@@ -29,15 +28,12 @@ async function checkAuth(): Promise<{ auth: AuthContext }> {
     throw redirect({ to: "/login" });
   }
 
-  const role = session.role ?? "admin";
-
   return {
     auth: {
-      role,
       email: session.email,
       userId: session.userId,
       name: session.name,
-      displayName: role === "admin" ? "Admin" : (session.name ?? "Member"),
+      displayName: session.name ?? "User",
       displayIdentifier: session.email ?? session.name ?? "User",
     },
   };
@@ -62,7 +58,7 @@ function DashboardLayout() {
 
   return (
     <SidebarProvider>
-      <AppSidebar displayName={auth.displayName} displayIdentifier={auth.displayIdentifier} role={auth.role} />
+      <AppSidebar displayName={auth.displayName} displayIdentifier={auth.displayIdentifier} />
       <SidebarInset>
         <SidebarTrigger className="absolute left-3 top-3 z-20" />
         <main className="flex-1 overflow-auto pt-[52px]">

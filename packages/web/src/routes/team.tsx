@@ -49,19 +49,16 @@ export function TeamPage() {
   const [activeTab, setActiveTab] = useState("list");
 
   const users = data?.users ?? [];
-  const isMember = auth.role === "member";
 
   return (
     <div className="px-6 py-8">
       <div className="mx-auto max-w-3xl">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold">Team</h1>
-          {!isMember && (
-            <Button size="sm" onClick={() => setShowAddDialog(true)}>
-              <PlusIcon size={14} weight="bold" />
-              Add member
-            </Button>
-          )}
+          <Button size="sm" onClick={() => setShowAddDialog(true)}>
+            <PlusIcon size={14} weight="bold" />
+            Add member
+          </Button>
         </div>
       </div>
 
@@ -77,11 +74,7 @@ export function TeamPage() {
             {isLoading ? (
               <LoadingSkeleton />
             ) : users.length === 0 ? (
-              isMember ? (
-                <p className="text-sm text-muted-foreground">No team members yet.</p>
-              ) : (
-                <EmptyState onAdd={() => setShowAddDialog(true)} />
-              )
+              <EmptyState onAdd={() => setShowAddDialog(true)} />
             ) : (
               <MemberList
                 users={users}
@@ -96,21 +89,18 @@ export function TeamPage() {
         <TabsContent value="chart">{isLoading ? <LoadingSkeleton /> : <OrgChart users={users} />}</TabsContent>
       </Tabs>
 
-      {!isMember && (
-        <AddMemberDialog
-          open={showAddDialog}
-          users={users}
-          onOpenChange={setShowAddDialog}
-          onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ["users"] });
-          }}
-        />
-      )}
+      <AddMemberDialog
+        open={showAddDialog}
+        users={users}
+        onOpenChange={setShowAddDialog}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["users"] });
+        }}
+      />
 
       <EditMemberDialog
         user={editingUser}
         users={users}
-        isMember={isMember}
         onOpenChange={(open) => !open && setEditingUser(null)}
         onSuccess={() => {
           setEditingUser(null);
@@ -118,16 +108,14 @@ export function TeamPage() {
         }}
       />
 
-      {!isMember && (
-        <RemoveMemberDialog
-          user={removingUser}
-          onOpenChange={(open) => !open && setRemovingUser(null)}
-          onSuccess={() => {
-            setRemovingUser(null);
-            queryClient.invalidateQueries({ queryKey: ["users"] });
-          }}
-        />
-      )}
+      <RemoveMemberDialog
+        user={removingUser}
+        onOpenChange={(open) => !open && setRemovingUser(null)}
+        onSuccess={() => {
+          setRemovingUser(null);
+          queryClient.invalidateQueries({ queryKey: ["users"] });
+        }}
+      />
 
       <LinkProviderDialog user={linkingUser} onOpenChange={(open) => !open && setLinkingUser(null)} />
     </div>

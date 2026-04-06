@@ -40,21 +40,18 @@ export function MemberList({
   onRemove: (user: User) => void;
   onLink: (user: User) => void;
 }) {
-  const isMember = auth.role === "member";
-
   return (
     <>
       <p className="mb-3 text-sm font-medium text-muted-foreground">Team members</p>
       <div className="rounded-lg border border-border bg-card">
         {users.map((user, i) => {
-          const isCurrentUser = isMember && user.id === auth.userId;
+          const isCurrentUser = user.id === auth.userId;
 
           return (
             <MemberRow
               key={user.id}
               user={user}
               isCurrentUser={isCurrentUser}
-              isMember={isMember}
               isLast={i === users.length - 1}
               onEdit={() => onEdit(user)}
               onRemove={() => onRemove(user)}
@@ -70,7 +67,6 @@ export function MemberList({
 function MemberRow({
   user,
   isCurrentUser,
-  isMember,
   isLast,
   onEdit,
   onRemove,
@@ -78,7 +74,6 @@ function MemberRow({
 }: {
   user: User;
   isCurrentUser: boolean;
-  isMember: boolean;
   isLast: boolean;
   onEdit: () => void;
   onRemove: () => void;
@@ -86,8 +81,6 @@ function MemberRow({
 }) {
   const initials = getInitials(user.name);
   const isAgent = user.type === "agent";
-  const showActions = isMember ? isCurrentUser : !isCurrentUser;
-  const showDelete = !isMember;
 
   return (
     <div className={`flex items-center gap-4 px-4 py-4 ${isLast ? "" : "border-b border-border"}`}>
@@ -150,34 +143,32 @@ function MemberRow({
         </TooltipProvider>
       )}
 
-      {showActions && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-7">
-              <DotsThreeIcon size={16} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onLink}>
-              <LinkIcon size={14} className="mr-2" />
-              Link accounts
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onEdit}>
-              <PencilSimpleIcon size={14} className="mr-2" />
-              Edit
-            </DropdownMenuItem>
-            {showDelete && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive" onClick={onRemove}>
-                  <UserMinusIcon size={14} className="mr-2" />
-                  Remove member
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="size-7">
+            <DotsThreeIcon size={16} />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={onLink}>
+            <LinkIcon size={14} className="mr-2" />
+            Link accounts
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onEdit}>
+            <PencilSimpleIcon size={14} className="mr-2" />
+            Edit
+          </DropdownMenuItem>
+          {!isCurrentUser && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-destructive" onClick={onRemove}>
+                <UserMinusIcon size={14} className="mr-2" />
+                Remove member
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

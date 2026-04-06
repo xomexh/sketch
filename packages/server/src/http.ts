@@ -222,28 +222,31 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   const monorepoDir = resolve(import.meta.dirname, "../../web/dist");
   const webDistDir = existsSync(bundledDir) ? bundledDir : monorepoDir;
 
-  if (existsSync(webDistDir)) {
-    if (config.MANAGED_URL) {
-      app.use("*", async (c, next) => {
-        const path = c.req.path;
-        if (path.startsWith("/api/") || path === "/health") {
-          return next();
-        }
-
-        const platformToken = getCookie(c, "sketch_platform_session");
-        const isValidPlatformSession =
-          !!platformToken &&
-          !!config.MANAGED_AUTH_SECRET &&
-          !!(await verifyJwt(platformToken, config.MANAGED_AUTH_SECRET));
-
-        if (!isValidPlatformSession) {
-          return c.redirect(`${config.MANAGED_URL}/login`);
-        }
-
+  // Managed login redirect: runs before SPA static serving so unauthenticated
+  // requests never load the OSS login page. Must be outside the existsSync
+  // check so it works even when web assets aren't built (e.g. CI).
+  if (config.MANAGED_URL) {
+    app.use("*", async (c, next) => {
+      const path = c.req.path;
+      if (path.startsWith("/api/") || path === "/health") {
         return next();
-      });
-    }
+      }
 
+      const platformToken = getCookie(c, "sketch_platform_session");
+      const isValidPlatformSession =
+        !!platformToken &&
+        !!config.MANAGED_AUTH_SECRET &&
+        !!(await verifyJwt(platformToken, config.MANAGED_AUTH_SECRET));
+
+      if (!isValidPlatformSession) {
+        return c.redirect(`${config.MANAGED_URL}/login`);
+      }
+
+      return next();
+    });
+  }
+
+  if (existsSync(webDistDir)) {
     // Serve static files: Vite-hashed bundles (/assets/) and logo/favicon PNGs (/logos/)
     app.use("/assets/*", serveStatic({ root: webDistDir }));
     app.use("/logos/*", serveStatic({ root: webDistDir }));

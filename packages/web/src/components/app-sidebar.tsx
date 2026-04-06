@@ -63,7 +63,7 @@ const allPrimaryNav: NavItem[] = [
   { label: "Scheduled Tasks", icon: <CalendarDotsIcon size={18} />, href: "/scheduled-tasks" },
   { label: "Skills", icon: <BrainIcon size={18} />, href: "/skills" },
   { label: "Workspace", icon: <FolderIcon size={18} />, href: "/workspace" },
-  { label: "Connections", icon: <LinkSimpleIcon size={18} />, href: "/connections" },
+  { label: "Integrations", icon: <LinkSimpleIcon size={18} />, href: "/integrations" },
   { label: "Usage", icon: <ChartBarIcon size={18} />, href: "/usage" },
 ];
 

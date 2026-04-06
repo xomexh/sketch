@@ -1,10 +1,9 @@
 /**
- * Connections page -- manage MCP servers and per-user integrations.
+ * Integrations page -- manage MCP servers and per-user app integrations.
  *
- * Two sections:
- *  1. Integrations -- shown when an integration provider (MCP server with non-null type) exists.
- *     Members see their connected apps and can add/disconnect. Admins see the section header as read-only.
- *  2. MCP Servers -- always visible for admins. CRUD for workspace-level MCP servers.
+ * Two tabs:
+ *  1. Applications -- per-user OAuth integrations via a provider (MCP server with non-null type).
+ *  2. MCPs -- workspace-level custom MCP servers (CRUD).
  *
  * Component implementations live in @/components/connections/*.
  */
@@ -19,7 +18,9 @@ import { McpServersSection } from "@/components/connections/mcp-servers-section"
 import { RemoveMcpDialog } from "@/components/connections/remove-mcp-dialog";
 import { LoadingSkeleton } from "@/components/connections/shared";
 import { api } from "@/lib/api";
+import { PlusIcon } from "@phosphor-icons/react";
 import type { McpServerRecord } from "@sketch/shared";
+import { cn } from "@sketch/ui/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
@@ -32,7 +33,7 @@ import { dashboardRoute } from "./dashboard";
 
 export const connectionsRoute = createRoute({
   getParentRoute: () => dashboardRoute,
-  path: "/connections",
+  path: "/integrations",
   component: ConnectionsPage,
 });
 
@@ -55,11 +56,34 @@ function ConnectionsCallback() {
 }
 
 // ---------------------------------------------------------------------------
+// Tab button
+// ---------------------------------------------------------------------------
+
+type IntegrationsTab = "applications" | "mcps";
+
+function TabButton({ label, isActive, onClick }: { label: string; isActive: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "relative pb-3 font-mono text-[12px] uppercase tracking-[0.07em] transition-colors",
+        isActive ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {label}
+      {isActive ? <span className="absolute inset-x-0 bottom-0 h-[3px] rounded-full bg-[#FEED01]" /> : null}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 function ConnectionsPage() {
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<IntegrationsTab>("applications");
 
   const serversQuery = useQuery({
     queryKey: ["mcp-servers"],
@@ -95,53 +119,80 @@ function ConnectionsPage() {
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
       <div>
-        <h1 className="text-xl font-bold">Connections</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Manage MCP servers and per-user integrations.</p>
+        <h1 className="text-xl font-bold">Integrations</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Connect apps and tools to extend your workspace.</p>
       </div>
 
-      <div className="mt-6 space-y-8">
+      <div className="mt-6 flex items-center gap-6 border-b border-border">
+        <TabButton
+          label="Applications"
+          isActive={activeTab === "applications"}
+          onClick={() => setActiveTab("applications")}
+        />
+        <TabButton label="MCPs" isActive={activeTab === "mcps"} onClick={() => setActiveTab("mcps")} />
+      </div>
+
+      <div className="mt-5 space-y-8">
         {isLoading ? (
           <LoadingSkeleton />
-        ) : (
+        ) : activeTab === "applications" ? (
           <>
             {!provider ? (
               <ConnectionsBanner onConnect={() => setShowProviderSelector(true)} />
             ) : (
-              <IntegrationsSection
-                provider={provider}
-                connections={connections}
-                isLoadingConnections={connectionsQuery.isLoading}
-                onAdd={() => setShowAddIntegrationDialog(true)}
-                providerId={provider.id}
-                onDisconnect={invalidateAll}
-              />
+              <>
+                {connections.length > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FEED01]/10 px-2.5 py-1 text-xs text-muted-foreground">
+                      <span className="inline-block size-1.5 rounded-full bg-[#FEED01]" />
+                      via {provider.type === "canvas" ? "Canvas" : (provider.type ?? "Provider")}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddIntegrationDialog(true)}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <PlusIcon size={12} weight="bold" />
+                      Add app
+                    </button>
+                  </div>
+                )}
+                <IntegrationsSection
+                  provider={provider}
+                  connections={connections}
+                  isLoadingConnections={connectionsQuery.isLoading}
+                  onAdd={() => setShowAddIntegrationDialog(true)}
+                  providerId={provider.id}
+                  onDisconnect={invalidateAll}
+                />
+              </>
             )}
-
-            <McpServersSection
-              servers={servers}
-              onAdd={() => setShowAddMcpDialog(true)}
-              onEdit={(server) => {
-                if (server.type) {
-                  setEditingProvider(server);
-                } else {
-                  setEditingServer(server);
-                }
-              }}
-              onRemove={setRemovingServer}
-              onTestConnection={async (server) => {
-                try {
-                  const result = await api.mcpServers.testConnectionById(server.id);
-                  if (result.status === "ok") {
-                    toast.success(`Connection OK. ${result.toolCount} tools available.`);
-                  } else {
-                    toast.error(result.error ?? "Connection failed");
-                  }
-                } catch (err) {
-                  toast.error(err instanceof Error ? err.message : "Connection test failed");
-                }
-              }}
-            />
           </>
+        ) : (
+          <McpServersSection
+            servers={servers}
+            onAdd={() => setShowAddMcpDialog(true)}
+            onEdit={(server) => {
+              if (server.type) {
+                setEditingProvider(server);
+              } else {
+                setEditingServer(server);
+              }
+            }}
+            onRemove={setRemovingServer}
+            onTestConnection={async (server) => {
+              try {
+                const result = await api.mcpServers.testConnectionById(server.id);
+                if (result.status === "ok") {
+                  toast.success(`Connection OK. ${result.toolCount} tools available.`);
+                } else {
+                  toast.error(result.error ?? "Connection failed");
+                }
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : "Connection test failed");
+              }
+            }}
+          />
         )}
       </div>
 

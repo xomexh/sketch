@@ -17,6 +17,7 @@ interface SystemDeps {
   // biome-ignore lint/complexity/noBannedTypes: Function is needed here to accommodate Vitest mock types in tests
   onSlackTokensUpdated?: Function;
   userRepo?: UserRepo;
+  whatsappStatus?: () => { connected: boolean; phoneNumber: string | null; pairingInProgress: boolean };
   // biome-ignore lint/complexity/noBannedTypes: Function is needed here to accommodate Vitest mock types in tests
   startWhatsAppPairing?: Function;
   // biome-ignore lint/complexity/noBannedTypes: Function is needed here to accommodate Vitest mock types in tests
@@ -205,6 +206,11 @@ export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
     });
 
     return c.json({ ok: true, userId: user.id });
+  });
+
+  routes.get("/whatsapp", (c) => {
+    const status = deps.whatsappStatus?.() ?? { connected: false, phoneNumber: null, pairingInProgress: false };
+    return c.json(status);
   });
 
   routes.get("/whatsapp/pair", async (c) => {

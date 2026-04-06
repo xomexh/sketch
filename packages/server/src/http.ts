@@ -172,6 +172,13 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
         systemSecret: config.SYSTEM_SECRET,
         onSlackTokensUpdated: onSlackTokensUpdated ? () => onSlackTokensUpdated() : undefined,
         userRepo: users,
+        whatsappStatus: whatsapp
+          ? () => ({
+              connected: whatsapp.isConnected,
+              phoneNumber: whatsapp.phoneNumber,
+              pairingInProgress,
+            })
+          : undefined,
         startWhatsAppPairing: whatsapp
           ? (c: Context) => {
               if (whatsapp.isConnected) {

@@ -29,6 +29,7 @@ function createTestSystemApp(
     systemSecret: string;
     onSlackTokensUpdated?: ReturnType<typeof vi.fn>;
     userRepo?: ReturnType<typeof createUserRepository>;
+    whatsappStatus?: () => { connected: boolean; phoneNumber: string | null; pairingInProgress: boolean };
     startWhatsAppPairing?: ReturnType<typeof vi.fn>;
     cancelWhatsAppPairing?: ReturnType<typeof vi.fn>;
   },
@@ -722,6 +723,75 @@ describe("PUT /api/system/llm", () => {
 
     const decrypted = await settingsRepo.get();
     expect(decrypted?.aws_secret_access_key).toBe("secret-key-value");
+  });
+});
+
+describe("GET /api/system/whatsapp", () => {
+  let db: Kysely<DB>;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    await seedAdmin(db);
+  });
+
+  afterEach(async () => {
+    await db.destroy();
+  });
+
+  it("returns 401 without Authorization header", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET });
+
+    const res = await app.request("/api/system/whatsapp", { method: "GET" });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns defaults when no whatsappStatus callback is provided", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET });
+
+    const res = await app.request("/api/system/whatsapp", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${SYSTEM_SECRET}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ connected: false, phoneNumber: null, pairingInProgress: false });
+  });
+
+  it("returns status from whatsappStatus callback", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const app = createTestSystemApp(settingsRepo, {
+      systemSecret: SYSTEM_SECRET,
+      whatsappStatus: () => ({ connected: true, phoneNumber: "+919876543210", pairingInProgress: false }),
+    });
+
+    const res = await app.request("/api/system/whatsapp", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${SYSTEM_SECRET}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ connected: true, phoneNumber: "+919876543210", pairingInProgress: false });
+  });
+
+  it("returns pairingInProgress when active", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const app = createTestSystemApp(settingsRepo, {
+      systemSecret: SYSTEM_SECRET,
+      whatsappStatus: () => ({ connected: false, phoneNumber: null, pairingInProgress: true }),
+    });
+
+    const res = await app.request("/api/system/whatsapp", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${SYSTEM_SECRET}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ connected: false, phoneNumber: null, pairingInProgress: true });
   });
 });
 

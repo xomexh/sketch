@@ -81,7 +81,6 @@ export function authRoutes(
       await settings.update({ jwtSecret });
     }
 
-    // Look up admin user row to use UUID as sub
     const adminUser = await deps.userRepo.findByEmail(row.admin_email.toLowerCase());
     const sub = adminUser?.id ?? row.admin_email;
     await createSession(c, sub, "member", jwtSecret);
@@ -106,28 +105,20 @@ export function authRoutes(
       if (row?.jwt_secret) {
         const payload = await verifyJwt(token, row.jwt_secret);
         if (payload) {
-          await createSession(c, payload.sub, payload.role, row.jwt_secret);
+          let user = await db.selectFrom("users").selectAll().where("id", "=", payload.sub).executeTakeFirst();
 
-          // All sessions now use UUID as sub — look up user row
-          const user = await db.selectFrom("users").selectAll().where("id", "=", payload.sub).executeTakeFirst();
+          if (!user && payload.sub.includes("@")) {
+            user = await db.selectFrom("users").selectAll().where("email", "=", payload.sub).executeTakeFirst();
+          }
 
           if (user) {
+            await createSession(c, user.id, "member", row.jwt_secret);
             return c.json({
               authenticated: true,
               role: "member" as const,
               userId: user.id,
               name: user.name,
               email: user.email,
-            });
-          }
-
-          // Fallback for legacy admin sessions where sub is an email string (not a UUID).
-          // Only use if sub looks like an email address. Expires within 7 days as old JWTs rotate out.
-          if (payload.sub.includes("@")) {
-            return c.json({
-              authenticated: true,
-              role: "member" as const,
-              email: payload.sub,
             });
           }
         }

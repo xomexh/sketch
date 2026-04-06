@@ -73,7 +73,6 @@ export function oauthRoutes(
     if (!payload?.sub) {
       return c.json({ error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
     }
-    // Resolve user: try by UUID first (new sessions), then by email (legacy admin sessions)
     let user = await users.findById(payload.sub);
     if (!user && payload.sub.includes("@")) {
       user = await users.findByEmail(payload.sub);

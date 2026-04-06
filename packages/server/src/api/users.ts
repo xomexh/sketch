@@ -229,6 +229,9 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
     if (!existing) {
       return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
     }
+    if (sub.includes("@") && existing.email?.toLowerCase() === sub.toLowerCase()) {
+      return c.json({ error: { code: "FORBIDDEN", message: "Cannot delete your own account" } }, 403);
+    }
     await users.remove(id);
     return c.json({ success: true });
   });

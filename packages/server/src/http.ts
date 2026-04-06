@@ -98,7 +98,7 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
         ? async (email) => {
             const user = await users.findByEmail(email);
             if (!user) return null;
-            return { id: user.id, role: user.role as "admin" | "member" };
+            return { id: user.id };
           }
         : undefined,
     }),

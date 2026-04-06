@@ -288,7 +288,7 @@ describe("PUT /api/system/identity", () => {
     const user = await userRepo.findByEmail("newadmin@acme.com");
     expect(user).toBeDefined();
     expect(user?.email).toBe("newadmin@acme.com");
-    expect(user?.role).toBe("admin");
+    expect(user?.role).toBeNull();
     expect(user?.name).toBe("newadmin");
     expect(user?.email_verified_at).not.toBeNull();
   });
@@ -317,14 +317,14 @@ describe("PUT /api/system/identity", () => {
     const user = await userRepo.findByEmail("roopak@acme.com");
     expect(user).toBeDefined();
     expect(user?.name).toBe("Roopak Nijhara");
-    expect(user?.role).toBe("admin");
+    expect(user?.role).toBeNull();
     expect(user?.email_verified_at).not.toBeNull();
   });
 
   it("updates existing user row with name and verified email when user already exists", async () => {
     const settingsRepo = createSettingsRepository(db);
     const userRepo = createUserRepository(db);
-    await userRepo.create({ name: "Old Name", email: "existing@acme.com", role: "member" });
+    await userRepo.create({ name: "Old Name", email: "existing@acme.com" });
 
     const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
 
@@ -347,7 +347,7 @@ describe("PUT /api/system/identity", () => {
 
     const user = await userRepo.findByEmail("existing@acme.com");
     expect(user).toBeDefined();
-    expect(user?.role).toBe("admin");
+    expect(user?.role).toBeNull();
     expect(user?.name).toBe("New Name");
     expect(user?.email_verified_at).not.toBeNull();
   });
@@ -446,7 +446,7 @@ describe("POST /api/system/users", () => {
 
     const user = await userRepo.findByEmail("member@acme.com");
     expect(user).toBeDefined();
-    expect(user?.role).toBe("member");
+    expect(user?.role).toBeNull();
     expect(user?.name).toBe("Member Name");
     expect(user?.email_verified_at).toBeTruthy();
     expect(body.userId).toBe(user?.id);
@@ -458,7 +458,6 @@ describe("POST /api/system/users", () => {
     const existing = await userRepo.create({
       email: "member@acme.com",
       name: "Existing Member",
-      role: "member",
       emailVerified: true,
     });
     const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });

@@ -42,7 +42,7 @@ type SettingsRepo = ReturnType<typeof createSettingsRepository>;
 export interface AuthMiddlewareOpts {
   managedAuthSecret?: string;
   managedUrl?: string;
-  findUserByEmail?: (email: string) => Promise<{ id: string; role: "admin" | "member" } | null>;
+  findUserByEmail?: (email: string) => Promise<{ id: string } | null>;
 }
 
 export function createAuthMiddleware(settings: SettingsRepo, opts?: AuthMiddlewareOpts) {
@@ -118,7 +118,7 @@ export function createAuthMiddleware(settings: SettingsRepo, opts?: AuthMiddlewa
           return c.json({ error: { code: "FORBIDDEN", message: "User not found in this tenant" } }, 403);
         }
 
-        c.set("role", user.role);
+        c.set("role", "member");
         c.set("sub", user.id);
         return next();
       }

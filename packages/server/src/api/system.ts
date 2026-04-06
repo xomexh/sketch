@@ -141,9 +141,9 @@ export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
       const displayName = parsed.data.name || adminEmail.split("@")[0];
       const existingUser = await deps.userRepo.findByEmail(adminEmail);
       if (existingUser) {
-        await deps.userRepo.update(existingUser.id, { name: displayName, role: "admin", emailVerified: true });
+        await deps.userRepo.update(existingUser.id, { name: displayName, emailVerified: true });
       } else {
-        await deps.userRepo.create({ name: displayName, email: adminEmail, role: "admin", emailVerified: true });
+        await deps.userRepo.create({ name: displayName, email: adminEmail, emailVerified: true });
       }
     }
 
@@ -201,7 +201,6 @@ export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
     const user = await deps.userRepo.create({
       email,
       name: parsed.data.name,
-      role: "member",
       emailVerified: true,
     });
 

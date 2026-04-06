@@ -244,8 +244,9 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
       });
     }
 
-    // Serve hashed assets (JS, CSS, images)
+    // Serve static files: Vite-hashed bundles (/assets/) and logo/favicon PNGs (/logos/)
     app.use("/assets/*", serveStatic({ root: webDistDir }));
+    app.use("/logos/*", serveStatic({ root: webDistDir }));
 
     // SPA catch-all: any non-API route returns index.html for client-side routing
     const indexHtml = readFileSync(join(webDistDir, "index.html"), "utf-8");

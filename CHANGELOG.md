@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here.
 
+## [0.16.0] -- 2026-04-06
+
+- Remove admin/member role distinction: all authenticated users get the same permissions (backend + frontend)
+- Migration 028: backfill admin user row in users table, rekey workspaces from email to UUID
+- Unify JWT sub to always use UUID, upgrade legacy email-based sessions on next login
+- Redesign Connections page as tabbed Integrations page (Applications + MCPs tabs) at /integrations
+- Channel-based magic link delivery: send sign-in link via Slack DM, email, and/or WhatsApp (all configured channels)
+- Dynamic login page: shows which channels received the magic link
+- Self-deletion guard on DELETE /api/users/:id
+- Cross-dialect fix for migration UNIQUE constraint check (SQLite + Postgres)
+- 1,220 tests (1,118 server + 102 frontend)
+
 ## [0.15.0-alpha.1] — 2026-03-31
 
 - Managed onboarding system API: PUT /system/identity (admin account + user row), PUT /system/llm (Anthropic/Bedrock with verification), GET/DELETE /system/whatsapp/pair (SSE pairing), POST /system/onboarding/complete

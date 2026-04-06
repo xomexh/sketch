@@ -225,19 +225,6 @@ describe("MCP Servers API", () => {
       expect(body.error.message).toContain("integration provider already exists");
     });
 
-    it("returns 403 for member role", async () => {
-      await seedAdmin(db);
-      const app = createApp(db, config);
-      const memberCookie = await getMemberCookie(db);
-
-      const res = await app.request("/api/mcp-servers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: memberCookie },
-        body: JSON.stringify(plainMcpBody),
-      });
-      expect(res.status).toBe(403);
-    });
-
     it("returns 400 for integration provider with invalid credentials", async () => {
       await seedAdmin(db);
       const app = createApp(db, config);
@@ -298,19 +285,6 @@ describe("MCP Servers API", () => {
       const body = await res.json();
       expect(body.error.code).toBe("NOT_FOUND");
     });
-
-    it("returns 403 for member role", async () => {
-      await seedAdmin(db);
-      const app = createApp(db, config);
-      const memberCookie = await getMemberCookie(db);
-
-      const res = await app.request("/api/mcp-servers/some-id", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Cookie: memberCookie },
-        body: JSON.stringify({ displayName: "Updated" }),
-      });
-      expect(res.status).toBe(403);
-    });
   });
 
   // --- DELETE /api/mcp-servers/:id ---
@@ -351,18 +325,6 @@ describe("MCP Servers API", () => {
         headers: { Cookie: cookie },
       });
       expect(res.status).toBe(404);
-    });
-
-    it("returns 403 for member role", async () => {
-      await seedAdmin(db);
-      const app = createApp(db, config);
-      const memberCookie = await getMemberCookie(db);
-
-      const res = await app.request("/api/mcp-servers/some-id", {
-        method: "DELETE",
-        headers: { Cookie: memberCookie },
-      });
-      expect(res.status).toBe(403);
     });
   });
 
@@ -525,28 +487,6 @@ describe("MCP Servers API", () => {
   // --- POST /api/mcp-servers/:id/connections ---
 
   describe("POST /api/mcp-servers/:id/connections", () => {
-    it("returns 403 for admin role", async () => {
-      await seedAdmin(db);
-      const repo = createMcpServerRepository(db);
-      const server = await repo.create({
-        type: "canvas",
-        displayName: "Canvas",
-        url: "https://canvas.example.com/mcp",
-        apiUrl: "https://canvas.example.com",
-        credentials: JSON.stringify({ apiKey: "sk-test" }),
-      });
-
-      const app = createApp(db, config);
-      const cookie = await loginAdmin(app);
-
-      const res = await app.request(`/api/mcp-servers/${server.id}/connections`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: cookie },
-        body: JSON.stringify({ appId: "slack" }),
-      });
-      expect(res.status).toBe(403);
-    });
-
     it("returns 400 when user has no email", async () => {
       await seedAdmin(db);
       const repo = createMcpServerRepository(db);
@@ -649,26 +589,6 @@ describe("MCP Servers API", () => {
   // --- GET /api/mcp-servers/:id/connections ---
 
   describe("GET /api/mcp-servers/:id/connections", () => {
-    it("returns 403 for admin role", async () => {
-      await seedAdmin(db);
-      const repo = createMcpServerRepository(db);
-      const server = await repo.create({
-        type: "canvas",
-        displayName: "Canvas",
-        url: "https://canvas.example.com/mcp",
-        apiUrl: "https://canvas.example.com",
-        credentials: JSON.stringify({ apiKey: "sk-test" }),
-      });
-
-      const app = createApp(db, config);
-      const cookie = await loginAdmin(app);
-
-      const res = await app.request(`/api/mcp-servers/${server.id}/connections`, {
-        headers: { Cookie: cookie },
-      });
-      expect(res.status).toBe(403);
-    });
-
     it("returns connections for member with email", async () => {
       await seedAdmin(db);
       const repo = createMcpServerRepository(db);
@@ -728,27 +648,6 @@ describe("MCP Servers API", () => {
   // --- DELETE /api/mcp-servers/:id/connections/:connectionId ---
 
   describe("DELETE /api/mcp-servers/:id/connections/:connectionId", () => {
-    it("returns 403 for admin role", async () => {
-      await seedAdmin(db);
-      const repo = createMcpServerRepository(db);
-      const server = await repo.create({
-        type: "canvas",
-        displayName: "Canvas",
-        url: "https://canvas.example.com/mcp",
-        apiUrl: "https://canvas.example.com",
-        credentials: JSON.stringify({ apiKey: "sk-test" }),
-      });
-
-      const app = createApp(db, config);
-      const cookie = await loginAdmin(app);
-
-      const res = await app.request(`/api/mcp-servers/${server.id}/connections/conn-1`, {
-        method: "DELETE",
-        headers: { Cookie: cookie },
-      });
-      expect(res.status).toBe(403);
-    });
-
     it("removes connection for member with email", async () => {
       await seedAdmin(db);
       const repo = createMcpServerRepository(db);

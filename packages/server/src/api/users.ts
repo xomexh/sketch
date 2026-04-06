@@ -14,7 +14,7 @@ import type { createSettingsRepository } from "../db/repositories/settings";
 import type { createUserRepository } from "../db/repositories/users";
 import type { DB } from "../db/schema";
 import { createEmailTransport, sendVerificationEmail } from "../email";
-import { requireAdmin } from "./middleware";
+
 import { getSmtpConfig, resolveBaseUrl } from "./shared";
 
 type UserRepo = ReturnType<typeof createUserRepository>;
@@ -40,14 +40,6 @@ const createUserSchema = z.object({
 const updateUserSchema = z.object({
   name: z.string().min(1, "Name is required").optional(),
   email: emailSchema.nullable().optional(),
-  whatsappNumber: whatsappNumberSchema.nullable().optional(),
-  description: z.string().max(500).nullable().optional(),
-  role: z.string().max(100).nullable().optional(),
-  reportsTo: z.string().nullable().optional(),
-});
-
-const memberUpdateSchema = z.object({
-  name: z.string().min(1, "Name is required").optional(),
   whatsappNumber: whatsappNumberSchema.nullable().optional(),
   description: z.string().max(500).nullable().optional(),
   role: z.string().max(100).nullable().optional(),
@@ -85,7 +77,7 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
     return c.json({ users: list });
   });
 
-  routes.post("/", requireAdmin(), async (c) => {
+  routes.post("/", async (c) => {
     const body = await c.req.json();
     const parsed = createUserSchema.safeParse(body);
     if (!parsed.success) {
@@ -136,14 +128,7 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
   });
 
   routes.patch("/:id", async (c) => {
-    const role = c.get("role");
-    const sub = c.get("sub");
     const id = c.req.param("id");
-
-    // Members can only edit their own profile
-    if (role === "member" && sub !== id) {
-      return c.json({ error: { code: "FORBIDDEN", message: "Cannot edit other members" } }, 403);
-    }
 
     const existing = await users.findById(id);
     if (!existing) {
@@ -151,9 +136,7 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
     }
 
     const body = await c.req.json();
-    // Members cannot change email (would reset email_verified_at and lock them out)
-    const schema = role === "member" ? memberUpdateSchema : updateUserSchema;
-    const parsed = schema.safeParse(body);
+    const parsed = updateUserSchema.safeParse(body);
     if (!parsed.success) {
       const message = parsed.error.issues[0]?.message ?? "Invalid request";
       return c.json({ error: { code: "VALIDATION_ERROR", message } }, 400);
@@ -174,7 +157,7 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
     }
 
     try {
-      const emailValue = role === "member" ? undefined : (parsed.data as { email?: string | null }).email;
+      const emailValue = (parsed.data as { email?: string | null }).email;
       const emailChanged = emailValue !== undefined && emailValue !== (existing.email ?? null);
 
       const user = await users.update(id, {
@@ -208,14 +191,7 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
 
   // Resend verification email
   routes.post("/:id/verification", async (c) => {
-    const role = c.get("role");
-    const sub = c.get("sub");
     const id = c.req.param("id");
-
-    // Members can only resend verification for themselves
-    if (role === "member" && sub !== id) {
-      return c.json({ error: { code: "FORBIDDEN", message: "Cannot resend verification for other members" } }, 403);
-    }
 
     const user = await users.findById(id);
     if (!user) {
@@ -243,8 +219,12 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
     return c.json({ success: true, sent: result.sent });
   });
 
-  routes.delete("/:id", requireAdmin(), async (c) => {
+  routes.delete("/:id", async (c) => {
+    const sub = c.get("sub");
     const id = c.req.param("id");
+    if (id === sub) {
+      return c.json({ error: { code: "FORBIDDEN", message: "Cannot delete your own account" } }, 403);
+    }
     const existing = await users.findById(id);
     if (!existing) {
       return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);

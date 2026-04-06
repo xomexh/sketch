@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { rootRoute } from "./root";
 
-type LoginStep = "choose" | "admin" | "member" | "magic-link-sent";
+type LoginStep = "choose" | "password" | "email-link" | "magic-link-sent";
 
 export const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -50,11 +50,11 @@ function LoginPage() {
         <span className="text-lg font-semibold tracking-tight">Sketch</span>
       </div>
 
-      {step === "choose" && <ChooseStep onAdmin={() => setStep("admin")} onMember={() => setStep("member")} />}
-      {step === "admin" && (
+      {step === "choose" && <ChooseStep onAdmin={() => setStep("password")} onMember={() => setStep("email-link")} />}
+      {step === "password" && (
         <AdminStep onBack={() => setStep("choose")} onSuccess={() => navigate({ to: "/channels" })} />
       )}
-      {step === "member" && (
+      {step === "email-link" && (
         <MemberStep
           email={memberEmail}
           onEmailChange={setMemberEmail}
@@ -62,7 +62,7 @@ function LoginPage() {
           onSent={() => setStep("magic-link-sent")}
         />
       )}
-      {step === "magic-link-sent" && <MagicLinkSentStep email={memberEmail} onBack={() => setStep("member")} />}
+      {step === "magic-link-sent" && <MagicLinkSentStep email={memberEmail} onBack={() => setStep("email-link")} />}
     </div>
   );
 }
@@ -78,15 +78,15 @@ function ChooseStep({ onAdmin, onMember }: { onAdmin: () => void; onMember: () =
         <Button variant="outline" className="w-full justify-start gap-3 h-12" onClick={onAdmin}>
           <ShieldIcon size={18} />
           <div className="text-left">
-            <div className="text-sm font-medium">Sign in as Admin</div>
+            <div className="text-sm font-medium">Sign in with password</div>
             <div className="text-xs text-muted-foreground">Email and password</div>
           </div>
         </Button>
         <Button variant="outline" className="w-full justify-start gap-3 h-12" onClick={onMember}>
           <EnvelopeIcon size={18} />
           <div className="text-left">
-            <div className="text-sm font-medium">Sign in as Member</div>
-            <div className="text-xs text-muted-foreground">Magic link via email</div>
+            <div className="text-sm font-medium">Sign in with email link</div>
+            <div className="text-xs text-muted-foreground">We'll send you a sign-in link</div>
           </div>
         </Button>
       </CardContent>
@@ -115,8 +115,8 @@ function AdminStep({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =>
   return (
     <Card className="w-full max-w-[400px]">
       <CardHeader className="text-center">
-        <h1 className="text-xl font-semibold">Admin Login</h1>
-        <p className="text-sm text-muted-foreground">Sign in to manage your Sketch deployment</p>
+        <h1 className="text-xl font-semibold">Sign in</h1>
+        <p className="text-sm text-muted-foreground">Sign in with your email and password</p>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -192,8 +192,8 @@ function MemberStep({
   return (
     <Card className="w-full max-w-[400px]">
       <CardHeader className="text-center">
-        <h1 className="text-xl font-semibold">Member Login</h1>
-        <p className="text-sm text-muted-foreground">We'll send a magic link to your email</p>
+        <h1 className="text-xl font-semibold">Sign in</h1>
+        <p className="text-sm text-muted-foreground">We'll send a sign-in link to your email</p>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">

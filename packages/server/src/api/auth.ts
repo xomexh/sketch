@@ -14,6 +14,7 @@ import { createRateLimitedMagicLinkToken, findVerifiedUserByEmail, verifyMagicLi
 import { verifyPassword } from "../auth/password";
 import type { Config } from "../config";
 import type { createSettingsRepository } from "../db/repositories/settings";
+import type { createUserRepository } from "../db/repositories/users";
 import type { DB } from "../db/schema";
 import { createEmailTransport, sendMagicLinkEmail } from "../email";
 import { getSmtpConfig, resolveBaseUrl } from "./shared";
@@ -48,7 +49,11 @@ export async function createSession(
   setSessionCookie(c, token, isSecure(c));
 }
 
-export function authRoutes(settings: SettingsRepo, db: Kysely<DB>, deps: { config: Config; logger: Logger }) {
+export function authRoutes(
+  settings: SettingsRepo,
+  db: Kysely<DB>,
+  deps: { config: Config; logger: Logger; userRepo: ReturnType<typeof createUserRepository> },
+) {
   const routes = new Hono();
 
   routes.post("/login", async (c) => {
@@ -76,7 +81,10 @@ export function authRoutes(settings: SettingsRepo, db: Kysely<DB>, deps: { confi
       await settings.update({ jwtSecret });
     }
 
-    await createSession(c, row.admin_email, "admin", jwtSecret);
+    // Look up admin user row to use UUID as sub
+    const adminUser = await deps.userRepo.findByEmail(row.admin_email.toLowerCase());
+    const sub = adminUser?.id ?? row.admin_email;
+    await createSession(c, sub, "admin", jwtSecret);
     return c.json({ authenticated: true, email: row.admin_email });
   });
 
@@ -100,18 +108,22 @@ export function authRoutes(settings: SettingsRepo, db: Kysely<DB>, deps: { confi
         if (payload) {
           await createSession(c, payload.sub, payload.role, row.jwt_secret);
 
-          if (payload.role === "member") {
-            const user = await db.selectFrom("users").selectAll().where("id", "=", payload.sub).executeTakeFirst();
-            if (user) {
-              return c.json({
-                authenticated: true,
-                role: "member" as const,
-                userId: user.id,
-                name: user.name,
-                email: user.email,
-              });
-            }
-          } else {
+          // All sessions now use UUID as sub — look up user row
+          const user = await db.selectFrom("users").selectAll().where("id", "=", payload.sub).executeTakeFirst();
+
+          if (user) {
+            return c.json({
+              authenticated: true,
+              role: "admin" as const,
+              userId: user.id,
+              name: user.name,
+              email: user.email,
+            });
+          }
+
+          // Fallback for legacy admin sessions where sub is an email string (not a UUID).
+          // Only use if sub looks like an email address. Expires within 7 days as old JWTs rotate out.
+          if (payload.sub.includes("@")) {
             return c.json({
               authenticated: true,
               role: "admin" as const,
@@ -130,18 +142,11 @@ export function authRoutes(settings: SettingsRepo, db: Kysely<DB>, deps: { confi
         if (payload?.email) {
           const user = await db.selectFrom("users").selectAll().where("email", "=", payload.email).executeTakeFirst();
           if (user) {
-            if (user.role === "member") {
-              return c.json({
-                authenticated: true,
-                role: "member" as const,
-                userId: user.id,
-                name: user.name,
-                email: user.email,
-              });
-            }
             return c.json({
               authenticated: true,
               role: "admin" as const,
+              userId: user.id,
+              name: user.name,
               email: user.email,
             });
           }
@@ -219,7 +224,7 @@ export function authRoutes(settings: SettingsRepo, db: Kysely<DB>, deps: { confi
       return c.redirect("/login?error=server_error");
     }
 
-    await createSession(c, userId, "member", settingsRow.jwt_secret);
+    await createSession(c, userId, "admin", settingsRow.jwt_secret);
     return c.redirect("/");
   });
 

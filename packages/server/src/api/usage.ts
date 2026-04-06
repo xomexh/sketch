@@ -40,10 +40,6 @@ export function usageRoutes(db: Kysely<DB>) {
   });
 
   routes.get("/summary", async (c) => {
-    if (c.get("role") !== "admin") {
-      return c.json({ error: { code: "FORBIDDEN", message: "Admin access required" } }, 403);
-    }
-
     const period = parsePeriodOrError(c);
     if ("error" in period) return c.json({ error: { code: "BAD_REQUEST", message: period.error } }, 400);
 

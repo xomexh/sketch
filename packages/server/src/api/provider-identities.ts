@@ -14,7 +14,6 @@ import { z } from "zod";
 import type { ConnectorType } from "../connectors/types";
 import type { createProviderIdentityRepository } from "../db/repositories/provider-identities";
 import type { createUserRepository } from "../db/repositories/users";
-import { requireAdmin } from "./middleware";
 
 type IdentityRepo = ReturnType<typeof createProviderIdentityRepository>;
 type UserRepo = ReturnType<typeof createUserRepository>;
@@ -59,7 +58,7 @@ export function providerIdentityRoutes(identityRepo: IdentityRepo, userRepo: Use
    * Create a user-to-provider identity mapping.
    * In V1, admin does this manually (maps Sketch user → provider user ID).
    */
-  routes.post("/", requireAdmin(), async (c) => {
+  routes.post("/", async (c) => {
     const body = await c.req.json();
     const parsed = connectSchema.safeParse(body);
     if (!parsed.success) {
@@ -94,7 +93,7 @@ export function providerIdentityRoutes(identityRepo: IdentityRepo, userRepo: Use
   });
 
   /** Disconnect a user from a provider. */
-  routes.delete("/user/:userId/provider/:provider", requireAdmin(), async (c) => {
+  routes.delete("/user/:userId/provider/:provider", async (c) => {
     const user = await userRepo.findById(c.req.param("userId"));
     if (!user) {
       return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);

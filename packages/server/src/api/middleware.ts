@@ -146,13 +146,3 @@ export function createAuthMiddleware(settings: SettingsRepo, opts?: AuthMiddlewa
     return next();
   };
 }
-
-export function requireAdmin() {
-  return async (c: Context, next: Next) => {
-    const role = c.get("role");
-    if (role !== "admin") {
-      return c.json({ error: { code: "FORBIDDEN", message: "Admin access required" } }, 403);
-    }
-    return next();
-  };
-}

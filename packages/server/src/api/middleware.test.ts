@@ -9,7 +9,7 @@ import { SignJWT } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { signJwt } from "../auth/jwt";
 import type { createSettingsRepository } from "../db/repositories/settings";
-import { type AuthMiddlewareOpts, createAuthMiddleware, requireAdmin } from "./middleware";
+import { type AuthMiddlewareOpts, createAuthMiddleware } from "./middleware";
 
 const LOCAL_JWT_SECRET = "local-test-secret-at-least-32chars-long";
 const MANAGED_AUTH_SECRET = "managed-test-secret-at-least-32chars-long";
@@ -52,7 +52,6 @@ function createTestApp(settings: SettingsRepo, opts?: AuthMiddlewareOpts) {
   const app = new Hono();
   app.use("/api/*", createAuthMiddleware(settings, opts));
   app.get("/api/test", (c) => c.json({ role: c.get("role"), sub: c.get("sub") }));
-  app.get("/api/admin-test", requireAdmin(), (c) => c.json({ ok: true }));
   return app;
 }
 
@@ -290,33 +289,5 @@ describe("auth middleware - managed SSO", () => {
     expect(body.role).toBe("member");
     expect(body.sub).toBe("user-2");
     expect(findUserByEmail).toHaveBeenCalledWith("member@test.com");
-  });
-
-  it("requireAdmin allows tenant admins authenticated via managed auth", async () => {
-    const app = createTestApp(mockSettings, {
-      managedAuthSecret: MANAGED_AUTH_SECRET,
-      managedUrl: MANAGED_URL,
-      findUserByEmail,
-    });
-    const token = await makePlatformToken("admin@test.com", "admin", MANAGED_AUTH_SECRET);
-    const res = await app.request("/api/admin-test", {
-      headers: { Cookie: `sketch_platform_session=${token}` },
-    });
-
-    expect(res.status).toBe(200);
-  });
-
-  it("requireAdmin denies members authenticated via managed auth", async () => {
-    const app = createTestApp(mockSettings, {
-      managedAuthSecret: MANAGED_AUTH_SECRET,
-      managedUrl: MANAGED_URL,
-      findUserByEmail,
-    });
-    const token = await makePlatformToken("member@test.com", "member", MANAGED_AUTH_SECRET);
-    const res = await app.request("/api/admin-test", {
-      headers: { Cookie: `sketch_platform_session=${token}` },
-    });
-
-    expect(res.status).toBe(403);
   });
 });

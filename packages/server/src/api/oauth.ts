@@ -24,7 +24,6 @@ import type { createSettingsRepository } from "../db/repositories/settings";
 import type { createUserRepository } from "../db/repositories/users";
 import type { DB } from "../db/schema";
 import { SESSION_COOKIE } from "./auth";
-import { requireAdmin } from "./middleware";
 
 type SettingsRepo = ReturnType<typeof createSettingsRepository>;
 type IdentityRepo = ReturnType<typeof createProviderIdentityRepository>;
@@ -74,12 +73,13 @@ export function oauthRoutes(
     if (!payload?.sub) {
       return c.json({ error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
     }
-    const email = payload.sub;
-
-    let user = await users.findByEmail(email);
+    // Resolve user: try by UUID first (new sessions), then by email (legacy admin sessions)
+    let user = await users.findById(payload.sub);
+    if (!user && payload.sub.includes("@")) {
+      user = await users.findByEmail(payload.sub);
+    }
     if (!user) {
-      // Auto-create a user record for the admin on first OAuth connect
-      user = await users.create({ name: email.split("@")[0], email });
+      return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
     }
     const userId = user.id;
 
@@ -255,7 +255,7 @@ export function oauthRoutes(
   });
 
   /** PUT /google/config — save Google OAuth client_id + client_secret. */
-  routes.put("/google/config", requireAdmin(), async (c) => {
+  routes.put("/google/config", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const parsed = googleConfigSchema.safeParse(body);
     if (!parsed.success) {

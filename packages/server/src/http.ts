@@ -104,7 +104,7 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
 
   // API routes
   app.route("/api/health", healthRoutes(db));
-  app.route("/api/auth", authRoutes(settings, db, { config, logger }));
+  app.route("/api/auth", authRoutes(settings, db, { config, logger, userRepo: users }));
   app.route(
     "/api/setup",
     setupRoutes(
@@ -113,6 +113,7 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
         managedUrl: config.MANAGED_URL,
         onSlackTokensUpdated: deps?.onSlackTokensUpdated,
         onLlmSettingsUpdated: deps?.onLlmSettingsUpdated,
+        userRepo: users,
       },
       config.EXPERIMENTAL_FLAG,
     ),

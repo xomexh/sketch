@@ -40,7 +40,7 @@ describe("runMigrations — full sequence", () => {
       SELECT name FROM kysely_migration ORDER BY name ASC
     `.execute(db);
 
-    expect(rows.rows).toHaveLength(27);
+    expect(rows.rows).toHaveLength(28);
   });
 
   it("records migrations with the correct names in order", async () => {
@@ -170,7 +170,7 @@ describe("runMigrations — full sequence", () => {
     `.execute(db);
 
     // Still exactly 27, not 54
-    expect(rows.rows).toHaveLength(27);
+    expect(rows.rows).toHaveLength(28);
   });
 });
 
@@ -202,6 +202,6 @@ describe("runMigrations — incremental upgrade", () => {
     const rows = await sql<{ name: string }>`
       SELECT name FROM kysely_migration ORDER BY name ASC
     `.execute(db);
-    expect(rows.rows).toHaveLength(27);
+    expect(rows.rows).toHaveLength(28);
   });
 });

@@ -76,7 +76,7 @@ function ConnectionsPage() {
   const connectionsQuery = useQuery({
     queryKey: ["connections", provider?.id],
     queryFn: () => api.mcpServers.listConnections(provider?.id ?? ""),
-    enabled: !!provider && isMember,
+    enabled: !!provider,
   });
 
   const connections = connectionsQuery.data ?? [];

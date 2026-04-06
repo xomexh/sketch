@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { hashPassword } from "../auth/password";
 import type { createSettingsRepository } from "../db/repositories/settings";
+import type { createUserRepository } from "../db/repositories/users";
 import { slackApiCall } from "../slack/api";
 import { createSession } from "./auth";
 
@@ -88,6 +89,7 @@ interface SetupDeps {
   managedUrl?: string;
   onSlackTokensUpdated?: (tokens?: { botToken: string; appToken: string }) => Promise<void>;
   onLlmSettingsUpdated?: () => Promise<void>;
+  userRepo?: ReturnType<typeof createUserRepository>;
 }
 
 export function setupRoutes(settings: SettingsRepo, deps: SetupDeps = {}, experimentalFlag = false) {
@@ -182,11 +184,24 @@ export function setupRoutes(settings: SettingsRepo, deps: SetupDeps = {}, experi
       });
     }
 
+    if (deps.userRepo) {
+      const email = parsed.data.email.toLowerCase();
+      const existingUser = await deps.userRepo.findByEmail(email);
+      if (!existingUser) {
+        await deps.userRepo.create({ name: email.split("@")[0], email, emailVerified: true });
+      }
+    }
+
     const row = await settings.get();
     if (!row?.jwt_secret) {
       return c.json({ error: { code: "SERVER_ERROR", message: "JWT secret not available" } }, 500);
     }
-    await createSession(c, parsed.data.email, "admin", row.jwt_secret);
+    let sub = parsed.data.email;
+    if (deps.userRepo) {
+      const adminUser = await deps.userRepo.findByEmail(parsed.data.email.toLowerCase());
+      if (adminUser) sub = adminUser.id;
+    }
+    await createSession(c, sub, "admin", row.jwt_secret);
     return c.json({ success: true });
   });
 

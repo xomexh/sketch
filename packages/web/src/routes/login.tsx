@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { rootRoute } from "./root";
 
-type LoginStep = "choose" | "password" | "email-link" | "magic-link-sent";
+type LoginStep = "choose" | "password" | "magic-link" | "magic-link-sent";
 
 export const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -50,11 +50,11 @@ function LoginPage() {
         <span className="text-lg font-semibold tracking-tight">Sketch</span>
       </div>
 
-      {step === "choose" && <ChooseStep onAdmin={() => setStep("password")} onMember={() => setStep("email-link")} />}
+      {step === "choose" && <ChooseStep onAdmin={() => setStep("password")} onMember={() => setStep("magic-link")} />}
       {step === "password" && (
         <AdminStep onBack={() => setStep("choose")} onSuccess={() => navigate({ to: "/channels" })} />
       )}
-      {step === "email-link" && (
+      {step === "magic-link" && (
         <MemberStep
           email={memberEmail}
           onEmailChange={setMemberEmail}
@@ -62,7 +62,7 @@ function LoginPage() {
           onSent={() => setStep("magic-link-sent")}
         />
       )}
-      {step === "magic-link-sent" && <MagicLinkSentStep email={memberEmail} onBack={() => setStep("email-link")} />}
+      {step === "magic-link-sent" && <MagicLinkSentStep email={memberEmail} onBack={() => setStep("magic-link")} />}
     </div>
   );
 }
@@ -85,7 +85,7 @@ function ChooseStep({ onAdmin, onMember }: { onAdmin: () => void; onMember: () =
         <Button variant="outline" className="w-full justify-start gap-3 h-12" onClick={onMember}>
           <EnvelopeIcon size={18} />
           <div className="text-left">
-            <div className="text-sm font-medium">Sign in with email link</div>
+            <div className="text-sm font-medium">Sign in with magic link</div>
             <div className="text-xs text-muted-foreground">We'll send you a sign-in link</div>
           </div>
         </Button>

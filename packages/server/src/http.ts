@@ -10,7 +10,7 @@ import { getCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import type { Kysely } from "kysely";
 import type { Logger } from "pino";
-import { authRoutes } from "./api/auth";
+import { type MagicLinkSender, authRoutes } from "./api/auth";
 import { channelRoutes } from "./api/channels";
 import { connectorRoutes } from "./api/connectors";
 import { emailRoutes } from "./api/email";
@@ -37,8 +37,10 @@ import { createMcpServerRepository } from "./db/repositories/mcp-servers";
 import { createProviderIdentityRepository } from "./db/repositories/provider-identities";
 import { createSettingsRepository } from "./db/repositories/settings";
 
+import { getSmtpConfig } from "./api/shared";
 import { createUserRepository } from "./db/repositories/users";
 import type { DB } from "./db/schema";
+import { createEmailTransport, sendMagicLinkEmail } from "./email";
 import type { TaskScheduler } from "./scheduler/service";
 import type { SlackBot } from "./slack/bot";
 import type { WhatsAppBot } from "./whatsapp/bot";
@@ -102,9 +104,53 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
     }),
   );
 
+  const sendMagicLink: MagicLinkSender = async ({ user, magicLinkUrl, botName }) => {
+    const channels: string[] = [];
+
+    const slack = deps?.getSlack?.();
+    if (slack && user.slack_user_id) {
+      try {
+        const row = await settings.get();
+        const dmChannelId = await slack.openDmChannel(user.slack_user_id, row?.slack_bot_token ?? undefined);
+        if (dmChannelId) {
+          const text = `Here's your sign-in link for ${botName}:\n${magicLinkUrl}\n\nThis link expires in 15 minutes and can only be used once.`;
+          await slack.postMessage(dmChannelId, text);
+          channels.push("slack");
+        }
+      } catch (err) {
+        logger.warn({ err }, "Failed to send magic link via Slack");
+      }
+    }
+
+    const settingsRow = await settings.get();
+    const smtp = settingsRow ? getSmtpConfig(settingsRow) : null;
+    if (smtp && user.email) {
+      try {
+        const transport = createEmailTransport(smtp);
+        await sendMagicLinkEmail(transport, user.email, magicLinkUrl, botName, smtp.from);
+        channels.push("email");
+      } catch (err) {
+        logger.warn({ err }, "Failed to send magic link via email");
+      }
+    }
+
+    if (deps?.whatsapp && user.whatsapp_number) {
+      try {
+        const jid = `${user.whatsapp_number.replace("+", "")}@s.whatsapp.net`;
+        const text = `Here's your sign-in link for ${botName}:\n${magicLinkUrl}\n\nThis link expires in 15 minutes and can only be used once.`;
+        await deps.whatsapp.sendText(jid, text);
+        channels.push("whatsapp");
+      } catch (err) {
+        logger.warn({ err }, "Failed to send magic link via WhatsApp");
+      }
+    }
+
+    return channels;
+  };
+
   // API routes
   app.route("/api/health", healthRoutes(db));
-  app.route("/api/auth", authRoutes(settings, db, { config, logger, userRepo: users }));
+  app.route("/api/auth", authRoutes(settings, db, { config, logger, userRepo: users, sendMagicLink }));
   app.route(
     "/api/setup",
     setupRoutes(

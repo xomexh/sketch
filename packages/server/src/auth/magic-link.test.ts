@@ -38,13 +38,25 @@ describe("findVerifiedUserByEmail()", () => {
   it("returns user with verified email", async () => {
     const user = await createVerifiedUser("test@example.com");
     const result = await findVerifiedUserByEmail(db, "test@example.com");
-    expect(result).toEqual({ id: user.id, name: "Test User", email: "test@example.com" });
+    expect(result).toEqual({
+      id: user.id,
+      name: "Test User",
+      email: "test@example.com",
+      slack_user_id: null,
+      whatsapp_number: null,
+    });
   });
 
   it("matches case-insensitively (Postgres-safe)", async () => {
     const user = await createVerifiedUser("Test@Example.COM");
     const result = await findVerifiedUserByEmail(db, "test@example.com");
-    expect(result).toEqual({ id: user.id, name: "Test User", email: "Test@Example.COM" });
+    expect(result).toEqual({
+      id: user.id,
+      name: "Test User",
+      email: "Test@Example.COM",
+      slack_user_id: null,
+      whatsapp_number: null,
+    });
   });
 
   it("returns null for unverified email", async () => {

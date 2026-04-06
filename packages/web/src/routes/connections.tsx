@@ -158,7 +158,6 @@ function ConnectionsPage() {
                   </div>
                 )}
                 <IntegrationsSection
-                  provider={provider}
                   connections={connections}
                   isLoadingConnections={connectionsQuery.isLoading}
                   onAdd={() => setShowAddIntegrationDialog(true)}

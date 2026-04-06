@@ -10,14 +10,24 @@ import type { Kysely } from "kysely";
 import type { Logger } from "pino";
 import { verifyEmailToken } from "../auth/email-verify";
 import { signJwt, verifyJwt } from "../auth/jwt";
-import { createRateLimitedMagicLinkToken, findVerifiedUserByEmail, verifyMagicLinkToken } from "../auth/magic-link";
+import {
+  type VerifiedUser,
+  createRateLimitedMagicLinkToken,
+  findVerifiedUserByEmail,
+  verifyMagicLinkToken,
+} from "../auth/magic-link";
 import { verifyPassword } from "../auth/password";
 import type { Config } from "../config";
 import type { createSettingsRepository } from "../db/repositories/settings";
 import type { createUserRepository } from "../db/repositories/users";
 import type { DB } from "../db/schema";
-import { createEmailTransport, sendMagicLinkEmail } from "../email";
-import { getSmtpConfig, resolveBaseUrl } from "./shared";
+import { resolveBaseUrl } from "./shared";
+
+export type MagicLinkSender = (opts: {
+  user: Pick<VerifiedUser, "email" | "slack_user_id" | "whatsapp_number">;
+  magicLinkUrl: string;
+  botName: string;
+}) => Promise<string[]>;
 
 export const SESSION_COOKIE = "sketch_session";
 const PLATFORM_COOKIE = "sketch_platform_session";
@@ -52,7 +62,12 @@ export async function createSession(
 export function authRoutes(
   settings: SettingsRepo,
   db: Kysely<DB>,
-  deps: { config: Config; logger: Logger; userRepo: ReturnType<typeof createUserRepository> },
+  deps: {
+    config: Config;
+    logger: Logger;
+    userRepo: ReturnType<typeof createUserRepository>;
+    sendMagicLink: MagicLinkSender;
+  },
 ) {
   const routes = new Hono();
 
@@ -172,31 +187,27 @@ export function authRoutes(
 
     const email = body.email.toLowerCase().trim();
 
-    // Always return success (prevent email enumeration)
-    const successResponse = { success: true };
+    const noChannelsResponse = { success: true, channels: [] as string[] };
 
     const user = await findVerifiedUserByEmail(db, email);
-    if (!user) return c.json(successResponse);
+    if (!user) return c.json(noChannelsResponse);
 
-    // Atomic rate-limit check + token creation in a single transaction
     const token = await createRateLimitedMagicLinkToken(db, user.id);
-    if (!token) return c.json(successResponse);
+    if (!token) return c.json(noChannelsResponse);
 
     const baseUrl = resolveBaseUrl(c, deps.config);
     const magicLinkUrl = `${baseUrl}/api/auth/magic-link/verify?token=${token}`;
 
-    // Reuse settings already fetched by the middleware cache path where possible,
-    // but we need SMTP config which requires a fresh read.
     const settingsRow = await settings.get();
-    const smtp = settingsRow ? getSmtpConfig(settingsRow) : null;
-    if (smtp) {
-      const transport = createEmailTransport(smtp);
-      await sendMagicLinkEmail(transport, email, magicLinkUrl, settingsRow?.bot_name ?? "Sketch", smtp.from);
-    } else {
-      deps.logger.info({ magicLinkUrl }, "Magic link (SMTP not configured)");
+    const botName = settingsRow?.bot_name ?? "Sketch";
+
+    const channels = await deps.sendMagicLink({ user, magicLinkUrl, botName });
+
+    if (channels.length === 0) {
+      deps.logger.info({ magicLinkUrl }, "Magic link (no delivery channels configured)");
     }
 
-    return c.json(successResponse);
+    return c.json({ success: true, channels });
   });
 
   routes.get("/magic-link/verify", async (c) => {

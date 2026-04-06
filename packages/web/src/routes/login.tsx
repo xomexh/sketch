@@ -1,5 +1,14 @@
 import { api } from "@/lib/api";
-import { ArrowLeftIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, ShieldIcon } from "@phosphor-icons/react";
+import {
+  ArrowLeftIcon,
+  ChatCircleIcon,
+  EnvelopeIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  ShieldIcon,
+  SlackLogoIcon,
+  WhatsappLogoIcon,
+} from "@phosphor-icons/react";
 import { Button } from "@sketch/ui/components/button";
 import { Card, CardContent, CardHeader } from "@sketch/ui/components/card";
 import { Input } from "@sketch/ui/components/input";
@@ -30,6 +39,7 @@ function LoginPage() {
   const { logoSrc } = useTheme();
   const [step, setStep] = useState<LoginStep>("choose");
   const [memberEmail, setMemberEmail] = useState("");
+  const [sentChannels, setSentChannels] = useState<string[]>([]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -59,10 +69,15 @@ function LoginPage() {
           email={memberEmail}
           onEmailChange={setMemberEmail}
           onBack={() => setStep("choose")}
-          onSent={() => setStep("magic-link-sent")}
+          onSent={(channels) => {
+            setSentChannels(channels);
+            setStep("magic-link-sent");
+          }}
         />
       )}
-      {step === "magic-link-sent" && <MagicLinkSentStep email={memberEmail} onBack={() => setStep("magic-link")} />}
+      {step === "magic-link-sent" && (
+        <MagicLinkSentStep email={memberEmail} channels={sentChannels} onBack={() => setStep("magic-link")} />
+      )}
     </div>
   );
 }
@@ -175,10 +190,10 @@ function MemberStep({
   onEmailChange,
   onBack,
   onSent,
-}: { email: string; onEmailChange: (v: string) => void; onBack: () => void; onSent: () => void }) {
+}: { email: string; onEmailChange: (v: string) => void; onBack: () => void; onSent: (channels: string[]) => void }) {
   const magicLinkMutation = useMutation({
     mutationFn: () => api.auth.magicLink.request(email),
-    onSuccess: () => onSent(),
+    onSuccess: (data) => onSent(data.channels),
     onError: (error: Error) => {
       toast.error(error.message);
     },
@@ -226,22 +241,46 @@ function MemberStep({
   );
 }
 
-function MagicLinkSentStep({ email, onBack }: { email: string; onBack: () => void }) {
+const CHANNEL_LABELS: Record<string, string> = {
+  slack: "Slack DM",
+  email: "email",
+  whatsapp: "WhatsApp",
+};
+
+function formatChannelList(channels: string[]): string {
+  const labels = channels.map((ch) => CHANNEL_LABELS[ch] ?? ch);
+  if (labels.length === 0) return "";
+  if (labels.length === 1) return labels[0];
+  return `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
+}
+
+function ChannelIcon({ channels }: { channels: string[] }) {
+  if (channels.includes("slack")) return <SlackLogoIcon size={24} className="text-primary" />;
+  if (channels.includes("whatsapp")) return <WhatsappLogoIcon size={24} className="text-primary" />;
+  if (channels.includes("email")) return <EnvelopeIcon size={24} className="text-primary" />;
+  return <ChatCircleIcon size={24} className="text-primary" />;
+}
+
+function MagicLinkSentStep({ email, channels, onBack }: { email: string; channels: string[]; onBack: () => void }) {
   const resendMutation = useMutation({
     mutationFn: () => api.auth.magicLink.request(email),
     onSuccess: () => toast.success("Magic link resent!"),
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const hasChannels = channels.length > 0;
+
   return (
     <Card className="w-full max-w-[400px]">
       <CardHeader className="text-center">
         <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-primary/10">
-          <EnvelopeIcon size={24} className="text-primary" />
+          <ChannelIcon channels={channels} />
         </div>
-        <h1 className="text-xl font-semibold">Check your email</h1>
+        <h1 className="text-xl font-semibold">{hasChannels ? "Check your messages" : "Magic link generated"}</h1>
         <p className="text-sm text-muted-foreground">
-          We've sent a magic link to your email address. Click the link to sign in.
+          {hasChannels
+            ? `We sent a sign-in link to your ${formatChannelList(channels)}. Click the link to sign in.`
+            : "No delivery channels configured. The sign-in link has been logged to the server console."}
         </p>
       </CardHeader>
       <CardContent className="text-center">

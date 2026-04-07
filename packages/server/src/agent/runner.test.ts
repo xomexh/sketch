@@ -131,6 +131,7 @@ function makeBaseParams(overrides?: Partial<Parameters<typeof runAgent>[0]>): Pa
     workspaceKey: "u-test",
     userMessage: "hello",
     workspaceDir: "/tmp/ws-test",
+    claudeConfigDir: "/tmp/.claude",
     userName: "TestUser",
     logger: makeMockLogger(),
     platform: "slack",

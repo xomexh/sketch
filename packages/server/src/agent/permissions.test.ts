@@ -107,6 +107,12 @@ describe("createCanUseTool", () => {
       const result = await canUseTool("Edit", { file_path: `${WORKSPACE}/src/deep/nested/file.ts` });
       expect(result.behavior).toBe("allow");
     });
+
+    it("denies path that shares workspace prefix but is a sibling directory", async () => {
+      const result = await canUseTool("Read", { file_path: `${WORKSPACE}-evil/secrets.txt` });
+      expectDeny(result);
+      expect(result.message).toContain("outside your workspace");
+    });
   });
 
   describe("file tools — ~/.claude access", () => {
@@ -133,6 +139,12 @@ describe("createCanUseTool", () => {
     it("allows Edit tool with ~/.claude/CLAUDE.md (org memory)", async () => {
       const result = await canUseTool("Edit", { file_path: `${CLAUDE_DIR}/CLAUDE.md` });
       expect(result.behavior).toBe("allow");
+    });
+
+    it("denies path that shares claude dir prefix but is a sibling directory", async () => {
+      const result = await canUseTool("Read", { file_path: `${CLAUDE_DIR}-other/secrets.txt` });
+      expectDeny(result);
+      expect(result.message).toContain("outside your workspace");
     });
   });
 
@@ -179,8 +191,14 @@ describe("createCanUseTool", () => {
       expect(result.behavior).toBe("allow");
     });
 
-    it("allows command with /data/ prefix", async () => {
+    it("denies command with /data/ prefix outside workspace and claude dir", async () => {
       const result = await canUseTool("Bash", { command: "ls /data/shared" });
+      expectDeny(result);
+      expect(result.message).toContain("must operate within your workspace");
+    });
+
+    it("allows command referencing workspace under /data/", async () => {
+      const result = await canUseTool("Bash", { command: `cat ${WORKSPACE}/file.txt` });
       expect(result.behavior).toBe("allow");
     });
   });

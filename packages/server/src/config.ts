@@ -3,7 +3,8 @@
  * Uses zod for schema validation and dotenv for .env file loading.
  * Fails fast on startup with all errors printed at once.
  */
-import { dirname, isAbsolute, resolve } from "node:path";
+import { homedir } from "node:os";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
 import "dotenv/config";
 
@@ -48,6 +49,9 @@ export const configSchema = z.object({
   POSTHOG_API_KEY: z.string().optional(),
   POSTHOG_HOST: z.string().default("https://us.i.posthog.com"),
 
+  CLAUDE_CONFIG_DIR: z.string().default(join(homedir(), ".claude")),
+  SKETCH_CONFIG_DIR: z.string().default(join(homedir(), ".sketch")),
+
   // Server
   // Public-facing base URL (used for OAuth redirect URIs, email links, etc.)
   // e.g. https://sketch.yourcompany.com — no trailing slash
@@ -78,6 +82,12 @@ export function loadConfig(): Config {
   }
   if (!isAbsolute(config.SQLITE_PATH)) {
     config.SQLITE_PATH = resolve(projectRoot, config.SQLITE_PATH);
+  }
+  if (!isAbsolute(config.CLAUDE_CONFIG_DIR)) {
+    config.CLAUDE_CONFIG_DIR = resolve(projectRoot, config.CLAUDE_CONFIG_DIR);
+  }
+  if (!isAbsolute(config.SKETCH_CONFIG_DIR)) {
+    config.SKETCH_CONFIG_DIR = resolve(projectRoot, config.SKETCH_CONFIG_DIR);
   }
 
   return config;

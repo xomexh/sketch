@@ -150,7 +150,7 @@ export function authRoutes(
           if (user) {
             return c.json({
               authenticated: true,
-              role: "member" as const,
+              role: payload.role,
               userId: user.id,
               name: user.name,
               email: user.email,

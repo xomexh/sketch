@@ -703,8 +703,12 @@ describe("Auth endpoints", () => {
   describe("GET /api/auth/session — managed SSO", () => {
     const MANAGED_SECRET = "managed-test-secret-at-least-32chars-long";
 
-    async function makePlatformToken(email: string, secret = MANAGED_SECRET): Promise<string> {
-      return new SignJWT({ sub: "a0000000-0000-0000-0000-000000000001", email, role: "customer" })
+    async function makePlatformToken(
+      email: string,
+      role: "admin" | "member" | "customer" = "customer",
+      secret = MANAGED_SECRET,
+    ): Promise<string> {
+      return new SignJWT({ sub: "a0000000-0000-0000-0000-000000000001", email, role })
         .setProtectedHeader({ alg: "HS256" })
         .setIssuedAt()
         .setExpirationTime("7d")
@@ -735,7 +739,27 @@ describe("Auth endpoints", () => {
       const body = await res.json();
       expect(body.authenticated).toBe(true);
       expect(body.email).toBe("platform@test.com");
-      expect(body.role).toBe("member");
+      expect(body.role).toBe("admin");
+    });
+
+    it("preserves admin role from managed platform cookie", async () => {
+      await seedAdmin(db);
+      const users = createUserRepository(db);
+      const user = await users.create({ name: "Platform Admin", email: "platform-admin@test.com", role: "admin" });
+
+      const managedConfig = createTestConfig({ MANAGED_AUTH_SECRET: MANAGED_SECRET });
+      const app = createApp(db, managedConfig);
+      const token = await makePlatformToken("platform-admin@test.com", "admin");
+
+      const res = await app.request("/api/auth/session", {
+        headers: { Cookie: `sketch_platform_session=${token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.authenticated).toBe(true);
+      expect(body.role).toBe("admin");
+      expect(body.userId).toBe(user.id);
+      expect(body.email).toBe("platform-admin@test.com");
     });
 
     it("returns authenticated with member details for member users", async () => {
@@ -745,7 +769,7 @@ describe("Auth endpoints", () => {
 
       const managedConfig = createTestConfig({ MANAGED_AUTH_SECRET: MANAGED_SECRET });
       const app = createApp(db, managedConfig);
-      const token = await makePlatformToken("member@test.com");
+      const token = await makePlatformToken("member@test.com", "member");
 
       const res = await app.request("/api/auth/session", {
         headers: { Cookie: `sketch_platform_session=${token}` },
@@ -777,7 +801,7 @@ describe("Auth endpoints", () => {
       await seedAdmin(db);
       const managedConfig = createTestConfig({ MANAGED_AUTH_SECRET: MANAGED_SECRET });
       const app = createApp(db, managedConfig);
-      const token = await makePlatformToken("admin@test.com", "wrong-secret-that-is-at-least-32chars");
+      const token = await makePlatformToken("admin@test.com", "customer", "wrong-secret-that-is-at-least-32chars");
 
       const res = await app.request("/api/auth/session", {
         headers: { Cookie: `sketch_platform_session=${token}` },

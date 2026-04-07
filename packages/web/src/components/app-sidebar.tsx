@@ -70,9 +70,11 @@ const allPrimaryNav: NavItem[] = [
 export function AppSidebar({
   displayName,
   displayIdentifier,
+  role,
 }: {
   displayName: string;
   displayIdentifier: string;
+  role?: "admin" | "member";
 }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -140,7 +142,7 @@ export function AppSidebar({
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-              {setupStatus?.managedUrl ? (
+              {setupStatus?.managedUrl && role === "admin" ? (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild tooltip="Account">
                     <a href={setupStatus.managedUrl} target="_blank" rel="noopener noreferrer">

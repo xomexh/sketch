@@ -62,6 +62,7 @@ export function createSettingsRepository(db: Kysely<DB>, encryptionKey?: string)
         awsAccessKeyId: string | null;
         awsSecretAccessKey: string | null;
         awsRegion: string | null;
+        modelId: string | null;
         jwtSecret: string;
         smtpHost: string | null;
         smtpPort: number | null;
@@ -89,6 +90,7 @@ export function createSettingsRepository(db: Kysely<DB>, encryptionKey?: string)
       if (data.awsAccessKeyId !== undefined) updates.aws_access_key_id = data.awsAccessKeyId;
       if (data.awsSecretAccessKey !== undefined) updates.aws_secret_access_key = data.awsSecretAccessKey;
       if (data.awsRegion !== undefined) updates.aws_region = data.awsRegion;
+      if (data.modelId !== undefined) updates.model_id = data.modelId;
       if (data.smtpHost !== undefined) updates.smtp_host = data.smtpHost;
       if (data.smtpPort !== undefined) updates.smtp_port = data.smtpPort;
       if (data.smtpUser !== undefined) updates.smtp_user = data.smtpUser;

@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here.
 
+## [0.17.2] -- 2026-04-07
+
+- Add model_id to LLM settings with provider-appropriate defaults (us.anthropic.claude-sonnet-4-6 for Bedrock, claude-sonnet-4-6 for Anthropic)
+- Fix: hide managed account link for non-admin users
+- 1,224 tests (1,122 server + 102 frontend)
+
 ## [0.17.0] -- 2026-04-07
 
 - Configurable CLAUDE_CONFIG_DIR and SKETCH_CONFIG_DIR for EFS persistence in managed Fargate deployments

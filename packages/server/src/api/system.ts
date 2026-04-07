@@ -41,12 +41,14 @@ const llmSchema = z.discriminatedUnion("provider", [
   z.object({
     provider: z.literal("anthropic"),
     apiKey: z.string().min(1),
+    modelId: z.string().optional(),
   }),
   z.object({
     provider: z.literal("bedrock"),
     accessKeyId: z.string().min(1),
     secretAccessKey: z.string().min(1),
     region: z.string().min(1),
+    modelId: z.string().optional(),
   }),
 ]);
 
@@ -167,6 +169,7 @@ export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
       await settings.update({
         llmProvider: "anthropic",
         anthropicApiKey: data.apiKey,
+        modelId: data.modelId,
       });
     } else {
       // TODO: Bedrock credential verification deferred -- no existing verification logic for AWS credentials
@@ -175,10 +178,22 @@ export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
         awsAccessKeyId: data.accessKeyId,
         awsSecretAccessKey: data.secretAccessKey,
         awsRegion: data.region,
+        modelId: data.modelId,
       });
     }
 
     return c.json({ ok: true });
+  });
+
+  routes.get("/llm", async (c) => {
+    const row = await settings.get();
+    if (!row) {
+      return c.json({ provider: null, modelId: null });
+    }
+    return c.json({
+      provider: row.llm_provider ?? null,
+      modelId: row.model_id ?? null,
+    });
   });
 
   routes.post("/users", async (c) => {

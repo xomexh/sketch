@@ -33,14 +33,14 @@ describe("runMigrations — full sequence", () => {
     await expect(runMigrations(db)).resolves.not.toThrow();
   });
 
-  it("records all 27 migration entries in the kysely_migration table", async () => {
+  it("records all 29 migration entries in the kysely_migration table", async () => {
     await runMigrations(db);
 
     const rows = await sql<{ name: string }>`
       SELECT name FROM kysely_migration ORDER BY name ASC
     `.execute(db);
 
-    expect(rows.rows).toHaveLength(28);
+    expect(rows.rows).toHaveLength(29);
   });
 
   it("records migrations with the correct names in order", async () => {
@@ -169,8 +169,8 @@ describe("runMigrations — full sequence", () => {
       SELECT name FROM kysely_migration ORDER BY name ASC
     `.execute(db);
 
-    // Still exactly 27, not 54
-    expect(rows.rows).toHaveLength(28);
+    // Still exactly 29, not 58
+    expect(rows.rows).toHaveLength(29);
   });
 });
 
@@ -192,7 +192,7 @@ describe("runMigrations — incremental upgrade", () => {
 
     await db.insertInto("users").values({ id: "existing-user", name: "Alice" }).execute();
 
-    // Running again should be a no-op (all 27 already applied)
+    // Running again should be a no-op (all 29 already applied)
     await runMigrations(db);
 
     const users = await db.selectFrom("users").selectAll().execute();
@@ -202,6 +202,6 @@ describe("runMigrations — incremental upgrade", () => {
     const rows = await sql<{ name: string }>`
       SELECT name FROM kysely_migration ORDER BY name ASC
     `.execute(db);
-    expect(rows.rows).toHaveLength(28);
+    expect(rows.rows).toHaveLength(29);
   });
 });

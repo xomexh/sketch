@@ -3,7 +3,7 @@ import type { Logger } from "../logger";
 
 type LlmSettings = Pick<
   SettingsTable,
-  "llm_provider" | "anthropic_api_key" | "aws_access_key_id" | "aws_secret_access_key" | "aws_region"
+  "llm_provider" | "anthropic_api_key" | "aws_access_key_id" | "aws_secret_access_key" | "aws_region" | "model_id"
 >;
 
 function unsetEnv(...keys: string[]) {
@@ -19,6 +19,7 @@ function clearProviderRoutingEnv() {
     "CLAUDE_CODE_USE_FOUNDRY",
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_MODEL",
   );
 }
 
@@ -40,6 +41,7 @@ export function applyLlmEnvFromSettings(settings: LlmSettings | null, logger?: L
     clearProviderRoutingEnv();
     unsetEnv("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION");
     process.env.ANTHROPIC_API_KEY = settings.anthropic_api_key;
+    process.env.ANTHROPIC_MODEL = settings.model_id || "claude-sonnet-4-6";
     logger?.info({ llmProvider: "anthropic", source: "db" }, "Configured LLM provider from DB settings");
     return;
   }
@@ -64,6 +66,7 @@ export function applyLlmEnvFromSettings(settings: LlmSettings | null, logger?: L
     process.env.AWS_ACCESS_KEY_ID = settings.aws_access_key_id;
     process.env.AWS_SECRET_ACCESS_KEY = settings.aws_secret_access_key;
     process.env.AWS_REGION = settings.aws_region;
+    process.env.ANTHROPIC_MODEL = settings.model_id || "us.anthropic.claude-sonnet-4-6";
     logger?.info({ llmProvider: "bedrock", source: "db" }, "Configured LLM provider from DB settings");
     return;
   }

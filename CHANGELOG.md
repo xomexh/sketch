@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here.
 
+## [0.17.3] -- 2026-04-07
+
+- Fix WhatsApp reconnect loop caused by stale Baileys sockets scheduling overlapping reconnects
+- Ignore stale socket events, enforce single-flight reconnects, and cancel pending reconnects after recovery
+- Add regression tests for stale socket close events and duplicate reconnect scheduling
+
 ## [0.17.2] -- 2026-04-07
 
 - Add model_id to LLM settings with provider-appropriate defaults (us.anthropic.claude-sonnet-4-6 for Bedrock, claude-sonnet-4-6 for Anthropic)

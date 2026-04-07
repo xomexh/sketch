@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## [0.17.0] -- 2026-04-07
+
+- Configurable CLAUDE_CONFIG_DIR and SKETCH_CONFIG_DIR for EFS persistence in managed Fargate deployments
+- System prompt uses actual org directory path instead of hardcoded ~/.claude/
+- Security: remove blanket /data/ exception from bash path validation
+- Security: fix startsWith prefix collision in file path permission checks
+- 1,223 tests (1,121 server + 102 frontend)
+
 ## [0.16.0] -- 2026-04-06
 
 - Remove admin/member role distinction: all authenticated users get the same permissions (backend + frontend)

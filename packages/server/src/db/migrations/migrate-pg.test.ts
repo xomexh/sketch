@@ -16,7 +16,7 @@ import { runMigrations } from "../migrate";
 import type { DB } from "../schema";
 
 describe("runMigrations on Postgres — full sequence", () => {
-  let db: Kysely<DB> | undefined;
+  let db!: Kysely<DB>;
 
   beforeEach(async () => {
     db = await createTestPgDb();
@@ -25,7 +25,6 @@ describe("runMigrations on Postgres — full sequence", () => {
   afterEach(async () => {
     if (db) {
       await db.destroy();
-      db = undefined;
     }
   }, 30000);
 
@@ -139,7 +138,7 @@ describe("runMigrations on Postgres — full sequence", () => {
 });
 
 describe("runMigrations on Postgres — search schema", () => {
-  let db: Kysely<DB> | undefined;
+  let db!: Kysely<DB>;
 
   beforeEach(async () => {
     db = await createTestPgDb();
@@ -148,7 +147,6 @@ describe("runMigrations on Postgres — search schema", () => {
   afterEach(async () => {
     if (db) {
       await db.destroy();
-      db = undefined;
     }
   }, 30000);
 
@@ -241,7 +239,7 @@ describe("runMigrations on Postgres — search schema", () => {
 });
 
 describe("runMigrations on Postgres — chat_sessions schema", () => {
-  let db: Kysely<DB> | undefined;
+  let db!: Kysely<DB>;
 
   beforeEach(async () => {
     db = await createTestPgDb();
@@ -250,7 +248,6 @@ describe("runMigrations on Postgres — chat_sessions schema", () => {
   afterEach(async () => {
     if (db) {
       await db.destroy();
-      db = undefined;
     }
   }, 30000);
 

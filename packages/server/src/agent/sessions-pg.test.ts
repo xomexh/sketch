@@ -13,7 +13,7 @@ import { createTestPgDb } from "../test-utils";
 import { getSessionId, saveSessionId } from "./sessions";
 
 describe("session persistence on Postgres", () => {
-  let db: Kysely<DB> | undefined;
+  let db!: Kysely<DB>;
 
   beforeEach(async () => {
     db = await createTestPgDb();
@@ -22,7 +22,6 @@ describe("session persistence on Postgres", () => {
   afterEach(async () => {
     if (db) {
       await db.destroy();
-      db = undefined;
     }
   }, 30000);
 

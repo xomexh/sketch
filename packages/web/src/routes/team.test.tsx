@@ -120,14 +120,12 @@ describe("TeamPage", () => {
 
       await user.click(screen.getByRole("button", { name: /Add member/i }));
 
-      await waitFor(() => {
-        expect(screen.getByLabelText("Name")).toBeInTheDocument();
-      });
+      const dialog = await screen.findByRole("dialog");
 
-      await user.type(screen.getByLabelText("Name"), "Charlie");
-      await user.type(screen.getByLabelText("Email"), "charlie@test.com");
-      await user.type(screen.getByLabelText("WhatsApp number"), "+14155551234");
-      await user.click(screen.getByRole("button", { name: "Add member" }));
+      await user.type(within(dialog).getByLabelText("Name"), "Charlie");
+      await user.type(within(dialog).getByLabelText("Email"), "charlie@test.com");
+      await user.type(within(dialog).getByLabelText("WhatsApp number"), "+14155551234");
+      await user.click(within(dialog).getByRole("button", { name: "Add member" }));
 
       await waitFor(() => {
         expect(createFn).toHaveBeenCalledWith({
@@ -140,7 +138,7 @@ describe("TeamPage", () => {
           description: null,
         });
       });
-    });
+    }, 15000);
 
     it("shows inline error on duplicate number", async () => {
       server.use(

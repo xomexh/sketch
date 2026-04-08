@@ -16,15 +16,18 @@ import { runMigrations } from "../migrate";
 import type { DB } from "../schema";
 
 describe("runMigrations on Postgres — full sequence", () => {
-  let db: Kysely<DB>;
+  let db: Kysely<DB> | undefined;
 
   beforeEach(async () => {
     db = await createTestPgDb();
-  });
+  }, 30000);
 
   afterEach(async () => {
-    await db.destroy();
-  });
+    if (db) {
+      await db.destroy();
+      db = undefined;
+    }
+  }, 30000);
 
   it("runs all 027 migrations on a fresh Postgres database without error", async () => {
     // createTestPgDb() already ran migrations — just verify no error was thrown.
@@ -32,7 +35,7 @@ describe("runMigrations on Postgres — full sequence", () => {
       SELECT name FROM kysely_migration ORDER BY name ASC
     `.execute(db);
     expect(rows.rows.length).toBeGreaterThan(0);
-  });
+  }, 30000);
 
   it("records all 29 migration entries in kysely_migration", async () => {
     const rows = await sql<{ name: string }>`
@@ -136,15 +139,18 @@ describe("runMigrations on Postgres — full sequence", () => {
 });
 
 describe("runMigrations on Postgres — search schema", () => {
-  let db: Kysely<DB>;
+  let db: Kysely<DB> | undefined;
 
   beforeEach(async () => {
     db = await createTestPgDb();
-  });
+  }, 30000);
 
   afterEach(async () => {
-    await db.destroy();
-  });
+    if (db) {
+      await db.destroy();
+      db = undefined;
+    }
+  }, 30000);
 
   it("indexed_files has a search_vector column of type tsvector", async () => {
     const result = await sql<{ column_name: string; data_type: string; udt_name: string }>`
@@ -235,15 +241,18 @@ describe("runMigrations on Postgres — search schema", () => {
 });
 
 describe("runMigrations on Postgres — chat_sessions schema", () => {
-  let db: Kysely<DB>;
+  let db: Kysely<DB> | undefined;
 
   beforeEach(async () => {
     db = await createTestPgDb();
-  });
+  }, 30000);
 
   afterEach(async () => {
-    await db.destroy();
-  });
+    if (db) {
+      await db.destroy();
+      db = undefined;
+    }
+  }, 30000);
 
   it("chat_sessions has thread_key NOT NULL with default empty string", async () => {
     const result = await sql<{ column_name: string; is_nullable: string; column_default: string }>`

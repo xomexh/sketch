@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here.
 
+## [0.17.4] -- 2026-04-08
+
+- Fix WhatsApp DM replies for LID-based inbound messages by normalizing outbound delivery to the user's phone-number JID
+- Normalize composing, text replies, file uploads, error replies, and task-context delivery targets for WhatsApp DMs
+- Add regression coverage for inbound `@lid` DMs to ensure replies go back to the canonical phone JID
+
 ## [0.17.3] -- 2026-04-07
 
 - Fix WhatsApp reconnect loop caused by stale Baileys sockets scheduling overlapping reconnects

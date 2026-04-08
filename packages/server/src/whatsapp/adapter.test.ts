@@ -122,7 +122,7 @@ describe("whatsapp/adapter", () => {
       });
 
       expect(mock.sendText).toHaveBeenCalledWith(
-        "1234@s.whatsapp.net",
+        "1234567890@s.whatsapp.net",
         "Sorry, you're not authorized to use this bot. Contact your admin to get access.",
       );
       expect(deps.runAgent).not.toHaveBeenCalled();
@@ -169,8 +169,8 @@ describe("whatsapp/adapter", () => {
       });
       await flush();
 
-      expect(mock.startComposing).toHaveBeenCalledWith("1234@s.whatsapp.net");
-      expect(mock.stopComposing).toHaveBeenCalledWith("1234@s.whatsapp.net");
+      expect(mock.startComposing).toHaveBeenCalledWith("1234567890@s.whatsapp.net");
+      expect(mock.stopComposing).toHaveBeenCalledWith("1234567890@s.whatsapp.net");
     });
 
     it("sends error message on agent failure", async () => {
@@ -192,7 +192,7 @@ describe("whatsapp/adapter", () => {
       });
       await flush();
 
-      expect(mock.sendText).toHaveBeenCalledWith("1234@s.whatsapp.net", "Something went wrong, try again.");
+      expect(mock.sendText).toHaveBeenCalledWith("1234567890@s.whatsapp.net", "Something went wrong, try again.");
     });
 
     it("uploads pending files after agent run", async () => {
@@ -219,7 +219,12 @@ describe("whatsapp/adapter", () => {
       });
       await flush();
 
-      expect(mock.sendFile).toHaveBeenCalledWith("1234@s.whatsapp.net", "/tmp/out.pdf", "application/pdf", "out.pdf");
+      expect(mock.sendFile).toHaveBeenCalledWith(
+        "1234567890@s.whatsapp.net",
+        "/tmp/out.pdf",
+        "application/pdf",
+        "out.pdf",
+      );
     });
 
     it("passes MCP servers to agent for DMs", async () => {
@@ -265,6 +270,38 @@ describe("whatsapp/adapter", () => {
 
       const agentCall = vi.mocked(deps.runAgent).mock.calls[0][0];
       expect(agentCall.userPhone).toBe("+1234567890");
+    });
+
+    it("replies to normalized phone JID when inbound DM uses @lid", async () => {
+      const deps = makeDeps({
+        runAgent: vi.fn().mockImplementation(async ({ onMessage }) => {
+          await onMessage("hello back");
+          return {
+            messageSent: true,
+            sessionId: "s1",
+            costUsd: 0,
+            pendingUploads: [],
+          };
+        }),
+      });
+      const { mock, getHandler } = createMockWhatsApp();
+      wireWhatsAppHandlers(mock as never, deps);
+      const handler = getHandler();
+
+      await handler({
+        type: "dm",
+        text: "hello",
+        jid: "86702773280883@lid",
+        messageId: "m1",
+        pushName: "Alice",
+        rawMessage: {},
+        phoneNumber: "+1234567890",
+      });
+      await flush();
+
+      expect(mock.startComposing).toHaveBeenCalledWith("1234567890@s.whatsapp.net");
+      expect(mock.sendText).toHaveBeenCalledWith("1234567890@s.whatsapp.net", "hello back");
+      expect(mock.stopComposing).toHaveBeenCalledWith("1234567890@s.whatsapp.net");
     });
   });
 

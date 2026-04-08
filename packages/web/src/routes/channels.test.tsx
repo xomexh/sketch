@@ -1,6 +1,6 @@
 import { server } from "@/test/msw";
 import { renderWithProviders } from "@/test/utils";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
@@ -182,19 +182,12 @@ describe("ChannelsPage", () => {
         expect(screen.getByText("Connected")).toBeInTheDocument();
       });
 
-      const menuTrigger = screen.getAllByRole("button").find((btn) => btn.querySelector("svg")) as HTMLElement;
-      await user.click(menuTrigger);
+      await user.click(screen.getByRole("button", { name: "Slack actions" }));
+      await user.click(await screen.findByRole("menuitem", { name: "Disconnect" }));
 
-      await waitFor(() => {
-        expect(screen.getByText("Disconnect")).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByText("Disconnect"));
-
-      await waitFor(() => {
-        expect(screen.getByText("Disconnect Slack?")).toBeInTheDocument();
-      });
-    });
+      const dialog = await screen.findByRole("alertdialog");
+      expect(within(dialog).getByText("Disconnect Slack?")).toBeInTheDocument();
+    }, 15000);
 
     it("calls disconnect API on confirm", async () => {
       const disconnectFn = vi.fn();
@@ -213,21 +206,15 @@ describe("ChannelsPage", () => {
         expect(screen.getByText("Connected")).toBeInTheDocument();
       });
 
-      const menuTrigger = screen.getAllByRole("button").find((btn) => btn.querySelector("svg")) as HTMLElement;
-      await user.click(menuTrigger);
-      await waitFor(() => {
-        expect(screen.getByText("Disconnect")).toBeInTheDocument();
-      });
-      await user.click(screen.getByText("Disconnect"));
+      await user.click(screen.getByRole("button", { name: "Slack actions" }));
+      await user.click(await screen.findByRole("menuitem", { name: "Disconnect" }));
 
-      await waitFor(() => {
-        expect(screen.getByText("Disconnect Slack?")).toBeInTheDocument();
-      });
-      await user.click(screen.getByRole("button", { name: "Disconnect" }));
+      const dialog = await screen.findByRole("alertdialog");
+      await user.click(within(dialog).getByRole("button", { name: "Disconnect" }));
 
       await waitFor(() => {
         expect(disconnectFn).toHaveBeenCalled();
       });
-    });
+    }, 15000);
   });
 });

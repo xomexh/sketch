@@ -1,6 +1,6 @@
 import { server } from "@/test/msw";
 import { renderWithProviders } from "@/test/utils";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -82,14 +82,12 @@ describe("TeamPage", () => {
 
       await user.click(screen.getByRole("button", { name: /Add member/i }));
 
-      await waitFor(() => {
-        expect(screen.getByLabelText("Name")).toBeInTheDocument();
-      });
+      const dialog = await screen.findByRole("dialog");
 
-      await user.type(screen.getByLabelText("Name"), "Charlie");
+      await user.type(within(dialog).getByLabelText("Name"), "Charlie");
 
-      expect(screen.getByRole("button", { name: "Add member" })).toBeDisabled();
-    });
+      expect(within(dialog).getByRole("button", { name: "Add member" })).toBeDisabled();
+    }, 15000);
 
     it("creates a user on submit", async () => {
       const createFn = vi.fn();

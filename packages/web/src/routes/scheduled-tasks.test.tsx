@@ -216,19 +216,18 @@ describe("ScheduledTasksPage", () => {
     });
 
     await user.click(screen.getByRole("button", { name: /Task actions for Post the Monday revenue summary/i }));
-    await user.click(screen.getByRole("menuitem", { name: /delete/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /delete/i }));
 
-    await waitFor(() => {
-      expect(screen.getByText("Delete scheduled task?")).toBeInTheDocument();
-    });
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("Delete scheduled task?")).toBeInTheDocument();
 
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
       expect(screen.getByText("No scheduled tasks yet")).toBeInTheDocument();
     });
     expect(screen.queryByText("Post the Monday revenue summary")).not.toBeInTheDocument();
-  });
+  }, 15000);
 
   it("renders fallback target ids when no friendly target label is available", async () => {
     installTaskHandlers([

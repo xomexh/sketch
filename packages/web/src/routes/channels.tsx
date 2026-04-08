@@ -156,7 +156,7 @@ function SlackCard({ channel }: { channel: ChannelStatus }) {
             {isConfigured && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="size-7">
+                  <Button variant="ghost" size="icon" className="size-7" aria-label="Slack actions">
                     <DotsThreeIcon size={16} />
                   </Button>
                 </DropdownMenuTrigger>

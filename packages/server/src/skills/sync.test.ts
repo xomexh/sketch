@@ -5,7 +5,7 @@ import { syncFeaturedSkills } from "./sync";
 
 const CLAUDE_CONFIG_DIR = "/tmp/test-claude";
 const SKETCH_CONFIG_DIR = "/tmp/test-sketch";
-const SKILLS_CACHE = join(SKETCH_CONFIG_DIR, "skills-repo");
+const SKILLS_CACHE = join(CLAUDE_CONFIG_DIR, "skills-repo");
 const SKILLS_TARGET = join(CLAUDE_CONFIG_DIR, "skills");
 
 const fakeConfig = {

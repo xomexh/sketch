@@ -11,7 +11,7 @@ import type { Logger } from "../logger";
 const SKILLS_REPO = "https://github.com/canvasxai/sketch-skills.git";
 
 export async function syncFeaturedSkills(config: Config, logger: Logger): Promise<void> {
-  const skillsCache = join(config.CLAUDE_CONFIG_DIR, "skills-repo");
+  const skillsCache = join(config.SKETCH_CONFIG_DIR, "skills-repo");
   const skillsTarget = join(config.CLAUDE_CONFIG_DIR, "skills");
 
   try {

@@ -4,10 +4,12 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
+import type { createMcpServerRepository } from "../db/repositories/mcp-servers";
 import type { createSettingsRepository } from "../db/repositories/settings";
 import type { createUserRepository } from "../db/repositories/users";
 
 type SettingsRepo = ReturnType<typeof createSettingsRepository>;
+type McpServersRepo = ReturnType<typeof createMcpServerRepository>;
 type UserRepo = ReturnType<typeof createUserRepository>;
 
 type SlackTokensCallback = (tokens: { botToken: string; appToken?: string }) => unknown;
@@ -17,6 +19,7 @@ interface SystemDeps {
   // biome-ignore lint/complexity/noBannedTypes: Function is needed here to accommodate Vitest mock types in tests
   onSlackTokensUpdated?: Function;
   userRepo?: UserRepo;
+  mcpServers?: McpServersRepo;
   whatsappStatus?: () => { connected: boolean; phoneNumber: string | null; pairingInProgress: boolean };
   // biome-ignore lint/complexity/noBannedTypes: Function is needed here to accommodate Vitest mock types in tests
   startWhatsAppPairing?: Function;
@@ -55,6 +58,11 @@ const llmSchema = z.discriminatedUnion("provider", [
 const systemUserSchema = z.object({
   email: z.string().email(),
   name: z.string().trim().min(1),
+});
+
+const canvasIntegrationSchema = z.object({
+  apiKey: z.string().min(1),
+  apiUrl: z.string().url(),
 });
 
 async function verifyAnthropicApiKey(apiKey: string): Promise<void> {
@@ -238,6 +246,38 @@ export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
     if (deps.cancelWhatsAppPairing) {
       deps.cancelWhatsAppPairing();
     }
+    return c.json({ ok: true });
+  });
+
+  routes.put("/integrations/canvas", async (c) => {
+    if (!deps.mcpServers) {
+      return c.json({ error: { code: "NOT_FOUND", message: "MCP servers not available" } }, 404);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const parsed = canvasIntegrationSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: { code: "BAD_REQUEST", message: parsed.error.message } }, 400);
+    }
+
+    const { apiKey, apiUrl } = parsed.data;
+    const credentials = JSON.stringify({ apiKey });
+    const mcpUrl = `${apiUrl}/mcp`;
+
+    const existing = await deps.mcpServers.findByType("canvas");
+    if (existing) {
+      await deps.mcpServers.update(existing.id, { credentials, apiUrl, url: mcpUrl });
+    } else {
+      await deps.mcpServers.create({
+        type: "canvas",
+        displayName: "Canvas",
+        url: mcpUrl,
+        apiUrl,
+        credentials,
+        mode: "skill",
+      });
+    }
+
     return c.json({ ok: true });
   });
 

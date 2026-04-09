@@ -206,3 +206,29 @@ describe("remove()", () => {
     await expect(repo.remove("nonexistent-id")).resolves.not.toThrow();
   });
 });
+
+describe("findByType()", () => {
+  it("returns canvas provider when one exists", async () => {
+    await repo.create(validServer);
+    const found = await repo.findByType("canvas");
+    expect(found).not.toBeNull();
+    expect(found?.type).toBe("canvas");
+  });
+
+  it("returns null when no canvas provider exists", async () => {
+    const found = await repo.findByType("canvas");
+    expect(found).toBeNull();
+  });
+
+  it("returns null when only other provider types exist", async () => {
+    await repo.create({ ...validServer, type: "composio", displayName: "Composio" });
+    const found = await repo.findByType("canvas");
+    expect(found).toBeNull();
+  });
+
+  it("does not match plain MCP servers (type null)", async () => {
+    await repo.create({ ...validServer, type: null, displayName: "Plain Server" });
+    const found = await repo.findByType("canvas");
+    expect(found).toBeNull();
+  });
+});

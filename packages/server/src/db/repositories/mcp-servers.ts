@@ -56,6 +56,10 @@ export function createMcpServerRepository(db: Kysely<DB>) {
       );
     },
 
+    async findByType(type: string) {
+      return (await db.selectFrom("mcp_servers").selectAll().where("type", "=", type).executeTakeFirst()) ?? null;
+    },
+
     async create(data: {
       type?: string | null;
       displayName: string;

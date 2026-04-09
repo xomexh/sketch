@@ -219,6 +219,7 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
         systemSecret: config.SYSTEM_SECRET,
         onSlackTokensUpdated: onSlackTokensUpdated ? () => onSlackTokensUpdated() : undefined,
         userRepo: users,
+        mcpServers,
         whatsappStatus: whatsapp
           ? () => ({
               connected: whatsapp.isConnected,

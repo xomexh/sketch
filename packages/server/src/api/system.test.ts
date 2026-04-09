@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Kysely } from "kysely";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { hashPassword } from "../auth/password";
+import { createMcpServerRepository } from "../db/repositories/mcp-servers";
 import { createSettingsRepository } from "../db/repositories/settings";
 import { createUserRepository } from "../db/repositories/users";
 import type { DB } from "../db/schema";
@@ -29,6 +30,7 @@ function createTestSystemApp(
     systemSecret: string;
     onSlackTokensUpdated?: ReturnType<typeof vi.fn>;
     userRepo?: ReturnType<typeof createUserRepository>;
+    mcpServers?: ReturnType<typeof createMcpServerRepository>;
     whatsappStatus?: () => { connected: boolean; phoneNumber: string | null; pairingInProgress: boolean };
     startWhatsAppPairing?: ReturnType<typeof vi.fn>;
     cancelWhatsAppPairing?: ReturnType<typeof vi.fn>;
@@ -1005,5 +1007,144 @@ describe("settings.create() with orgName and botName", () => {
     const settings = await settingsRepo.get();
     expect(settings?.admin_email).toBe("admin@acme.com");
     expect(settings?.org_name).toBeNull();
+  });
+});
+
+describe("PUT /api/system/integrations/canvas", () => {
+  let db: Kysely<DB>;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    await seedAdmin(db);
+  });
+
+  afterEach(async () => {
+    await db.destroy();
+  });
+
+  it("creates Canvas provider with correct fields", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const mcpServers = createMcpServerRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, mcpServers });
+
+    const res = await app.request("/api/system/integrations/canvas", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ apiKey: "canvas_sk_test_key", apiUrl: "https://app.canvasx.ai" }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ ok: true });
+
+    const provider = await mcpServers.findByType("canvas");
+    expect(provider).not.toBeNull();
+    expect(provider?.type).toBe("canvas");
+    expect(provider?.display_name).toBe("Canvas");
+    expect(provider?.url).toBe("https://app.canvasx.ai/mcp");
+    expect(provider?.api_url).toBe("https://app.canvasx.ai");
+    expect(provider?.credentials).toBe(JSON.stringify({ apiKey: "canvas_sk_test_key" }));
+    expect(provider?.mode).toBe("skill");
+  });
+
+  it("updates existing provider on second call (idempotent)", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const mcpServers = createMcpServerRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, mcpServers });
+
+    await app.request("/api/system/integrations/canvas", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ apiKey: "key-1", apiUrl: "https://canvas-v1.example.com" }),
+    });
+
+    const res = await app.request("/api/system/integrations/canvas", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ apiKey: "key-2", apiUrl: "https://canvas-v2.example.com" }),
+    });
+
+    expect(res.status).toBe(200);
+
+    const all = await mcpServers.listAll();
+    const canvasProviders = all.filter((s) => s.type === "canvas");
+    expect(canvasProviders).toHaveLength(1);
+    expect(canvasProviders[0].credentials).toBe(JSON.stringify({ apiKey: "key-2" }));
+    expect(canvasProviders[0].api_url).toBe("https://canvas-v2.example.com");
+    expect(canvasProviders[0].url).toBe("https://canvas-v2.example.com/mcp");
+  });
+
+  it("returns 401 without authorization", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const mcpServers = createMcpServerRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, mcpServers });
+
+    const res = await app.request("/api/system/integrations/canvas", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey: "canvas_sk_test_key", apiUrl: "https://app.canvasx.ai" }),
+    });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 400 with missing apiKey", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const mcpServers = createMcpServerRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, mcpServers });
+
+    const res = await app.request("/api/system/integrations/canvas", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ apiUrl: "https://app.canvasx.ai" }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 with missing apiUrl", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const mcpServers = createMcpServerRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, mcpServers });
+
+    const res = await app.request("/api/system/integrations/canvas", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ apiKey: "canvas_sk_test_key" }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 with invalid apiUrl", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const mcpServers = createMcpServerRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, mcpServers });
+
+    const res = await app.request("/api/system/integrations/canvas", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ apiKey: "canvas_sk_test_key", apiUrl: "not-a-url" }),
+    });
+
+    expect(res.status).toBe(400);
   });
 });

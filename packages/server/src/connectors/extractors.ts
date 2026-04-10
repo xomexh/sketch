@@ -63,8 +63,10 @@ export async function extractTextFromBinary(
   }
 }
 
-// ── PDF ─────────────────────────────────────────────────────────────────────
-
+/**
+ * Extracts plain text from a PDF buffer.
+ * Returns null if the extracted text is too short — typically a scanned or image-only PDF.
+ */
 async function extractPdf(buffer: Buffer, logger: Logger): Promise<string | null> {
   const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
@@ -80,10 +82,13 @@ async function extractPdf(buffer: Buffer, logger: Logger): Promise<string | null
   return text;
 }
 
-// ── DOCX ────────────────────────────────────────────────────────────────────
-
+/**
+ * Extracts plain text from a DOCX buffer via mammoth.
+ * @remarks
+ * mammoth ships as a CJS module with no type declarations, so the import is cast manually
+ * and the default export is unwrapped as a fallback for bundler differences.
+ */
 async function extractDocx(buffer: Buffer, logger: Logger): Promise<string | null> {
-  // mammoth is a CJS module with no type declarations
   const mammoth = (await import("mammoth")) as {
     extractRawText: (input: { buffer: Buffer }) => Promise<{ value: string }>;
   };
@@ -98,8 +103,7 @@ async function extractDocx(buffer: Buffer, logger: Logger): Promise<string | nul
   return text;
 }
 
-// ── XLSX ────────────────────────────────────────────────────────────────────
-
+/** Extracts text from an XLSX buffer by converting each sheet to CSV, prefixed with a `## SheetName` header. */
 async function extractXlsx(buffer: Buffer, _logger: Logger): Promise<string | null> {
   const XLSX = await import("xlsx");
   const read = XLSX.read ?? (XLSX as unknown as { default: typeof XLSX }).default?.read;
@@ -122,8 +126,6 @@ async function extractXlsx(buffer: Buffer, _logger: Logger): Promise<string | nu
   return sections.join("\n\n");
 }
 
-// ── PPTX ────────────────────────────────────────────────────────────────────
-
 /**
  * Extract text from PPTX by unzipping and parsing slide XML.
  *
@@ -135,7 +137,6 @@ async function extractPptx(buffer: Buffer, _logger: Logger): Promise<string | nu
   const JSZip = (await import("jszip")).default;
   const zip = await JSZip.loadAsync(buffer);
 
-  // Collect slide files sorted by slide number
   const slideFiles = Object.keys(zip.files)
     .filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
     .sort((a, b) => {

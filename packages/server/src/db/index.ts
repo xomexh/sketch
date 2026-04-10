@@ -14,6 +14,19 @@ export const EMBEDDING_DIMENSIONS = 3072;
  */
 export let sqliteVecAvailable = false;
 
+/**
+ * Creates and returns a Kysely database instance for the configured dialect (SQLite or Postgres).
+ * @remarks
+ * For SQLite, WAL mode and foreign keys are enabled, and the sqlite-vec extension is loaded
+ * for vector search. The extension is treated as optional — when unavailable, search falls
+ * back to FTS-only and embedding operations are skipped.
+ *
+ * The vec0 virtual tables (`chunk_embeddings`, `file_embeddings`) are created outside Kysely
+ * migrations because they require the sqlite-vec extension to be loaded first. If the embedding
+ * dimensions have changed (detected by inspecting the existing CREATE statement), the tables are
+ * dropped and recreated and all file embedding statuses are reset to `pending` so enrichment
+ * re-runs with the new dimensions.
+ */
 export async function createDatabase(config: Config): Promise<Kysely<DB>> {
   if (config.DB_TYPE === "postgres") {
     const { Pool } = await import("pg");
@@ -30,17 +43,11 @@ export async function createDatabase(config: Config): Promise<Kysely<DB>> {
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");
 
-  // Load sqlite-vec extension for vector search. Treat as optional — the
-  // extension may not be present in all environments. When unavailable, search
-  // falls back to FTS-only and embedding operations are skipped.
   try {
     const sqliteVec = await import("sqlite-vec");
     sqliteVec.load(sqlite);
     sqliteVecAvailable = true;
 
-    // Create vec0 virtual tables. These live outside Kysely migrations because
-    // they require the sqlite-vec extension to be loaded first. Drop and recreate
-    // if dimensions changed.
     for (const table of ["chunk_embeddings", "file_embeddings"] as const) {
       const pk = table === "chunk_embeddings" ? "chunk_id" : "indexed_file_id";
       const existingDef = sqlite.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(table) as
@@ -48,16 +55,14 @@ export async function createDatabase(config: Config): Promise<Kysely<DB>> {
         | undefined;
 
       if (existingDef) {
-        // Check if dimensions match by inspecting the CREATE statement (e.g. "float[3072]")
         const dimMatch = existingDef.sql.match(/float\[(\d+)\]/);
         if (dimMatch && Number(dimMatch[1]) !== EMBEDDING_DIMENSIONS) {
           sqlite.exec(`DROP TABLE ${table}`);
-          // Reset embedding status so enrichment re-runs with new dimensions
           sqlite.exec(
             `UPDATE indexed_files SET embedding_status = 'pending' WHERE embedding_status IN ('done', 'processing')`,
           );
         } else {
-          continue; // Table exists with correct dimensions
+          continue;
         }
       }
 

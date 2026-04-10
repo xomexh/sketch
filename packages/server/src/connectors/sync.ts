@@ -56,6 +56,8 @@ function serializeCredentials(credentials: ConnectorCredentials): string {
 
 /**
  * Run a sync for a single connector config.
+ * @remarks
+ * Each item's DB writes are wrapped in a transaction so a crash mid-item leaves no partial records.
  */
 export async function runConnectorSync(db: Kysely<DB>, connectorConfigId: string, logger: Logger): Promise<SyncResult> {
   const repo = createConnectorRepository(db);
@@ -117,8 +119,6 @@ export async function runConnectorSync(db: Kysely<DB>, connectorConfigId: string
           continue;
         }
 
-        // Wrap all per-item DB writes in a transaction so a crash mid-item
-        // leaves no partial records.
         const itemResult = await db.transaction().execute(async (trx) => {
           const txRepo = createConnectorRepository(trx);
 
@@ -140,15 +140,12 @@ export async function runConnectorSync(db: Kysely<DB>, connectorConfigId: string
             mimeType: item.mimeType,
           });
 
-          // Clear enrichment data if content changed (will be re-enriched)
           if (upsertResult.contentChanged) {
             await clearEnrichmentData(trx, upsertResult.id);
           }
 
-          // Track which connector discovered this file
           await txRepo.linkConnectorFile(config.id, upsertResult.id);
 
-          // Promote items to entities (Linear projects, Notion databases)
           const ENTITY_PROMOTING_TYPES: Record<string, string[]> = {
             linear: ["project"],
             notion: ["database"],
@@ -166,7 +163,6 @@ export async function runConnectorSync(db: Kysely<DB>, connectorConfigId: string
             });
           }
 
-          // Seed person entities from Fireflies attendee emails
           if (config.connector_type === "fireflies" && item.accessEmails) {
             for (const email of item.accessEmails) {
               await entityRepo.upsertPersonEntity({
@@ -179,14 +175,12 @@ export async function runConnectorSync(db: Kysely<DB>, connectorConfigId: string
             }
           }
 
-          // Link assignees to person entities (deterministic, no LLM)
           if (item.assignees && item.assignees.length > 0) {
             for (const assignee of item.assignees) {
               const personEntity = await entityRepo.getEntityBySourceRef(
                 config.connector_type,
                 config.connector_type === "clickup" ? `assignee:${assignee.name}` : `user:${assignee.name}`,
               );
-              // Fall back to name search if source ref doesn't match
               const entity =
                 personEntity ??
                 (await entityRepo.searchEntities(assignee.name, { sourceTypes: ["person"], limit: 1 }))[0];
@@ -200,7 +194,6 @@ export async function runConnectorSync(db: Kysely<DB>, connectorConfigId: string
             }
           }
 
-          // Set access: scope-level or per-file emails
           if (item.accessScope) {
             const scopeId = await txRepo.upsertAccessScope(config.id, item.accessScope);
             await txRepo.setFileAccessScope(upsertResult.id, scopeId);
@@ -278,8 +271,11 @@ export interface SyncSchedulerDeps {
 }
 
 /**
- * Run sync for all connectors that are due, then run enrichment.
+ * Run sync for all connectors that are due, then run enrichment and recompute entity hotness.
  * Called on a schedule (e.g., every 30 minutes).
+ * @remarks
+ * Entity hotness is recomputed after every sync run to apply time-based decay for entities
+ * not recently mentioned in new documents.
  */
 export async function runAllSyncs(db: Kysely<DB>, logger: Logger, deps?: SyncSchedulerDeps): Promise<void> {
   const repo = createConnectorRepository(db);
@@ -287,7 +283,6 @@ export async function runAllSyncs(db: Kysely<DB>, logger: Logger, deps?: SyncSch
 
   logger.info({ connectorCount: configs.length }, "Starting scheduled sync run");
 
-  // Seed person entities from team directory (users table)
   try {
     const entityRepo = createEntityRepository(db);
     const users = await db.selectFrom("users").selectAll().execute();
@@ -315,7 +310,6 @@ export async function runAllSyncs(db: Kysely<DB>, logger: Logger, deps?: SyncSch
     }
   }
 
-  // Run enrichment after all syncs complete
   try {
     const settings = await db
       .selectFrom("settings")
@@ -355,7 +349,6 @@ export async function runAllSyncs(db: Kysely<DB>, logger: Logger, deps?: SyncSch
     logger.error({ err }, "Post-sync enrichment failed");
   }
 
-  // Recompute entity hotness (decay for entities not recently mentioned)
   try {
     const entityRepo = createEntityRepository(db);
     const count = await entityRepo.recomputeAllHotness();
@@ -392,7 +385,10 @@ async function recoverStaleSyncs(db: Kysely<DB>, logger: Logger): Promise<void> 
 /**
  * Create a simple interval-based sync scheduler.
  * Recovers any stuck syncs on startup, then runs periodically.
- * Returns a cleanup function to stop the scheduler.
+ * @remarks
+ * Startup enrichment runs immediately for any pending files without waiting for the first sync interval.
+ * The startup promise is tracked so `stop()` can await it before the DB is destroyed, preventing
+ * in-flight enrichment from running against a closed connection.
  */
 export interface SyncSchedulerHandle {
   stop(): Promise<void>;
@@ -406,13 +402,10 @@ export function startSyncScheduler(
 ): SyncSchedulerHandle {
   let aborted = false;
 
-  // Recover any connectors stuck in "syncing" from a previous crash
   recoverStaleSyncs(db, logger).catch((err) => {
     logger.error({ err }, "Failed to recover stale syncs on startup");
   });
 
-  // Run enrichment immediately for any pending files (without triggering a full sync).
-  // We track the promise so stop() can await it before the DB is destroyed.
   const startupPromise = (async () => {
     try {
       const settings = await db

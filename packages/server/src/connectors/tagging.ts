@@ -45,11 +45,12 @@ export interface TaggingResult {
 /**
  * Extract tags from structured data (CSV/spreadsheet content).
  * No LLM call — purely deterministic.
+ * @remarks
+ * XLSX content arrives pre-formatted as `## SheetName\n<csv rows>` per sheet (one block per tab).
+ * Plain CSV content has no sheet headers. Both formats are handled by scanning all lines and
+ * treating headerless content as a single sheet named after the file.
  */
 export function tagStructuredContent(content: string, fileName: string, sourcePath?: string | null): TaggingResult {
-  // For XLSX: content has "## SheetName\n<csv rows>" per sheet.
-  // For CSV: content is raw rows with no sheet headers.
-  // We scan ALL lines for sheet headers but only keep the header row + a few sample rows per sheet.
   const SAMPLE_ROWS_PER_SHEET = 10;
   const allLines = content.split("\n");
 
@@ -64,24 +65,20 @@ export function tagStructuredContent(content: string, fileName: string, sourcePa
     };
   }
 
-  // First pass: find all sheets, capture header + sample rows, count total rows per sheet
   const sheets: Array<{ name: string; headers: string[]; rowCount: number; sampleLines: string[] }> = [];
   let currentSheet: { name: string; lines: string[]; rowCount: number; gotEnough: boolean } | null = null;
 
   for (const line of allLines) {
     if (line.startsWith("## ")) {
-      // Flush previous sheet
       if (currentSheet) {
         sheets.push(parseSheetWithCount(currentSheet));
       }
       currentSheet = { name: line.slice(3).trim(), lines: [], rowCount: 0, gotEnough: false };
     } else if (line.trim()) {
       if (!currentSheet) {
-        // No sheet headers (plain CSV) — treat as single sheet
         currentSheet = { name: fileName.replace(/\.[^.]+$/, ""), lines: [], rowCount: 0, gotEnough: false };
       }
       currentSheet.rowCount++;
-      // Keep header row (first) + sample rows
       if (!currentSheet.gotEnough) {
         currentSheet.lines.push(line);
         if (currentSheet.lines.length >= SAMPLE_ROWS_PER_SHEET + 1) {
@@ -94,7 +91,6 @@ export function tagStructuredContent(content: string, fileName: string, sourcePa
     sheets.push(parseSheetWithCount(currentSheet));
   }
 
-  // Collect tags from headers and sheet names
   const tags = new Set<string>();
   for (const sheet of sheets) {
     tags.add(sheet.name.toLowerCase());
@@ -106,11 +102,9 @@ export function tagStructuredContent(content: string, fileName: string, sourcePa
     }
   }
 
-  // Detect date values from sample lines only
   const sampleContent = sheets.flatMap((s) => s.sampleLines).join("\n");
   const timeframes = extractDatesFromText(sampleContent);
 
-  // Build summary
   const totalRows = sheets.reduce((sum, s) => sum + s.rowCount, 0);
   const sheetDesc = sheets
     .map((s) => `${s.name} (${s.rowCount.toLocaleString()} rows, columns: ${s.headers.join(", ")})`)
@@ -150,7 +144,6 @@ function parseSheetWithCount(sheet: {
 export function tagShortContent(content: string, fileName: string, _sourcePath?: string | null): TaggingResult {
   const tags = new Set<string>();
 
-  // Extract meaningful words from filename (skip very short/common words)
   const nameWithoutExt = fileName.replace(/\.[^.]+$/, "");
   const words = nameWithoutExt.split(/[-_\s]+/).filter((w) => w.length > 2);
   for (const word of words.slice(0, 5)) {
@@ -159,7 +152,6 @@ export function tagShortContent(content: string, fileName: string, _sourcePath?:
 
   const timeframes = extractDatesFromText(content);
 
-  // Use content as summary, truncated
   const summary = content.replace(/\s+/g, " ").trim().slice(0, 500) || `Short document: ${fileName}`;
 
   return {
@@ -278,10 +270,10 @@ Deduplicate temporal references, entity links, new_people, and new_entities. Kee
 
 /**
  * Parse LLM JSON response for tagging. Lenient — handles common LLM output quirks.
+ * Strips markdown code fences before parsing, since LLMs often wrap JSON in ```json blocks.
  */
 export function parseTaggingResponse(response: string): TaggingResult | null {
   try {
-    // Strip markdown code fences if present
     const cleaned = response
       .replace(/```json\s*/g, "")
       .replace(/```\s*/g, "")
@@ -342,7 +334,6 @@ function extractDatesFromText(text: string): TaggingResult["timeframes"] {
   const timeframes: TaggingResult["timeframes"] = [];
   const seen = new Set<string>();
 
-  // ISO dates: YYYY-MM-DD
   const isoMatches = text.match(/\b\d{4}-\d{2}-\d{2}\b/g);
   if (isoMatches) {
     const dates = [...new Set(isoMatches)].sort();
@@ -359,7 +350,6 @@ function extractDatesFromText(text: string): TaggingResult["timeframes"] {
     }
   }
 
-  // Quarter references: Q1 2025, Q2 2024, etc.
   const quarterMatches = text.match(/\bQ([1-4])\s*(\d{4})\b/gi);
   if (quarterMatches) {
     for (const match of [...new Set(quarterMatches)]) {

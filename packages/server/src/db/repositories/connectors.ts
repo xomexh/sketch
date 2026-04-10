@@ -93,7 +93,6 @@ export function createConnectorRepository(db: Kysely<DB>) {
      * Files also linked to other connectors keep their rows.
      */
     async deleteConfig(id: string) {
-      // 1. Delete access scopes owned by this connector
       await db
         .deleteFrom("access_scope_members")
         .where(
@@ -104,7 +103,6 @@ export function createConnectorRepository(db: Kysely<DB>) {
         .execute();
       await db.deleteFrom("access_scopes").where("connector_config_id", "=", id).execute();
 
-      // 2. Find files linked to this connector
       const linkedFiles = await db
         .selectFrom("connector_files")
         .select("indexed_file_id")
@@ -112,10 +110,8 @@ export function createConnectorRepository(db: Kysely<DB>) {
         .execute();
       const linkedFileIds = linkedFiles.map((f) => f.indexed_file_id);
 
-      // 3. Remove connector_files links
       await db.deleteFrom("connector_files").where("connector_config_id", "=", id).execute();
 
-      // 4. Archive orphaned files (no remaining connector links)
       if (linkedFileIds.length > 0) {
         const stillLinked = await db
           .selectFrom("connector_files")
@@ -135,7 +131,6 @@ export function createConnectorRepository(db: Kysely<DB>) {
         }
       }
 
-      // 5. Delete the connector config itself
       return db.deleteFrom("connector_configs").where("id", "=", id).execute();
     },
 
@@ -170,7 +165,6 @@ export function createConnectorRepository(db: Kysely<DB>) {
         .executeTakeFirst();
 
       if (existing) {
-        // If content changed, mark for re-embedding
         const contentChanged = data.contentHash !== existing.content_hash;
         const updates: Record<string, unknown> = {
           provider_url: data.providerUrl,
@@ -267,7 +261,6 @@ export function createConnectorRepository(db: Kysely<DB>) {
           .execute();
       }
 
-      // Replace members
       await db.deleteFrom("access_scope_members").where("access_scope_id", "=", scopeId).execute();
       if (scope.memberEmails.length > 0) {
         await db
@@ -309,7 +302,6 @@ export function createConnectorRepository(db: Kysely<DB>) {
 
       const map = new Map<string, { type: "scope" | "file"; count: number }>();
 
-      // Check scope-based access
       const scopeFiles = await db
         .selectFrom("indexed_files")
         .select([
@@ -327,7 +319,6 @@ export function createConnectorRepository(db: Kysely<DB>) {
         map.set(row.id, { type: "scope", count: Number(row.member_count) });
       }
 
-      // Check per-file access
       const fileAccessRows = await sql<{ indexed_file_id: string; cnt: number }>`
 				SELECT indexed_file_id, count(*) as cnt
 				FROM file_access
@@ -415,7 +406,12 @@ export function createConnectorRepository(db: Kysely<DB>) {
       }));
     },
 
-    /** Archive files not seen in this sync for a given connector. */
+    /**
+     * Archives files not seen in the current sync for a given connector.
+     * Removes the connector's link first, then archives only files with no remaining connector links,
+     * so files discovered by multiple connectors are kept until all connectors drop them.
+     * Returns the count of archived files.
+     */
     async archiveStaleFiles(connectorConfigId: string, seenProviderFileIds: Set<string>) {
       if (seenProviderFileIds.size === 0) return 0;
 
@@ -432,14 +428,12 @@ export function createConnectorRepository(db: Kysely<DB>) {
 
       const staleIds = stale.map((f) => f.id);
 
-      // Remove this connector's link to stale files
       await db
         .deleteFrom("connector_files")
         .where("connector_config_id", "=", connectorConfigId)
         .where("indexed_file_id", "in", staleIds)
         .execute();
 
-      // Archive files that have no remaining connector links
       const stillLinked = await db
         .selectFrom("connector_files")
         .select("indexed_file_id")
@@ -472,8 +466,6 @@ export function createConnectorRepository(db: Kysely<DB>) {
     async searchFiles(query: string, opts?: { source?: string; limit?: number }) {
       const limit = opts?.limit ?? 20;
 
-      // Sanitize: strip FTS5 special characters to prevent syntax errors.
-      // Strips operators and punctuation that cause MATCH to throw.
       const sanitized = query
         .replace(/[*"()+\-]/g, " ")
         .replace(/\b(OR|AND|NOT|NEAR)\b/g, " ")

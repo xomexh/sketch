@@ -51,8 +51,8 @@ const TEXT_MIMES = new Set([
 /** Folder MIME type — used to skip folder entries in file listings. */
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 
-/** Max content size: 5MB of text. */
-const MAX_CONTENT_BYTES = 512 * 1024; // 512 KB — ~128K tokens, safe for LLM enrichment
+/** Max content size per file: 512 KB (~128K tokens). Content beyond this is truncated before enrichment. */
+const MAX_CONTENT_BYTES = 512 * 1024;
 
 /** Max file size to attempt download: 200MB. */
 const MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024;
@@ -91,12 +91,17 @@ interface DrivePermission {
   displayName?: string;
 }
 
+/** Asserts that credentials are OAuth credentials, throwing if not. */
 function assertOAuth(credentials: ConnectorCredentials): asserts credentials is OAuthCredentials {
   if (credentials.type !== "oauth") {
     throw new Error("Google Drive connector requires OAuth credentials");
   }
 }
 
+/**
+ * Makes an authenticated Drive API request with automatic retry on network errors,
+ * 429 rate limits, and 5xx responses. Uses exponential backoff up to `MAX_RETRIES` attempts.
+ */
 async function driveRequest(
   path: string,
   accessToken: string,
@@ -148,7 +153,6 @@ async function driveRequest(
       return driveRequest(path, accessToken, opts, attempt + 1);
     }
 
-    // Surface a clear message for the most common OAuth scope issue
     if (response.status === 403 && body.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT")) {
       throw new Error(
         "Insufficient OAuth scope. The refresh token must be generated with the " +
@@ -197,6 +201,7 @@ async function refreshOAuthToken(credentials: OAuthCredentials): Promise<OAuthCr
   };
 }
 
+/** Returns true when the access token has expired or will expire within the next 60 seconds. */
 function isTokenExpired(credentials: OAuthCredentials): boolean {
   if (!credentials.expires_at) return true;
   return new Date(credentials.expires_at).getTime() < Date.now() + 60_000;
@@ -216,13 +221,18 @@ function inferFileType(mimeType: string): string | null {
   return null;
 }
 
+/**
+ * Downloads and extracts text content from a Drive file.
+ * Google Workspace files are exported via the Drive export API; native text files are downloaded directly;
+ * binary documents (PDF, DOCX, XLSX, PPTX) are downloaded and extracted via the extractors module.
+ * Returns null for unsupported types, oversized files, or fetch failures.
+ */
 async function fetchFileContent(
   file: DriveFile,
   accessToken: string,
   logger: Logger,
 ): Promise<{ content: string; hash: string } | null> {
   try {
-    // 1. Google Workspace files — export via Drive export API
     const exportInfo = EXPORT_MIMES[file.mimeType];
 
     if (exportInfo) {
@@ -234,7 +244,6 @@ async function fetchFileContent(
       return truncateAndHash(text, file, logger);
     }
 
-    // 2. Native text files — download as text
     if (TEXT_MIMES.has(file.mimeType)) {
       const sizeBytes = file.size ? Number.parseInt(file.size, 10) : 0;
       if (sizeBytes > MAX_DOWNLOAD_BYTES) {
@@ -250,7 +259,6 @@ async function fetchFileContent(
       return truncateAndHash(text, file, logger);
     }
 
-    // 3. Binary documents (PDF, DOCX, XLSX, PPTX) — download as buffer, then extract
     if (BINARY_EXTRACTABLE_MIMES.has(file.mimeType)) {
       const sizeBytes = file.size ? Number.parseInt(file.size, 10) : 0;
       if (sizeBytes > MAX_DOWNLOAD_BYTES) {
@@ -289,7 +297,7 @@ function truncateAndHash(text: string, file: DriveFile, logger: Logger): { conte
   return { content: trimmed, hash: contentHash(trimmed) };
 }
 
-/** Exported for testing. */
+/** Maps a Drive file and its fetched content to the connector-agnostic {@link SyncedItem} shape. Exported for testing. */
 export function fileToSyncedItem(
   file: DriveFile,
   content: string | null,
@@ -315,8 +323,6 @@ export function fileToSyncedItem(
     accessEmails: access.emails,
   };
 }
-
-/* ── Exported helpers for the browse API ─────────────── */
 
 /**
  * Ensure we have a valid access token, refreshing if needed.
@@ -492,8 +498,9 @@ function extractFilePermissionEmails(file: DriveFile): string[] {
 }
 
 /**
- * Resolve folder ID → name for building sourcePath.
- * Caches results to avoid repeated lookups.
+ * Resolves a file's folder hierarchy into a slash-separated source path (e.g. `"My Drive / Projects / Docs"`).
+ * Results are cached in `folderCache` to avoid repeated API calls for shared ancestors.
+ * `__root__` is stored as a sentinel for folders at the drive root or that could not be resolved.
  * Exported for testing.
  */
 export async function resolveFolderPath(
@@ -508,7 +515,6 @@ export async function resolveFolderPath(
     return driveName;
   }
 
-  // Walk parent chain (usually 1-3 levels deep)
   let currentParentId = file.parents[0];
   const chain: string[] = [];
   const MAX_FOLDER_DEPTH = 20;
@@ -516,7 +522,6 @@ export async function resolveFolderPath(
 
   while (currentParentId && depth < MAX_FOLDER_DEPTH) {
     depth++;
-    // Check cache first
     if (folderCache.has(currentParentId)) {
       const cached = folderCache.get(currentParentId);
       if (!cached || cached === "__root__") break;
@@ -529,7 +534,6 @@ export async function resolveFolderPath(
         params: { fields: "id, name, parents", supportsAllDrives: "true" },
       })) as { id: string; name: string; parents?: string[] };
 
-      // If this folder's parent is the drive root, we're done
       if (!folder.parents || folder.parents.length === 0) {
         folderCache.set(currentParentId, "__root__");
         break;
@@ -539,7 +543,6 @@ export async function resolveFolderPath(
       folderCache.set(currentParentId, folder.name);
       currentParentId = folder.parents[0];
     } catch {
-      // If we can't resolve a parent, stop here
       folderCache.set(currentParentId, "__root__");
       break;
     }
@@ -549,8 +552,7 @@ export async function resolveFolderPath(
   return parts.join(" / ");
 }
 
-/* ── Connector implementation ────────────────────────── */
-
+/** Creates a Google Drive connector instance. */
 export function createGoogleDriveConnector(): Connector {
   return {
     type: "google_drive",
@@ -576,7 +578,6 @@ export function createGoogleDriveConnector(): Connector {
       const sharedDrives = (scopeConfig.sharedDrives as string[] | undefined) ?? [];
       const myDriveFolders = (scopeConfig.folders as string[] | undefined) ?? [];
 
-      // Sync selected shared drives
       for (const driveId of sharedDrives) {
         if (cursor) {
           yield* syncIncrementalDrive(creds.access_token, driveId, cursor, logger);
@@ -585,7 +586,6 @@ export function createGoogleDriveConnector(): Connector {
         }
       }
 
-      // Sync My Drive folders (or all files if neither shared drives nor folders selected)
       if (myDriveFolders.length > 0 || sharedDrives.length === 0) {
         if (cursor) {
           yield* syncIncremental(creds.access_token, cursor, logger);
@@ -624,23 +624,19 @@ export function createGoogleDriveConnector(): Connector {
   };
 }
 
-/* ── Shared drive sync ──────────────────────────────── */
-
 /**
- * Full sync for a single shared drive:
- * 1. Fetch drive name + members (permissions)
- * 2. List all files in the drive
- * 3. Resolve folder paths for each file
- * 4. Yield SyncedItem with access info
+ * Full sync for a single shared drive: fetches members, lists all files, resolves folder paths,
+ * and yields a {@link SyncedItem} per file with drive-level access info.
+ * @remarks
+ * Member fetching requires the full `drive.readonly` scope. If it fails (e.g. with a restricted
+ * scope token), the sync continues without access metadata rather than aborting.
  */
 async function* syncSharedDrive(accessToken: string, driveId: string, logger: Logger): AsyncGenerator<SyncedItem> {
-  // Get drive name
   const driveInfo = (await driveRequest(`/drives/${driveId}`, accessToken, {
     params: { fields: "id, name" },
   })) as { id: string; name: string };
   const driveName = driveInfo.name;
 
-  // Get drive members for scope-level access control (may fail with readonly scope — non-fatal)
   let driveScope: SyncedItem["accessScope"] | undefined;
   try {
     const memberEmails = await fetchDriveMemberEmails(driveId, accessToken, logger);
@@ -655,7 +651,6 @@ async function* syncSharedDrive(accessToken: string, driveId: string, logger: Lo
   }
   logger.info({ driveId, driveName, memberCount: driveScope?.memberEmails.length ?? 0 }, "Syncing shared drive");
 
-  // Cache for folder path resolution
   const folderCache = new Map<string, string>();
 
   const fields =
@@ -699,7 +694,8 @@ async function* syncSharedDrive(accessToken: string, driveId: string, logger: Lo
 }
 
 /**
- * Incremental sync for a shared drive using changes.list.
+ * Incremental sync for a shared drive using changes.list since `startPageToken`.
+ * Yields updated files as {@link SyncedItem} and tombstone items for removals.
  */
 async function* syncIncrementalDrive(
   accessToken: string,
@@ -707,7 +703,6 @@ async function* syncIncrementalDrive(
   startPageToken: string,
   logger: Logger,
 ): AsyncGenerator<SyncedItem> {
-  // Get drive info + members for scope-level access on changed files
   const driveInfo = (await driveRequest(`/drives/${driveId}`, accessToken, {
     params: { fields: "id, name" },
   })) as { id: string; name: string };
@@ -783,8 +778,6 @@ async function* syncIncrementalDrive(
 
   logger.info({ driveId, driveName, totalChanges }, "Incremental drive sync complete");
 }
-
-/* ── My Drive sync (non-shared-drive mode) ────────────── */
 
 /**
  * Full sync for My Drive mode.
@@ -908,6 +901,10 @@ async function* syncAllFiles(accessToken: string, logger: Logger): AsyncGenerato
   logger.info({ totalFiles }, "Full sync complete");
 }
 
+/**
+ * Incremental sync for My Drive using changes.list since `startPageToken`.
+ * Yields updated files as {@link SyncedItem} and tombstone items for removals.
+ */
 async function* syncIncremental(
   accessToken: string,
   startPageToken: string,

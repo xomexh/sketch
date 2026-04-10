@@ -195,7 +195,11 @@ export async function runEnrichment(deps: EnrichmentDeps): Promise<EnrichmentRes
 }
 
 /**
- * Enrich a text document: chunk, tag, embed.
+ * Chunks, tags, and embeds a text document.
+ * Structured content (CSV/calendar) is tagged deterministically without chunking or LLM calls.
+ * Unstructured content is chunked, then tagged via LLM (single call or batched by token count),
+ * with embeddings generated as a best-effort step that does not fail the overall enrichment.
+ * Chunks and their embeddings are replaced on every call (cleared before insert).
  */
 async function enrichTextDocument(
   file: {
@@ -245,17 +249,14 @@ async function enrichTextDocument(
     return;
   }
 
-  // 1. Chunk the content
   const chunks = chunkText(file.content);
 
-  // 1b. Gather extra context for tagging
   const sharedWith = await db
     .selectFrom("file_access")
     .select("email")
     .where("indexed_file_id", "=", file.id)
     .execute();
 
-  // Sibling files in the same folder
   let siblingNames: string[] = [];
   if (file.source_path) {
     const siblings = await db
@@ -278,7 +279,6 @@ async function enrichTextDocument(
     siblingFileNames: siblingNames,
   };
 
-  // 2. Store chunks (batch insert — one statement instead of N)
   await clearFileChunks(db, file.id);
   if (chunks.length > 0) {
     await db
@@ -389,7 +389,6 @@ async function enrichTextDocument(
     await entityRepo.updateHotness(entity.id);
   }
 
-  // 6. Store timeframes (batch insert)
   await clearFileTimeframes(db, file.id);
   if (taggingResult.timeframes.length > 0) {
     await db
@@ -406,7 +405,6 @@ async function enrichTextDocument(
       .execute();
   }
 
-  // 6. Embed chunks (best-effort — tagging still succeeds if embedding fails)
   if (embeddingProvider && chunks.length > 0) {
     try {
       const texts = chunks.map((c) => c.content);
@@ -443,6 +441,9 @@ async function enrichTextDocument(
 
 /**
  * Enrich an image file: download temporarily, embed, discard.
+ * @remarks
+ * The downloaded buffer is held in memory only for the duration of the embed call
+ * and is never written to disk.
  */
 async function enrichImage(
   file: {
@@ -469,10 +470,8 @@ async function enrichImage(
 
   const { buffer, mimeType } = await downloadImage(file.provider_file_id, file.connector_config_id);
 
-  // Embed
   const embedding = await embeddingProvider.embedImage(buffer, mimeType);
 
-  // Store embedding
   const isPostgres = isPg(db);
   if (isPostgres) {
     await sql`INSERT INTO file_embeddings (indexed_file_id, embedding)
@@ -484,20 +483,20 @@ async function enrichImage(
     );
   }
 
-  // Derive basic tags from file name and path (no LLM needed for images)
   const tags = deriveImageTags(file.file_name, file.source_path);
   await db
     .updateTable("indexed_files")
     .set({ tags: JSON.stringify(tags) })
     .where("id", "=", file.id)
     .execute();
-
-  // buffer is garbage collected — nothing stored on disk
 }
 
 /**
  * Batch tagging for large documents.
  * Processes chunks in groups, then rolls up into document-level metadata.
+ * @remarks
+ * Chunks that individually exceed `TAG_BATCH_TOKEN_LIMIT` are truncated to fit rather than
+ * skipped, so unusually long paragraphs do not silently drop content.
  */
 async function batchTagDocument(
   chunks: ReturnType<typeof chunkText>,
@@ -517,20 +516,16 @@ async function batchTagDocument(
     new_entities: unknown[];
   }> = [];
 
-  // Group chunks into batches by token count
   const batches: (typeof chunks)[] = [];
   let currentBatch: typeof chunks = [];
   let currentTokens = 0;
   for (const chunk of chunks) {
-    // Safety: skip oversized chunks that would exceed the API limit on their own
     if (chunk.tokenCount > TAG_BATCH_TOKEN_LIMIT) {
-      // Flush current batch first
       if (currentBatch.length > 0) {
         batches.push(currentBatch);
         currentBatch = [];
         currentTokens = 0;
       }
-      // Truncate the chunk content to fit within the limit
       const maxChars = TAG_BATCH_TOKEN_LIMIT * 4;
       const truncated = { ...chunk, content: chunk.content.slice(0, maxChars), tokenCount: TAG_BATCH_TOKEN_LIMIT };
       batches.push([truncated]);
@@ -600,7 +595,6 @@ async function batchTagDocument(
     );
   }
 
-  // Rollup: merge all batch results
   const rollupPrompt = buildRollupPrompt(batchResults, fileName);
   const rollupResponse = await llmCall(rollupPrompt);
   return (
@@ -621,7 +615,6 @@ async function batchTagDocument(
 function deriveImageTags(fileName: string, _sourcePath: string | null): string[] {
   const tags = new Set<string>(["image"]);
 
-  // Extract meaningful words from filename
   const nameWithoutExt = fileName.replace(/\.[^.]+$/, "");
   const words = nameWithoutExt.split(/[-_\s]+/).filter((w) => w.length > 1);
   for (const word of words) {
@@ -631,11 +624,14 @@ function deriveImageTags(fileName: string, _sourcePath: string | null): string[]
   return [...tags].slice(0, 15);
 }
 
+/**
+ * Deletes all chunks and their embeddings for a file.
+ * @remarks
+ * Embeddings are deleted via a subquery to avoid a separate SELECT followed by N per-chunk DELETEs.
+ * `chunk_embeddings` is a sqlite-vec virtual table that may not exist in all environments,
+ * so "no such table" errors are silently ignored.
+ */
 async function clearFileChunks(db: Kysely<DB>, fileId: string): Promise<void> {
-  // Delete all embeddings for the file's chunks in a single statement.
-  // The subquery approach avoids a separate SELECT + N per-chunk DELETEs.
-  // chunk_embeddings is a vec0 virtual table that only exists when sqlite-vec
-  // is loaded. Catch and ignore "no such table" so this works in test DBs too.
   try {
     await sql`
       DELETE FROM chunk_embeddings
@@ -652,20 +648,23 @@ async function clearFileChunks(db: Kysely<DB>, fileId: string): Promise<void> {
   await db.deleteFrom("document_chunks").where("indexed_file_id", "=", fileId).execute();
 }
 
+/** Deletes all timeframe records for a file. */
 async function clearFileTimeframes(db: Kysely<DB>, fileId: string): Promise<void> {
   await db.deleteFrom("document_timeframes").where("indexed_file_id", "=", fileId).execute();
 }
 
 /**
- * Clear all enrichment data for a file (used when re-enriching on content change).
+ * Clears all enrichment data for a file (chunks, embeddings, entity mentions, timeframes).
+ * Called before re-enriching when file content has changed.
+ * @remarks
+ * `file_embeddings` is a sqlite-vec virtual table that may not exist in all environments,
+ * so "no such table" errors are silently ignored.
  */
 export async function clearEnrichmentData(db: Kysely<DB>, fileId: string): Promise<void> {
   await clearFileChunks(db, fileId);
   await clearFileTimeframes(db, fileId);
-  // Clear entity mentions for this file (will be re-linked during enrichment)
   const entityRepo = createEntityRepository(db);
   await entityRepo.deleteMentionsForFile(fileId);
-  // file_embeddings is a vec0 virtual table (sqlite-vec). Gracefully skip if unavailable.
   try {
     await sql`DELETE FROM file_embeddings WHERE indexed_file_id = ${fileId}`.execute(db);
   } catch (err) {

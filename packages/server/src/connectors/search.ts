@@ -62,10 +62,6 @@ export interface SearchOptions {
 export async function searchFiles(db: Kysely<DB>, query: string, opts?: SearchOptions): Promise<SearchResult[]> {
   const limit = opts?.limit ?? 10;
 
-  // Build user-level access filter (3-tier model):
-  // 1. Unrestricted: no scope AND no file_access rows → visible to all
-  // 2. Scope-level: user's email in access_scope_members for the file's scope
-  // 3. Per-file: user's email in file_access
   const emailList = opts?.userEmails ?? [];
   const userFilter =
     emailList.length > 0
@@ -192,9 +188,7 @@ export async function getFileContent(
 
   if (!file) return null;
 
-  // User-level RBAC: 3-tier access check
   if (userEmails && userEmails.length > 0) {
-    // Tier 1: unrestricted — no scope and no file_access rows
     const hasScope = file.access_scope_id != null;
     const hasFileAccess = await db
       .selectFrom("file_access")
@@ -206,7 +200,6 @@ export async function getFileContent(
     if (hasScope || hasFileAccess.length > 0) {
       let allowed = false;
 
-      // Tier 2: scope-level access
       if (hasScope && file.access_scope_id) {
         const scopeMatch = await db
           .selectFrom("access_scope_members")
@@ -218,7 +211,6 @@ export async function getFileContent(
         if (scopeMatch.length > 0) allowed = true;
       }
 
-      // Tier 3: per-file access
       if (!allowed && hasFileAccess.length > 0) {
         const fileMatch = await db
           .selectFrom("file_access")
@@ -289,30 +281,27 @@ function sanitizeTsQuery(input: string): string {
 
 /**
  * Sanitize user input for FTS5 queries.
- * Strips characters that would cause FTS5 syntax errors.
+ *
+ * Quoted phrases (`"exact phrase"`) and column-scoped queries (`column:term`)
+ * are passed through unchanged. Otherwise FTS5 boolean operators and special
+ * characters are stripped, and the remaining words are joined with OR — because
+ * FTS5 defaults to AND, which returns no results when any term is absent from the
+ * indexed content.
  */
 function sanitizeFtsQuery(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) return "";
 
-  // Preserve explicit phrase queries
   if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
     return trimmed;
   }
 
-  // Preserve column-scoped queries
   if (trimmed.includes(":") && /^\w+:/.test(trimmed)) {
     return trimmed;
   }
 
-  // Strip FTS5 boolean operators and special chars, then join with OR so partial
-  // matches work. FTS5 defaults to AND which fails when the query is long and any
-  // word is missing.
   const words = trimmed
-    // Remove FTS5 boolean keywords (case-insensitive whole-word match)
     .replace(/\b(OR|AND|NOT|NEAR)\b/gi, " ")
-    // Remove special chars except word chars, spaces, and a single trailing *
-    // (FTS5 allows prefix queries like "plan*" but not standalone * or **)
     .replace(/[^\w\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
@@ -322,11 +311,8 @@ function sanitizeFtsQuery(input: string): string {
   if (words.length === 0) return "";
   if (words.length === 1) return words[0];
 
-  // Use OR so documents matching any word are returned (ranked by BM25)
   return words.join(" OR ");
 }
-
-// ── Hybrid Search ─────────────────────────────────────────────────────────
 
 export interface HybridSearchOptions extends SearchOptions {
   /** Time filter — matches file dates AND content timeframes. */
@@ -366,10 +352,11 @@ const RRF_K = 60;
  *
  * Strategy:
  * 1. Run FTS5 search → ranked keyword results
- * 2. Run vector KNN search → ranked semantic results
+ * 2. Run vector KNN search (chunk + file embeddings) → ranked semantic results
  * 3. Merge via reciprocal rank fusion (RRF)
- * 4. Apply metadata filters (time, type, source)
- * 5. Apply RBAC
+ * 4. Fetch metadata; apply source, category, and content-type filters
+ * 5. Apply time filter (file dates and content timeframes)
+ * 6. Apply RBAC (3-tier: unrestricted / scope / per-file)
  */
 export async function hybridSearch(
   db: Kysely<DB>,
@@ -380,7 +367,6 @@ export async function hybridSearch(
   const ftsResults = new Map<string, { rank: number; snippet: string | null }>();
   const vecResults = new Map<string, { rank: number; similarity: number; snippet: string | null }>();
 
-  // ── 1. FTS keyword search ───────────────────────────────────
   if (isPg(db)) {
     const tsQuery = sanitizeTsQuery(query);
     if (tsQuery) {
@@ -401,7 +387,6 @@ export async function hybridSearch(
   } else {
     const ftsQuery = sanitizeFtsQuery(query);
     if (ftsQuery) {
-      // BM25 weights: file_name=10, summary=5, tags=3, source=1
       const ftsRows = await sql<{
         id: string;
         rank: number;
@@ -422,7 +407,6 @@ export async function hybridSearch(
     }
   }
 
-  // ── 2. Vector search (chunk embeddings + file embeddings) ───
   if (opts?.queryEmbedding) {
     const embeddingJson = JSON.stringify(opts.queryEmbedding);
     const vecLimit = limit * 3;
@@ -452,7 +436,6 @@ export async function hybridSearch(
         LIMIT ${vecLimit}
       `.execute(db);
     } else {
-      // Search chunk embeddings (text documents)
       chunkRows = await sql<{
         indexed_file_id: string;
         chunk_content: string;
@@ -469,7 +452,6 @@ export async function hybridSearch(
         ORDER BY ce.distance ASC
       `.execute(db);
 
-      // Search file embeddings (images)
       fileRows = await sql<{
         indexed_file_id: string;
         distance: number;
@@ -484,7 +466,6 @@ export async function hybridSearch(
       `.execute(db);
     }
 
-    // Merge vector results — keep best distance per file
     let vecRank = 1;
     const allVecResults: Array<{
       fileId: string;
@@ -492,7 +473,6 @@ export async function hybridSearch(
       snippet: string | null;
     }> = [];
 
-    // Deduplicate chunk results by file (keep best chunk per file)
     const bestChunkPerFile = new Map<string, { distance: number; snippet: string }>();
     for (const row of chunkRows.rows) {
       const existing = bestChunkPerFile.get(row.indexed_file_id);
@@ -513,10 +493,8 @@ export async function hybridSearch(
       }
     }
 
-    // Sort by distance (ascending) and assign ranks
     allVecResults.sort((a, b) => a.distance - b.distance);
     for (const item of allVecResults) {
-      // Convert distance to similarity (cosine distance → similarity)
       const similarity = 1 - item.distance;
       vecResults.set(item.fileId, {
         rank: vecRank++,
@@ -526,7 +504,6 @@ export async function hybridSearch(
     }
   }
 
-  // ── 3. Merge via RRF ───────────────────────────────────────
   const allFileIds = new Set([...ftsResults.keys(), ...vecResults.keys()]);
   const scored: Array<{ fileId: string; score: number; snippet: string | null; similarity: number | null }> = [];
 
@@ -534,7 +511,6 @@ export async function hybridSearch(
     const fts = ftsResults.get(fileId);
     const vec = vecResults.get(fileId);
 
-    // RRF: score = sum of 1/(k + rank) for each ranking the doc appears in
     let score = 0;
     if (fts) score += 1 / (RRF_K + fts.rank);
     if (vec) score += 1 / (RRF_K + vec.rank);
@@ -549,13 +525,11 @@ export async function hybridSearch(
 
   scored.sort((a, b) => b.score - a.score);
 
-  // ── 4. Fetch file metadata and apply filters ────────────────
   const topFileIds = scored.slice(0, limit * 2).map((s) => s.fileId);
   if (topFileIds.length === 0) return [];
 
   const scoreMap = new Map(scored.map((s) => [s.fileId, s]));
 
-  // Build metadata query with filters
   let metaQuery = db
     .selectFrom("indexed_files")
     .select([
@@ -586,13 +560,11 @@ export async function hybridSearch(
 
   const files = await metaQuery.execute();
 
-  // ── 5. Apply time filter ────────────────────────────────────
   let filteredFiles = files;
   if (opts?.timeFilter) {
     const { after, before } = opts.timeFilter;
 
     if (after || before) {
-      // Get file IDs that match time filter via timeframes
       const timeframeFileIds = new Set<string>();
 
       if (after || before) {
@@ -614,7 +586,6 @@ export async function hybridSearch(
       }
 
       filteredFiles = files.filter((f) => {
-        // Match on file metadata dates OR content timeframes
         const fileDate = f.source_created_at || f.source_updated_at;
         const matchesFileDate = fileDate && (!after || fileDate >= after) && (!before || fileDate <= before);
         const matchesTimeframe = timeframeFileIds.has(f.id);
@@ -623,7 +594,6 @@ export async function hybridSearch(
     }
   }
 
-  // ── 6. Apply RBAC (batch query — same pattern as searchFiles) ─
   const emailList = opts?.userEmails ?? [];
   let accessFiltered = filteredFiles;
 
@@ -634,11 +604,6 @@ export async function hybridSearch(
       sql`,`,
     );
 
-    // Single query: returns IDs of files the user can access.
-    // Mirrors the 3-tier model in searchFiles:
-    //   T1 — unrestricted (no scope AND no per-file rows)
-    //   T2 — user is in the file's access scope
-    //   T3 — user has a direct per-file access entry
     const accessRows = await sql<{ id: string }>`
       SELECT indexed_files.id
       FROM indexed_files
@@ -666,7 +631,6 @@ export async function hybridSearch(
     accessFiltered = filteredFiles.filter((f) => allowedIds.has(f.id));
   }
 
-  // ── 7. Build final results ─────────────────────────────────
   const results: HybridSearchResult[] = accessFiltered
     .map((f) => {
       const scoreData = scoreMap.get(f.id);

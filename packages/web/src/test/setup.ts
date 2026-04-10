@@ -1,13 +1,20 @@
+/**
+ * Vitest jsdom setup for the web package: `@testing-library/jest-dom`, RTL `cleanup`, and MSW.
+ *
+ * `@phosphor-icons/react` and `lucide-react` are mocked with a Proxy that yields minimal `<svg>`
+ * elements so barrel imports stay fast and `querySelector("svg")` still works in tests.
+ *
+ * When missing, installs `IntersectionObserver` (no-op), `EventSource` (minimal stub for SSE UIs),
+ * and `window.matchMedia` (non-matching) so scroll detection, SSE, and responsive hooks do not throw.
+ *
+ * MSW listens in `beforeAll` with unhandled requests bypassed; each test resets handlers and runs
+ * RTL cleanup; `afterAll` closes the server.
+ */
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, vi } from "vitest";
 import { server } from "./msw";
 
-/**
- * Stub heavy icon libraries. Their barrel exports pull in thousands of files
- * that dominate import time, and no test asserts on icon rendering.
- * Returns a minimal <svg> so querySelector("svg") still works in tests.
- */
 const { createElement } = await import("react");
 const iconStub = () => createElement("svg");
 const iconProxy = new Proxy(
@@ -24,8 +31,6 @@ const iconProxy = new Proxy(
 vi.mock("@phosphor-icons/react", () => iconProxy);
 vi.mock("lucide-react", () => iconProxy);
 
-// IntersectionObserver is not available in jsdom — provide a no-op stub so
-// components that use scroll detection don't crash when rendered in tests.
 if (typeof globalThis.IntersectionObserver === "undefined") {
   globalThis.IntersectionObserver = class IntersectionObserver {
     readonly root = null;
@@ -40,8 +45,6 @@ if (typeof globalThis.IntersectionObserver === "undefined") {
   } as unknown as typeof IntersectionObserver;
 }
 
-// EventSource is not available in jsdom — provide a no-op stub so components
-// that use SSE (e.g. WhatsAppQR) don't crash when rendered in tests.
 if (typeof globalThis.EventSource === "undefined") {
   globalThis.EventSource = class EventSource extends EventTarget {
     static readonly CONNECTING = 0;
@@ -66,8 +69,6 @@ if (typeof globalThis.EventSource === "undefined") {
   } as unknown as typeof EventSource;
 }
 
-// window.matchMedia is not available in jsdom — stub it so hooks that use
-// matchMedia (useTheme system mode, useIsMobile) do not throw.
 if (typeof window.matchMedia === "undefined") {
   Object.defineProperty(window, "matchMedia", {
     writable: true,

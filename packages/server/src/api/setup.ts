@@ -1,6 +1,13 @@
 /**
- * Setup API routes for the onboarding wizard.
- * Only status/account are public; subsequent setup steps require auth.
+ * Setup API routes for the onboarding wizard (`/status`, account, identity, Slack, LLM verify/save, complete).
+ *
+ * `GET /status` and `POST /account` bootstrap the wizard (account issues a session); other steps require
+ * prior settings state such as `admin_email`, except managed-only restrictions (e.g. Slack via Marketplace).
+ *
+ * `GET /status` is unauthenticated and returns `currentStep` for the wizard: when onboarding is done or
+ * LLM is configured, step is `5`. If `managedUrl` is set (managed install), Slack is skipped—after
+ * identity the next step is LLM (`4`). Otherwise the flow is account → identity → Slack → LLM
+ * (steps `0` → `2` → `3` → `4`).
  */
 import { Hono } from "hono";
 import { z } from "zod";
@@ -10,6 +17,7 @@ import type { createUserRepository } from "../db/repositories/users";
 import { slackApiCall } from "../slack/api";
 import { createSession } from "./auth";
 
+/** Validates Slack bot and app tokens (`auth.test` + `apps.connections.open`); returns team name from auth. */
 async function verifySlackTokens(botToken: string, appToken: string): Promise<{ workspaceName?: string }> {
   const auth = await slackApiCall(botToken, "auth.test");
   await slackApiCall(appToken, "apps.connections.open");
@@ -59,6 +67,7 @@ const llmSchema = z.discriminatedUnion("provider", [
   }),
 ]);
 
+/** Minimal Anthropic Messages request to verify the API key; throws on 401/403 or other failures. */
 async function verifyAnthropicApiKey(apiKey: string): Promise<void> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -92,6 +101,9 @@ interface SetupDeps {
   userRepo?: ReturnType<typeof createUserRepository>;
 }
 
+/**
+ * Registers setup routes on a Hono app. Passes `experimentalFlag` through `GET /status` for UI gating.
+ */
 export function setupRoutes(settings: SettingsRepo, deps: SetupDeps = {}, experimentalFlag = false) {
   const routes = new Hono();
 
@@ -113,10 +125,8 @@ export function setupRoutes(settings: SettingsRepo, deps: SetupDeps = {}, experi
     } else if (hasLlm) {
       currentStep = 5;
     } else if (isManaged) {
-      // Managed: skip Slack step (3), go directly from Identity (2) to LLM (4)
       currentStep = hasIdentity ? 4 : hasAdmin ? 2 : 0;
     } else {
-      // Self-hosted: full flow
       currentStep = hasSlack ? 4 : hasIdentity ? 3 : hasAdmin ? 2 : 0;
     }
     return c.json({

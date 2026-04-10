@@ -4,21 +4,18 @@ import { sql } from "kysely";
 import { createEntityRepository } from "../db/repositories/entities";
 import type { DB } from "../db/schema";
 
+/**
+ * `/api/entities` routes: list (filters, sort, pagination with total), create, get by id, patch,
+ * delete, mentions with filters and total, purge tentative, and enrichment backfill jobs.
+ *
+ * `DELETE /tentative` is registered before `/:id` so `tentative` is not treated as an id.
+ */
 export function entityRoutes(db: Kysely<DB>) {
   const routes = new Hono();
   const repo = createEntityRepository(db);
 
   /**
-   * GET /api/entities
-   *   ?type=person,clickup_space     — filter by source_type (comma-separated)
-   *   &source=clickup,linear          — filter by source (from entity_source_refs)
-   *   &search=beetu                   — name/alias search
-   *   &sort=hotness|mentions|name     — sort field (default: hotness)
-   *   &limit=50&offset=0
-   */
-  /**
-   * POST /api/entities
-   * Create a new entity manually.
+   * `POST /api/entities` — create a confirmed entity manually (`name`, `sourceType`, optional `subtype`, `aliases`).
    */
   routes.post("/", async (c) => {
     const body = (await c.req.json()) as {
@@ -52,6 +49,11 @@ export function entityRoutes(db: Kysely<DB>) {
     });
   });
 
+  /**
+   * `GET /api/entities` — `type` (comma `source_type`), `source` (via `entity_source_refs`), `search`
+   * (name/aliases), `sort` (`hotness` default, `mentions`, `name`), `limit`/`offset`.
+   * Without a `type` filter, excludes `archived`. Response includes `total` for pagination using the same filters.
+   */
   routes.get("/", async (c) => {
     const typeFilter = c.req.query("type")?.split(",").filter(Boolean);
     const sourceFilter = c.req.query("source")?.split(",").filter(Boolean);
@@ -93,7 +95,6 @@ export function entityRoutes(db: Kysely<DB>) {
       );
     }
 
-    // Default: exclude archived unless explicitly filtered
     if (!typeFilter) {
       query = query.where("entities.status", "!=", "archived");
     }
@@ -110,7 +111,6 @@ export function entityRoutes(db: Kysely<DB>) {
 
     const entities = await query.execute();
 
-    // Total count for pagination
     let countQuery = db.selectFrom("entities").select(db.fn.count("id").as("total"));
     if (typeFilter && typeFilter.length > 0) {
       countQuery = countQuery.where("source_type", "in", typeFilter);
@@ -144,9 +144,8 @@ export function entityRoutes(db: Kysely<DB>) {
   });
 
   /**
-   * DELETE /api/entities/tentative
-   * Delete all tentative entities and their mentions.
-   * Must be registered before /:id to prevent "tentative" matching as an ID.
+   * `DELETE /api/entities/tentative` — delete tentative entities (optional `type` filter). Cascaded mentions
+   * are removed with the entity rows.
    */
   routes.delete("/tentative", async (c) => {
     const typeFilter = c.req.query("type")?.split(",").filter(Boolean);
@@ -170,9 +169,7 @@ export function entityRoutes(db: Kysely<DB>) {
     });
   });
 
-  /**
-   * GET /api/entities/:id
-   */
+  /** `GET /api/entities/:id` — entity detail plus `entity_source_refs`. */
   routes.get("/:id", async (c) => {
     const entity = await repo.getEntity(c.req.param("id"));
     if (!entity) {
@@ -208,10 +205,7 @@ export function entityRoutes(db: Kysely<DB>) {
     });
   });
 
-  /**
-   * PATCH /api/entities/:id
-   * Update entity name, source_type, status, or aliases.
-   */
+  /** `PATCH /api/entities/:id` — partial update: `name`, `sourceType`, `status`, `aliases`. */
   routes.patch("/:id", async (c) => {
     const entity = await repo.getEntity(c.req.param("id"));
     if (!entity) {
@@ -251,10 +245,7 @@ export function entityRoutes(db: Kysely<DB>) {
     });
   });
 
-  /**
-   * DELETE /api/entities/:id
-   * Delete an entity and its mentions/source refs (cascade).
-   */
+  /** `DELETE /api/entities/:id` — delete entity (mentions and source refs cascade). */
   routes.delete("/:id", async (c) => {
     const entity = await repo.getEntity(c.req.param("id"));
     if (!entity) {
@@ -266,10 +257,8 @@ export function entityRoutes(db: Kysely<DB>) {
   });
 
   /**
-   * GET /api/entities/:id/mentions
-   *   ?source=clickup,fireflies       — filter by indexed_file source
-   *   &since=2026-03-01               — date filter
-   *   &limit=20&offset=0
+   * `GET /api/entities/:id/mentions` — `source` (indexed file source), `since`, `limit`/`offset`.
+   * Response includes `total` with the same filters.
    */
   routes.get("/:id/mentions", async (c) => {
     const entityId = c.req.param("id");
@@ -311,7 +300,6 @@ export function entityRoutes(db: Kysely<DB>) {
     query = query.limit(limit).offset(offset);
     const mentions = await query.execute();
 
-    // Total count
     let countQuery = db
       .selectFrom("entity_mentions")
       .innerJoin("indexed_files", "indexed_files.id", "entity_mentions.indexed_file_id")
@@ -345,15 +333,13 @@ export function entityRoutes(db: Kysely<DB>) {
   });
 
   /**
-   * POST /api/entities/enrichment-jobs
-   * Mark enriched files that have no entity mentions for re-enrichment.
-   * The next enrichment run will process them with entity linking enabled.
-   * Optional: ?source=clickup,fireflies to limit to specific sources.
+   * `POST /api/entities/enrichment-jobs` — find indexed files that are embedded (`embedding_status` done,
+   * not archived) but have no `entity_mentions` rows; set `embedding_status` to `pending` so the next
+   * enrichment pass re-runs with entity linking. Optional `source` limits by connector.
    */
   routes.post("/enrichment-jobs", async (c) => {
     const sourceFilter = c.req.query("source")?.split(",").filter(Boolean);
 
-    // Find files that are enriched but have no entity mentions
     let query = db
       .selectFrom("indexed_files")
       .select(["indexed_files.id"])
@@ -371,7 +357,6 @@ export function entityRoutes(db: Kysely<DB>) {
       return c.json({ message: "No files need entity backfill.", count: 0 });
     }
 
-    // Reset their embedding_status to pending so enrichment picks them up
     const fileIds = files.map((f) => f.id);
     await db.updateTable("indexed_files").set({ embedding_status: "pending" }).where("id", "in", fileIds).execute();
 

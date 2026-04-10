@@ -69,7 +69,6 @@ export function settingsRoutes(settings: SettingsRepo, db?: Kysely<DB>, logger?:
       ? createEmbeddingProvider({ provider: "gemini", apiKey: row.gemini_api_key })
       : null;
 
-    // Run in background
     runEnrichment({
       db,
       logger: logger.child({ component: "enrichment" }),

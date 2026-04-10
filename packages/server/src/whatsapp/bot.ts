@@ -4,11 +4,15 @@ import type { Boom } from "@hapi/boom";
  * reconnection with exponential backoff, composing indicators, echo detection.
  *
  * Supports DMs (@s.whatsapp.net, @lid) and groups (@g.us).
- * Groups: mention-only activation (explicit @mention or reply-to-bot).
+ * Groups: mention-only activation (explicit @mention or reply-to-bot); when
+ * explicitly mentioned, {@link stripBotMention} removes the @display segment from text.
  * LID JIDs resolved to phone numbers via Baileys' signalRepository.lidMapping.
  * Auth state persisted in DB via createDbAuthState.
  * Group metadata cached in-memory (5-min TTL) and wired into cachedGroupMetadata
  * socket config to avoid re-fetching participant lists on every sendMessage.
+ *
+ * `extractText`, `hasMediaContent`, `jidToPhoneNumber`, `extractContextInfo`, and
+ * `stripBotMention` are exported for unit tests.
  */
 import {
   DisconnectReason,
@@ -141,6 +145,10 @@ export class WhatsAppBot {
    * Emits multiple QR codes (each ~20-30s lifetime), a connected event on success,
    * or an error event on failure. Returns a promise that resolves when pairing
    * completes (connected or failed) — keeps the SSE stream alive until then.
+   *
+   * If the server signals `restartRequired`, reconnects via {@link createSocket} and
+   * waits for `connection === "open"` on the new socket before calling `onConnected`,
+   * so the client receives "connected" before the pairing promise settles.
    */
   async startPairing(callbacks: PairingCallbacks): Promise<void> {
     this.clearReconnectTimer();
@@ -195,8 +203,6 @@ export class WhatsAppBot {
           if (statusCode === DisconnectReason.restartRequired) {
             this.logger.info("WhatsApp restart required after pairing — reconnecting");
             await this.createSocket();
-            // Wait for the reconnected socket to open before sending the connected event.
-            // Without this, the SSE stream closes before the frontend receives "connected".
             this.sock?.ev.on("connection.update", async (reconnectUpdate) => {
               if (reconnectUpdate.connection === "open") {
                 await callbacks.onConnected(this.phoneNumber ?? "unknown");
@@ -238,12 +244,11 @@ export class WhatsAppBot {
     });
   }
 
+  /** Closes the pairing WebSocket; ignores errors if the socket is already closed. */
   cancelPairing(): void {
     try {
       this.sock?.ws?.close();
-    } catch {
-      // Socket may already be closed
-    }
+    } catch {}
   }
 
   async stop(): Promise<void> {
@@ -290,13 +295,14 @@ export class WhatsAppBot {
     return this.sock;
   }
 
-  // --- Sending ---
-
+  /**
+   * Sends text, splitting at {@link WHATSAPP_TEXT_LIMIT}. Only the first chunk receives
+   * `options` (e.g. quoted reply), since each `sendMessage` call applies generation options separately.
+   */
   async sendText(jid: string, text: string, options?: MiscMessageGenerationOptions): Promise<void> {
     if (!this.sock) return;
     const chunks = chunkText(text, WHATSAPP_TEXT_LIMIT);
     for (let i = 0; i < chunks.length; i++) {
-      // Only apply options (e.g. quoted reply) to the first chunk
       const sent = await this.sock.sendMessage(jid, { text: chunks[i] }, i === 0 ? options : undefined);
       if (sent?.key?.id) this.trackSentMessage(sent.key.id);
     }
@@ -347,8 +353,6 @@ export class WhatsAppBot {
     this.sock?.sendPresenceUpdate("paused", jid).catch(() => {});
   }
 
-  // --- Group metadata ---
-
   async getGroupMetadata(groupJid: string): Promise<GroupMetadata | undefined> {
     const cached = this.groupMetaCache.get(groupJid);
     if (cached && cached.expires > Date.now()) return cached.meta;
@@ -360,8 +364,6 @@ export class WhatsAppBot {
     const meta = await this.getGroupMetadata(groupJid);
     return meta?.subject ?? "Unknown Group";
   }
-
-  // --- Internal ---
 
   private async createSocket(): Promise<void> {
     this.clearReconnectTimer();
@@ -520,6 +522,10 @@ export class WhatsAppBot {
     }
   }
 
+  /**
+   * Routes group traffic to the handler when the bot is activated via
+   * {@link isBotMentioned}; strips an explicit @mention of the bot from text when present.
+   */
   private async handleGroupMessage(
     msg: proto.IWebMessageInfo,
     groupJid: string,
@@ -534,7 +540,6 @@ export class WhatsAppBot {
     const contextInfo = extractContextInfo(msg.message);
     const isMentioned = this.isBotMentioned(contextInfo);
 
-    // Strip bot mention text from the message when explicitly mentioned
     let cleanText = text;
     if (cleanText && isMentioned && contextInfo?.mentionedJid?.length) {
       cleanText = stripBotMention(cleanText, this.sock?.user?.name);
@@ -562,8 +567,8 @@ export class WhatsAppBot {
   }
 
   /**
-   * Check if the bot is mentioned in a message — either explicitly via @mention
-   * in mentionedJid, or implicitly by replying to a bot message.
+   * Whether the bot should respond: explicit @mention in `mentionedJid` (phone or LID),
+   * or implicit mention by replying to a message from the bot (`quotedParticipant`).
    */
   private isBotMentioned(contextInfo: proto.IContextInfo | undefined): boolean {
     const botId = this.sock?.user?.id;
@@ -571,7 +576,6 @@ export class WhatsAppBot {
 
     const botLid = this.sock?.user?.lid;
 
-    // Explicit @mention — check mentionedJid array
     const mentionedJids = contextInfo?.mentionedJid;
     if (mentionedJids?.length) {
       const hasBotMention = mentionedJids.some(
@@ -580,7 +584,6 @@ export class WhatsAppBot {
       if (hasBotMention) return true;
     }
 
-    // Implicit mention — reply to a bot message
     const quotedParticipant = contextInfo?.participant;
     if (quotedParticipant) {
       if (areJidsSameUser(quotedParticipant, botId)) return true;
@@ -705,8 +708,6 @@ export class WhatsAppBot {
   }
 }
 
-// --- Pure utility functions (exported for testing) ---
-
 export function extractText(msg: proto.IWebMessageInfo): string | null {
   if (!msg.message) return null;
 
@@ -747,19 +748,17 @@ export function extractContextInfo(message: proto.IMessage): proto.IContextInfo 
 }
 
 /**
- * Strip the bot's @mention text from a message. WhatsApp renders mentions as
- * @DisplayName in the text. We remove the first @-prefixed token that looks
- * like a bot mention so the agent sees a clean message.
+ * Strip the bot's @mention from message text. WhatsApp renders mentions as `@DisplayName`.
+ * First tries a regex for `@` plus {@link botName} (with optional Unicode formatting marks);
+ * if that does not change the string, removes the first @-prefixed token as a fallback.
  */
 export function stripBotMention(text: string, botName?: string | null): string {
   if (botName) {
-    // Try exact match first: @BotName (possibly with unicode zero-width chars)
     const escaped = botName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const namePattern = new RegExp(`@[\\u200B-\\u200F\\uFEFF]*${escaped}\\b`, "i");
     const stripped = text.replace(namePattern, "").trim();
     if (stripped !== text) return stripped.replace(/\s{2,}/g, " ");
   }
-  // Fallback: strip the first @mention token (WhatsApp inserts mention at the position)
   return text
     .replace(/@[\u200B-\u200F\uFEFF]*\S+/, "")
     .trim()

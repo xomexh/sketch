@@ -1,9 +1,13 @@
-import { type WorkspaceScope, api } from "@/lib/api";
 /**
- * TanStack Query hooks for workspace file operations
- * Provides queries and mutations for the file browser UI
+ * TanStack Query hooks for workspace file operations (file browser UI).
+ *
+ * Queries: directory listing, recursive search, file content. Mutations invalidate
+ * affected caches — e.g. after save, content and the parent directory listing;
+ * after upload/create/folder ops, the parent listing; after delete, parent listing
+ * and content for the path; after rename, both parent directories when they differ
+ * and content for the old path.
  */
-import type { FileMetadata } from "@sketch/shared";
+import { type WorkspaceScope, api } from "@/lib/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 export type { WorkspaceScope };
@@ -18,7 +22,6 @@ interface FileContent {
   mimeType: string | null;
 }
 
-// Query: List files in directory
 export function useFiles(scope: WorkspaceScope, path: string) {
   return useQuery({
     queryKey: [WORKSPACE_QUERY_KEY, WORKSPACE_FILES_KEY, scope, path],
@@ -27,7 +30,6 @@ export function useFiles(scope: WorkspaceScope, path: string) {
   });
 }
 
-// Query: Search files recursively
 export function useSearchFiles(scope: WorkspaceScope, query: string) {
   return useQuery({
     queryKey: [WORKSPACE_QUERY_KEY, "search", scope, query],
@@ -36,7 +38,6 @@ export function useSearchFiles(scope: WorkspaceScope, query: string) {
   });
 }
 
-// Query: Get file content
 export function useFileContent(scope: WorkspaceScope, path: string | null) {
   return useQuery({
     queryKey: [WORKSPACE_QUERY_KEY, "content", scope, path],
@@ -48,7 +49,6 @@ export function useFileContent(scope: WorkspaceScope, path: string | null) {
   });
 }
 
-// Mutation: Save file edits
 export function useSaveFile() {
   const queryClient = useQueryClient();
 
@@ -57,16 +57,13 @@ export function useSaveFile() {
       return api.workspace.saveFile(params.scope, params.path, params.content);
     },
     onSuccess: (_, { scope, path }) => {
-      // Invalidate the file content query to refresh
       queryClient.invalidateQueries({ queryKey: [WORKSPACE_QUERY_KEY, "content", scope, path] });
-      // Also invalidate the parent directory listing in case size/modified time changed
       const parentPath = path.split("/").slice(0, -1).join("/") || ".";
       queryClient.invalidateQueries({ queryKey: [WORKSPACE_QUERY_KEY, WORKSPACE_FILES_KEY, scope, parentPath] });
     },
   });
 }
 
-// Mutation: Upload file
 export function useUploadFile() {
   const queryClient = useQueryClient();
 
@@ -77,14 +74,12 @@ export function useUploadFile() {
       return api.workspace.uploadFile(params.scope, params.path, formData);
     },
     onSuccess: (_, { scope, path }) => {
-      // Invalidate the parent directory listing
       const parentPath = path.split("/").slice(0, -1).join("/") || ".";
       queryClient.invalidateQueries({ queryKey: [WORKSPACE_QUERY_KEY, WORKSPACE_FILES_KEY, scope, parentPath] });
     },
   });
 }
 
-// Mutation: Create folder
 export function useCreateFolder() {
   const queryClient = useQueryClient();
 
@@ -93,14 +88,12 @@ export function useCreateFolder() {
       return api.workspace.createFolder(params.scope, params.path);
     },
     onSuccess: (_, { scope, path }) => {
-      // Invalidate the parent directory listing
       const parentPath = path.split("/").slice(0, -1).join("/") || ".";
       queryClient.invalidateQueries({ queryKey: [WORKSPACE_QUERY_KEY, WORKSPACE_FILES_KEY, scope, parentPath] });
     },
   });
 }
 
-// Mutation: Create empty file
 export function useCreateFile() {
   const queryClient = useQueryClient();
 
@@ -109,14 +102,12 @@ export function useCreateFile() {
       return api.workspace.createFile(params.scope, params.path);
     },
     onSuccess: (_, { scope, path }) => {
-      // Invalidate the parent directory listing
       const parentPath = path.split("/").slice(0, -1).join("/") || ".";
       queryClient.invalidateQueries({ queryKey: [WORKSPACE_QUERY_KEY, WORKSPACE_FILES_KEY, scope, parentPath] });
     },
   });
 }
 
-// Mutation: Delete file/folder
 export function useDeleteFile() {
   const queryClient = useQueryClient();
 
@@ -125,16 +116,13 @@ export function useDeleteFile() {
       return api.workspace.deleteFile(params.scope, params.path);
     },
     onSuccess: (_, { scope, path }) => {
-      // Invalidate the parent directory listing
       const parentPath = path.split("/").slice(0, -1).join("/") || ".";
       queryClient.invalidateQueries({ queryKey: [WORKSPACE_QUERY_KEY, WORKSPACE_FILES_KEY, scope, parentPath] });
-      // Invalidate any content query for this path
       queryClient.invalidateQueries({ queryKey: [WORKSPACE_QUERY_KEY, "content", scope, path] });
     },
   });
 }
 
-// Mutation: Rename file/folder
 export function useRenameFile() {
   const queryClient = useQueryClient();
 
@@ -143,14 +131,12 @@ export function useRenameFile() {
       return api.workspace.renameFile(params.scope, params.oldPath, params.newPath);
     },
     onSuccess: (_, { scope, oldPath, newPath }) => {
-      // Invalidate both parent directories
       const oldParent = oldPath.split("/").slice(0, -1).join("/") || ".";
       const newParent = newPath.split("/").slice(0, -1).join("/") || ".";
       queryClient.invalidateQueries({ queryKey: [WORKSPACE_QUERY_KEY, WORKSPACE_FILES_KEY, scope, oldParent] });
       if (oldParent !== newParent) {
         queryClient.invalidateQueries({ queryKey: [WORKSPACE_QUERY_KEY, WORKSPACE_FILES_KEY, scope, newParent] });
       }
-      // Invalidate content queries
       queryClient.invalidateQueries({ queryKey: [WORKSPACE_QUERY_KEY, "content", scope, oldPath] });
     },
   });

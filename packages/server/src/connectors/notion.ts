@@ -11,7 +11,8 @@
  * - Incremental: filter by last_edited_time using cursor timestamp
  *
  * Rate limit: 3 req/s (Notion's published limit). We use a simple
- * timestamp-tracking throttle to stay within bounds.
+ * timestamp-tracking throttle to stay within bounds. Each connector instance
+ * keeps isolated throttle state so concurrent syncs do not share it.
  */
 import { createHash } from "node:crypto";
 import type { Logger } from "pino";
@@ -381,7 +382,6 @@ async function refreshNotionToken(credentials: OAuthCredentials): Promise<OAuthC
 }
 
 export function createNotionConnector(): Connector {
-  // Per-connector-instance rate limiter state — not shared across concurrent syncs
   const { notionGet, notionPost } = makeNotionRequests();
 
   return {
@@ -413,7 +413,11 @@ export function createNotionConnector(): Connector {
   };
 }
 
-/** Discover and sync all databases + their page entries. */
+/**
+ * Discover and sync all databases and their page entries.
+ * Stub database rows from search omit `accessScope` — that API does not expose
+ * per-resource permission metadata for them.
+ */
 async function* syncDatabases(
   token: string,
   since: string | null,
@@ -459,7 +463,6 @@ async function* syncDatabases(
         contentHash: contentHash(`db-${dbId}-${lastEdited}`),
         sourceCreatedAt: (db.created_time as string) ?? null,
         sourceUpdatedAt: lastEdited ?? null,
-        // Notion API doesn't expose per-page permissions — no access restrictions
       };
 
       yield* syncDatabasePages(dbId, title, token, since, logger, notionPost);

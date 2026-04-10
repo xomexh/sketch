@@ -1,7 +1,18 @@
 /**
- * Slack adapter — wires Slack event handlers (DM, thread, channel mention) onto a SlackBot.
+ * Slack adapter — wires Slack event handlers onto a SlackBot.
+ *
+ * `createConfiguredSlackBot` registers three flows:
+ * - **DM** — per-user queue; downloads attachments into the workspace; merges pending inbound/outbound
+ *   outreach into the prompt when present; posts a thinking placeholder; runs the agent; uploads any
+ *   pending files returned by the run.
+ * - **Passive thread** — for threads already registered after a channel mention, appends incoming
+ *   messages (and optional file downloads) to the thread buffer for later context.
+ * - **Channel mention** — per channel+thread queue; ensures a channel row exists; registers the thread
+ *   for buffering; either drains buffered thread messages or bootstraps context from Slack thread/channel
+ *   history; posts a thinking reply; runs the agent with shared channel workspace context.
+ *
  * Extracted from index.ts for testability. All handler logic lives here; index.ts only calls
- * createConfiguredSlackBot() and passes the result to the startup manager.
+ * `createConfiguredSlackBot()` and passes the result to the startup manager.
  */
 import { join } from "node:path";
 import type { Kysely } from "kysely";
@@ -52,11 +63,13 @@ export interface SlackAdapterDeps {
   outreachRepo?: OutreachRepository;
 }
 
+/** Verifies the bot (and optionally app) token with Slack `auth.test`. */
 export async function validateSlackTokens(botToken: string, appToken?: string) {
   void appToken;
   await slackApiCall(botToken, "auth.test");
 }
 
+/** Downloads each Slack file into `attachDir`, skipping individual failures after logging. */
 async function downloadSlackFiles(
   files: SlackFile[],
   botToken: string | null | undefined,
@@ -80,6 +93,10 @@ async function downloadSlackFiles(
   return attachments;
 }
 
+/**
+ * Constructs a {@link SlackBot} for the configured mode (socket vs HTTP) and registers DM, passive
+ * thread, and channel mention handlers using `deps`.
+ */
 export function createConfiguredSlackBot(tokens: { botToken: string; appToken?: string }, deps: SlackAdapterDeps) {
   const {
     db,
@@ -209,7 +226,6 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken?: 
     });
   };
 
-  // DM handler
   slackBot.onMessage(async (message) => {
     const user = await resolveUser(message.userId);
     const userQueue = queue.getQueue(user.id);
@@ -220,7 +236,6 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken?: 
       const workspaceDir = await ensureWorkspace(config, user.id);
       const settingsRow = await repos.settings.get();
 
-      // Download any attached files
       let attachments: Attachment[] = [];
       if (message.files?.length) {
         logger.debug(
@@ -253,13 +268,11 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken?: 
         );
       }
 
-      // Post thinking indicator
       const thinkingTs = await slackBot.postMessage(message.channelId, "_Thinking..._");
       const onMessage = createSlackMessageHandler(slackBot, message.channelId, thinkingTs);
 
       const integrationMcpServers = await buildMcpServers(user.email);
 
-      // Resolve outreach context: pending inbound (recipient) and pending outbound (requester)
       const pendingInbound = outreachRepo ? await outreachRepo.findPendingForRecipient(user.id) : [];
       const pendingOutbound = outreachRepo ? await outreachRepo.findPendingForRequester(user.id) : [];
       let userMessage = message.text || "See attached files.";
@@ -343,7 +356,6 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken?: 
     });
   });
 
-  // Passive thread message handler
   slackBot.onThreadMessage(async (message) => {
     if (!message.threadTs) return;
     if (!slackDeps.threadBuffer.hasThread(message.channelId, message.threadTs)) return;
@@ -379,7 +391,6 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken?: 
     );
   });
 
-  // Channel mention handler
   slackBot.onChannelMention(async (message) => {
     const threadTs = message.threadTs ?? message.ts;
     const mentionQueue = queue.getQueue(`${message.channelId}:${threadTs}`);
@@ -409,7 +420,6 @@ export function createConfiguredSlackBot(tokens: { botToken: string; appToken?: 
 
         slackDeps.threadBuffer.register(message.channelId, threadTs);
 
-        // Download any attached files
         let attachments: Attachment[] = [];
         if (message.files?.length) {
           logger.debug(

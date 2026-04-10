@@ -12,6 +12,11 @@
  *
  * ClickUp has no real change detection API, so we rely on content hashing
  * to detect updates and avoid redundant writes.
+ *
+ * When entity/person seed callbacks are set: seeds workspace members, spaces,
+ * and folders as entities; assigns access scope so private spaces use space
+ * members and public spaces use workspace members; seeds task assignees
+ * collected during traversal as persons after the crawl.
  */
 import { createHash } from "node:crypto";
 import pino, { type Logger } from "pino";
@@ -78,6 +83,10 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
 
+/**
+ * GET JSON from the ClickUp API with timeout, exponential backoff on network
+ * failures, `Retry-After` handling for 429, and retries on 5xx responses.
+ */
 async function clickupRequest(path: string, token: string, logger: Logger, attempt = 1): Promise<unknown> {
   const url = `${CLICKUP_API}${path}`;
 
@@ -88,7 +97,6 @@ async function clickupRequest(path: string, token: string, logger: Logger, attem
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (err) {
-    // Network-level failure (DNS, connection refused, timeout, etc.)
     const cause = err instanceof Error && "cause" in err ? ((err.cause as Error)?.message ?? "") : "";
     const detail = cause ? `${(err as Error).message} (${cause})` : (err as Error).message;
 
@@ -116,7 +124,6 @@ async function clickupRequest(path: string, token: string, logger: Logger, attem
   if (!response.ok) {
     const body = await response.text();
 
-    // Retry on server errors (5xx)
     if (response.status >= 500 && attempt < MAX_RETRIES) {
       const waitMs = RETRY_BASE_MS * 2 ** (attempt - 1);
       logger.warn({ path, status: response.status, attempt, waitMs }, "Server error, retrying");
@@ -235,7 +242,6 @@ export function createClickUpConnector(): Connector {
         const workspaceEmails = extractMemberEmails(team.members);
         logger.info({ teamId: team.id, memberCount: workspaceEmails.length }, "Workspace members resolved");
 
-        // Seed workspace members as person entities
         if (onPersonSeed) {
           for (const member of team.members) {
             if (member.user.username) {
@@ -259,7 +265,6 @@ export function createClickUpConnector(): Connector {
             continue;
           }
 
-          // Seed space as entity
           if (onEntitySeed) {
             await onEntitySeed({
               name: space.name,
@@ -270,8 +275,6 @@ export function createClickUpConnector(): Connector {
             });
           }
 
-          // Build access scope for this space.
-          // Private spaces use space members; public spaces use all workspace members.
           let spaceScope: SyncedItem["accessScope"];
           if (space.private && space.members) {
             const memberEmails = extractMemberEmails(space.members);
@@ -302,7 +305,6 @@ export function createClickUpConnector(): Connector {
             folders: ClickUpFolder[];
           };
           for (const folder of foldersRes.folders) {
-            // Seed folder as entity
             if (onEntitySeed) {
               await onEntitySeed({
                 name: folder.name,
@@ -330,7 +332,6 @@ export function createClickUpConnector(): Connector {
         }
       }
 
-      // Seed assignees collected during task traversal as person entities
       if (onPersonSeed) {
         for (const [, assignee] of seenAssignees) {
           await onPersonSeed({

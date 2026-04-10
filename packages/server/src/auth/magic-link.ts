@@ -10,18 +10,30 @@ const RATE_WINDOW_MS = 15 * 60 * 1000;
  * Find a user by email who has a verified email address.
  * Uses LOWER() for case-insensitive matching (Postgres-safe).
  */
-export async function findVerifiedUserByEmail(
-  db: Kysely<DB>,
-  email: string,
-): Promise<{ id: string; name: string; email: string } | null> {
+export interface VerifiedUser {
+  id: string;
+  name: string;
+  email: string;
+  slack_user_id: string | null;
+  whatsapp_number: string | null;
+}
+
+export async function findVerifiedUserByEmail(db: Kysely<DB>, email: string): Promise<VerifiedUser | null> {
   const user = await db
     .selectFrom("users")
-    .select(["id", "name", "email"])
+    .select(["id", "name", "email", "slack_user_id", "whatsapp_number"])
     .where(sql`LOWER(email)`, "=", email.toLowerCase())
     .where("email_verified_at", "is not", null)
     .executeTakeFirst();
 
-  return user?.email ? { id: user.id, name: user.name, email: user.email } : null;
+  if (!user?.email) return null;
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    slack_user_id: user.slack_user_id ?? null,
+    whatsapp_number: user.whatsapp_number ?? null,
+  };
 }
 
 /**

@@ -194,26 +194,11 @@ export function scheduledTaskRoutes(db: Kysely<DB>, scheduler: ScheduledTaskMuta
         response: c.json({ error: { code: "NOT_FOUND", message: "Scheduled task not found" } }, 404),
       };
     }
-
-    const role = c.get("role");
-    const sub = c.get("sub");
-    if (role === "member" && row.created_by !== sub) {
-      return {
-        response: c.json(
-          { error: { code: "FORBIDDEN", message: "You do not have access to this scheduled task" } },
-          403,
-        ),
-      };
-    }
-
     return { row };
   }
 
   routes.get("/", async (c) => {
-    const role = c.get("role");
-    const sub = c.get("sub");
-
-    const rows = role === "admin" ? await repo.listAll() : await repo.listByCreatedBy(sub);
+    const rows = await repo.listAll();
 
     rows.sort(compareNewestFirst);
 

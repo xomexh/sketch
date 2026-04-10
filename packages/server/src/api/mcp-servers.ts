@@ -16,7 +16,6 @@ import type { createMcpServerRepository } from "../db/repositories/mcp-servers";
 import type { createUserRepository } from "../db/repositories/users";
 import { createProvider } from "../integrations/factory";
 import { canvasCredentialsSchema } from "../integrations/types";
-import { requireAdmin } from "./middleware";
 
 type McpServerRepo = ReturnType<typeof createMcpServerRepository>;
 type UserRepo = ReturnType<typeof createUserRepository>;
@@ -118,16 +117,6 @@ async function testMcpConnection(
   }
 }
 
-function requireMember() {
-  return async (c: import("hono").Context, next: import("hono").Next) => {
-    const role = c.get("role");
-    if (role !== "member") {
-      return c.json({ error: { code: "FORBIDDEN", message: "Member access required" } }, 403);
-    }
-    return next();
-  };
-}
-
 /**
  * Looks up an MCP server by ID and verifies it is an integration provider
  * (non-null type and api_url). Returns the row or a JSON error response.
@@ -208,7 +197,7 @@ export function mcpServerRoutes(mcpServers: McpServerRepo, users: UserRepo) {
     return c.json({ servers: servers.map(serializeServer) });
   });
 
-  routes.post("/", requireAdmin(), async (c) => {
+  routes.post("/", async (c) => {
     const body = await c.req.json();
     const parsed = addServerSchema.safeParse(body);
     if (!parsed.success) {
@@ -249,7 +238,7 @@ export function mcpServerRoutes(mcpServers: McpServerRepo, users: UserRepo) {
     }
   });
 
-  routes.patch("/:id", requireAdmin(), async (c) => {
+  routes.patch("/:id", async (c) => {
     const id = c.req.param("id");
     const existing = await mcpServers.getById(id);
     if (!existing) {
@@ -278,7 +267,7 @@ export function mcpServerRoutes(mcpServers: McpServerRepo, users: UserRepo) {
     return c.json({ server: serializeServer(updated) });
   });
 
-  routes.delete("/:id", requireAdmin(), async (c) => {
+  routes.delete("/:id", async (c) => {
     const id = c.req.param("id");
     const existing = await mcpServers.getById(id);
     if (!existing) {
@@ -329,7 +318,7 @@ export function mcpServerRoutes(mcpServers: McpServerRepo, users: UserRepo) {
     return c.json({ apps: result.apps, pageInfo: result.pageInfo });
   });
 
-  routes.post("/:id/connections", requireMember(), async (c) => {
+  routes.post("/:id/connections", async (c) => {
     const resolved = await resolveProvider(c, mcpServers);
     if (!resolved.ok) return resolved.response;
     const { row } = resolved;
@@ -353,7 +342,7 @@ export function mcpServerRoutes(mcpServers: McpServerRepo, users: UserRepo) {
     return c.json(result);
   });
 
-  routes.get("/:id/connections", requireMember(), async (c) => {
+  routes.get("/:id/connections", async (c) => {
     const resolved = await resolveProvider(c, mcpServers);
     if (!resolved.ok) return resolved.response;
     const { row } = resolved;
@@ -366,7 +355,7 @@ export function mcpServerRoutes(mcpServers: McpServerRepo, users: UserRepo) {
     return c.json({ connections });
   });
 
-  routes.delete("/:id/connections/:connectionId", requireMember(), async (c) => {
+  routes.delete("/:id/connections/:connectionId", async (c) => {
     const resolved = await resolveProvider(c, mcpServers);
     if (!resolved.ok) return resolved.response;
     const { row } = resolved;

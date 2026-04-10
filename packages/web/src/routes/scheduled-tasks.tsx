@@ -1,5 +1,4 @@
 import { type ScheduledTaskListItem, api } from "@/lib/api";
-import { useDashboardAuth } from "@/routes/dashboard";
 import {
   CaretRightIcon,
   ClockIcon,
@@ -62,11 +61,7 @@ function formatDateTime(value: string | null) {
   }).format(date);
 }
 
-function getScheduledTasksSubtitle(role: "admin" | "member") {
-  return role === "admin"
-    ? "View and manage recurring and one-time tasks across the workspace"
-    : "View and manage the tasks you created through chat";
-}
+const SCHEDULED_TASKS_SUBTITLE = "View and manage recurring and one-time tasks across the workspace";
 
 function getFallbackTaskError(error: unknown) {
   return error instanceof Error && error.message ? error.message : "Failed to update scheduled task";
@@ -85,7 +80,6 @@ function removeTaskFromCache(tasks: ScheduledTaskListItem[] | undefined, taskId:
 }
 
 export function ScheduledTasksPage() {
-  const auth = useDashboardAuth();
   const queryClient = useQueryClient();
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [deletingTask, setDeletingTask] = useState<ScheduledTaskListItem | null>(null);
@@ -131,13 +125,12 @@ export function ScheduledTasksPage() {
   });
 
   const tasks = tasksQuery.data ?? [];
-  const isAdmin = auth.role === "admin";
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
       <div>
         <h1 className="text-xl font-bold">Scheduled Tasks</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{getScheduledTasksSubtitle(auth.role)}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{SCHEDULED_TASKS_SUBTITLE}</p>
       </div>
 
       <div className="mt-6">
@@ -149,15 +142,12 @@ export function ScheduledTasksPage() {
           <EmptyState />
         ) : (
           <>
-            <p className="mb-3 text-sm font-medium text-muted-foreground">
-              {isAdmin ? "All scheduled tasks" : "Your scheduled tasks"}
-            </p>
+            <p className="mb-3 text-sm font-medium text-muted-foreground">All scheduled tasks</p>
             <div className="rounded-lg border border-border bg-card">
               {tasks.map((task, index) => (
                 <TaskRow
                   key={task.id}
                   task={task}
-                  isAdmin={isAdmin}
                   isExpanded={expandedTaskId === task.id}
                   isLast={index === tasks.length - 1}
                   isMutating={
@@ -206,7 +196,6 @@ function PlatformIcon({ platform }: { platform: "slack" | "whatsapp" }) {
 
 function TaskRow({
   task,
-  isAdmin,
   isExpanded,
   isLast,
   isMutating,
@@ -216,7 +205,6 @@ function TaskRow({
   onDelete,
 }: {
   task: ScheduledTaskListItem;
-  isAdmin: boolean;
   isExpanded: boolean;
   isLast: boolean;
   isMutating: boolean;
@@ -255,7 +243,7 @@ function TaskRow({
               {task.scheduleLabel}
               <span className="mx-1.5">·</span>
               {targetLabel}
-              {isAdmin && task.creatorName ? (
+              {task.creatorName ? (
                 <>
                   <span className="mx-1.5">·</span>
                   {task.creatorName}
@@ -326,7 +314,7 @@ function TaskRow({
             <DetailItem label="Next run" value={formatDateTime(task.nextRunAt)} />
             <DetailItem label="Last run" value={formatDateTime(task.lastRunAt)} />
             <DetailItem label="Created" value={formatDateTime(task.createdAt)} />
-            {isAdmin ? <DetailItem label="Created by" value={task.creatorName ?? task.createdBy ?? "Unknown"} /> : null}
+            <DetailItem label="Created by" value={task.creatorName ?? task.createdBy ?? "Unknown"} />
             <DetailItem label="Delivery target" value={task.deliveryTarget} />
             {task.threadTs ? <DetailItem label="Thread" value={task.threadTs} /> : null}
           </dl>

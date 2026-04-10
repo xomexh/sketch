@@ -7,7 +7,6 @@ import { z } from "zod";
 import type { createSettingsRepository } from "../db/repositories/settings";
 import type { SmtpConfig } from "../email/send";
 import { sendVerificationCode, verifySmtp } from "../email/send";
-import { requireAdmin } from "./middleware";
 
 type SettingsRepo = ReturnType<typeof createSettingsRepository>;
 
@@ -95,7 +94,7 @@ export function emailRoutes(settings: SettingsRepo) {
   });
 
   /** Save SMTP configuration (verifies first). */
-  routes.put("/config", requireAdmin(), async (c) => {
+  routes.put("/config", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const parsed = smtpSchema.safeParse(body);
     if (!parsed.success) {
@@ -123,7 +122,7 @@ export function emailRoutes(settings: SettingsRepo) {
   });
 
   /** Remove SMTP configuration. */
-  routes.delete("/config", requireAdmin(), async (c) => {
+  routes.delete("/config", async (c) => {
     await settings.update({
       smtpHost: null,
       smtpPort: null,

@@ -1,3 +1,4 @@
+import { SignJWT } from "jose";
 import type { Kysely } from "kysely";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { signJwt } from "./auth/jwt";
@@ -72,6 +73,98 @@ describe("HTTP health endpoint", () => {
       // Without admin setup, returns 503 (setup required); with setup, 404
       expect([404, 503]).toContain(res.status);
     });
+  });
+});
+
+describe("managed login redirect", () => {
+  let db: Kysely<DB>;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    await seedAdmin(db);
+    const settings = createSettingsRepository(db);
+    await settings.update({ onboardingCompletedAt: new Date().toISOString() });
+  });
+
+  afterEach(async () => {
+    try {
+      await db.destroy();
+    } catch {}
+  });
+
+  async function makePlatformToken(email: string, role: "admin" | "member") {
+    return new SignJWT({ sub: "user-123", email, role })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("7d")
+      .sign(new TextEncoder().encode("managed-secret-at-least-32chars-long"));
+  }
+
+  it("redirects /login to MANAGED_URL/login when no valid platform session exists", async () => {
+    const app = createApp(
+      db,
+      createTestConfig({
+        MANAGED_URL: "https://app.getsketch.ai",
+        MANAGED_AUTH_SECRET: "managed-secret-at-least-32chars-long",
+      }),
+    );
+
+    const res = await app.request("/login");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("https://app.getsketch.ai/login");
+  });
+
+  it("redirects non-API HTML routes to MANAGED_URL/login when no valid platform session exists", async () => {
+    const app = createApp(
+      db,
+      createTestConfig({
+        MANAGED_URL: "https://app.getsketch.ai",
+        MANAGED_AUTH_SECRET: "managed-secret-at-least-32chars-long",
+      }),
+    );
+
+    const res = await app.request("/channels");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("https://app.getsketch.ai/login");
+  });
+
+  it("does not affect API routes", async () => {
+    const app = createApp(
+      db,
+      createTestConfig({
+        MANAGED_URL: "https://app.getsketch.ai",
+        MANAGED_AUTH_SECRET: "managed-secret-at-least-32chars-long",
+      }),
+    );
+
+    const res = await app.request("/api/users");
+    expect([401, 403]).toContain(res.status);
+  });
+
+  it("allows HTML routes through when the platform session cookie is valid", async () => {
+    const app = createApp(
+      db,
+      createTestConfig({
+        MANAGED_URL: "https://app.getsketch.ai",
+        MANAGED_AUTH_SECRET: "managed-secret-at-least-32chars-long",
+      }),
+    );
+    const token = await makePlatformToken("admin@test.com", "admin");
+
+    const res = await app.request("/channels", {
+      headers: { Cookie: `sketch_platform_session=${token}` },
+    });
+
+    expect([200, 404]).toContain(res.status);
+    expect(res.status).not.toBe(302);
+  });
+
+  it("serves the normal login page when MANAGED_URL is not set", async () => {
+    const app = createApp(db, createTestConfig());
+    const res = await app.request("/login");
+
+    expect([200, 404]).toContain(res.status);
+    expect(res.status).not.toBe(302);
   });
 });
 
@@ -583,6 +676,8 @@ describe("Auth endpoints", () => {
 
     it("returns authenticated true with valid session", async () => {
       await seedAdmin(db);
+      const users = createUserRepository(db);
+      const adminUser = await users.create({ name: "admin", email: "admin@test.com", emailVerified: true });
       const app = createApp(db, config);
 
       const loginRes = await app.request("/api/auth/login", {
@@ -598,7 +693,201 @@ describe("Auth endpoints", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.authenticated).toBe(true);
+      expect(body.role).toBe("member");
+      expect(body.userId).toBe(adminUser.id);
+      expect(body.name).toBe("admin");
       expect(body.email).toBe("admin@test.com");
+    });
+  });
+
+  describe("GET /api/auth/session — managed SSO", () => {
+    const MANAGED_SECRET = "managed-test-secret-at-least-32chars-long";
+
+    async function makePlatformToken(
+      email: string,
+      role: "admin" | "member" | "customer" = "customer",
+      secret = MANAGED_SECRET,
+    ): Promise<string> {
+      return new SignJWT({ sub: "a0000000-0000-0000-0000-000000000001", email, role })
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuedAt()
+        .setExpirationTime("7d")
+        .sign(new TextEncoder().encode(secret));
+    }
+
+    async function makeExpiredPlatformToken(email: string): Promise<string> {
+      return new SignJWT({ sub: "a0000000-0000-0000-0000-000000000001", email, role: "customer" })
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuedAt(Math.floor(Date.now() / 1000) - 7200)
+        .setExpirationTime(Math.floor(Date.now() / 1000) - 3600)
+        .sign(new TextEncoder().encode(MANAGED_SECRET));
+    }
+
+    it("returns authenticated when valid platform cookie and user exists", async () => {
+      await seedAdmin(db);
+      const users = createUserRepository(db);
+      await users.create({ name: "Platform User", email: "platform@test.com", role: "admin" });
+
+      const managedConfig = createTestConfig({ MANAGED_AUTH_SECRET: MANAGED_SECRET });
+      const app = createApp(db, managedConfig);
+      const token = await makePlatformToken("platform@test.com");
+
+      const res = await app.request("/api/auth/session", {
+        headers: { Cookie: `sketch_platform_session=${token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.authenticated).toBe(true);
+      expect(body.email).toBe("platform@test.com");
+      expect(body.role).toBe("admin");
+    });
+
+    it("preserves admin role from managed platform cookie", async () => {
+      await seedAdmin(db);
+      const users = createUserRepository(db);
+      const user = await users.create({ name: "Platform Admin", email: "platform-admin@test.com", role: "admin" });
+
+      const managedConfig = createTestConfig({ MANAGED_AUTH_SECRET: MANAGED_SECRET });
+      const app = createApp(db, managedConfig);
+      const token = await makePlatformToken("platform-admin@test.com", "admin");
+
+      const res = await app.request("/api/auth/session", {
+        headers: { Cookie: `sketch_platform_session=${token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.authenticated).toBe(true);
+      expect(body.role).toBe("admin");
+      expect(body.userId).toBe(user.id);
+      expect(body.email).toBe("platform-admin@test.com");
+    });
+
+    it("returns authenticated with member details for member users", async () => {
+      await seedAdmin(db);
+      const users = createUserRepository(db);
+      const user = await users.create({ name: "Member User", email: "member@test.com", role: "member" });
+
+      const managedConfig = createTestConfig({ MANAGED_AUTH_SECRET: MANAGED_SECRET });
+      const app = createApp(db, managedConfig);
+      const token = await makePlatformToken("member@test.com", "member");
+
+      const res = await app.request("/api/auth/session", {
+        headers: { Cookie: `sketch_platform_session=${token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.authenticated).toBe(true);
+      expect(body.role).toBe("member");
+      expect(body.userId).toBe(user.id);
+      expect(body.name).toBe("Member User");
+      expect(body.email).toBe("member@test.com");
+    });
+
+    it("returns authenticated false when user not found in tenant", async () => {
+      await seedAdmin(db);
+      const managedConfig = createTestConfig({ MANAGED_AUTH_SECRET: MANAGED_SECRET });
+      const app = createApp(db, managedConfig);
+      const token = await makePlatformToken("unknown@test.com");
+
+      const res = await app.request("/api/auth/session", {
+        headers: { Cookie: `sketch_platform_session=${token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.authenticated).toBe(false);
+    });
+
+    it("returns authenticated false when platform cookie is invalid", async () => {
+      await seedAdmin(db);
+      const managedConfig = createTestConfig({ MANAGED_AUTH_SECRET: MANAGED_SECRET });
+      const app = createApp(db, managedConfig);
+      const token = await makePlatformToken("admin@test.com", "customer", "wrong-secret-that-is-at-least-32chars");
+
+      const res = await app.request("/api/auth/session", {
+        headers: { Cookie: `sketch_platform_session=${token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.authenticated).toBe(false);
+    });
+
+    it("returns authenticated false when platform cookie is expired", async () => {
+      await seedAdmin(db);
+      const users = createUserRepository(db);
+      await users.create({ name: "Platform User", email: "platform@test.com", role: "admin" });
+
+      const managedConfig = createTestConfig({ MANAGED_AUTH_SECRET: MANAGED_SECRET });
+      const app = createApp(db, managedConfig);
+      const token = await makeExpiredPlatformToken("platform@test.com");
+
+      const res = await app.request("/api/auth/session", {
+        headers: { Cookie: `sketch_platform_session=${token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.authenticated).toBe(false);
+    });
+
+    it("local session takes priority over platform cookie", async () => {
+      await seedAdmin(db);
+      const users = createUserRepository(db);
+      const adminUser = await users.create({ name: "admin", email: "admin@test.com", emailVerified: true });
+      await users.create({ name: "Platform User", email: "platform@test.com", role: "member" });
+
+      const managedConfig = createTestConfig({ MANAGED_AUTH_SECRET: MANAGED_SECRET });
+      const app = createApp(db, managedConfig);
+
+      const loginRes = await app.request("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "admin@test.com", password: "testpassword123" }),
+      });
+      const localCookie = loginRes.headers.get("set-cookie") ?? "";
+      const platformToken = await makePlatformToken("platform@test.com");
+
+      const res = await app.request("/api/auth/session", {
+        headers: { Cookie: `${localCookie}; sketch_platform_session=${platformToken}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.authenticated).toBe(true);
+      expect(body.role).toBe("member");
+      expect(body.userId).toBe(adminUser.id);
+      expect(body.email).toBe("admin@test.com");
+    });
+
+    it("falls through to platform cookie when local session is invalid", async () => {
+      await seedAdmin(db);
+      const users = createUserRepository(db);
+      await users.create({ name: "Platform User", email: "platform@test.com", role: "admin" });
+
+      const managedConfig = createTestConfig({ MANAGED_AUTH_SECRET: MANAGED_SECRET });
+      const app = createApp(db, managedConfig);
+      const platformToken = await makePlatformToken("platform@test.com");
+
+      const res = await app.request("/api/auth/session", {
+        headers: { Cookie: `sketch_session=invalid.token.here; sketch_platform_session=${platformToken}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.authenticated).toBe(true);
+      expect(body.email).toBe("platform@test.com");
+    });
+
+    it("ignores platform cookie when MANAGED_AUTH_SECRET is not configured", async () => {
+      await seedAdmin(db);
+      const users = createUserRepository(db);
+      await users.create({ name: "Platform User", email: "platform@test.com", role: "admin" });
+
+      const app = createApp(db, config);
+      const token = await makePlatformToken("platform@test.com");
+
+      const res = await app.request("/api/auth/session", {
+        headers: { Cookie: `sketch_platform_session=${token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.authenticated).toBe(false);
     });
   });
 
@@ -1618,9 +1907,11 @@ describe("RBAC", () => {
     } catch {}
   });
 
-  /** Seed admin, complete onboarding, return admin cookie + jwt_secret. */
+  /** Seed admin, create admin user row, complete onboarding, return admin cookie + jwt_secret. */
   async function setupWithAdmin(app: ReturnType<typeof createApp>) {
     await seedAdmin(db);
+    const users = createUserRepository(db);
+    await users.create({ name: "admin", email: "admin@test.com", emailVerified: true });
     const settings = createSettingsRepository(db);
     await settings.update({ onboardingCompletedAt: new Date().toISOString() });
     const loginRes = await app.request("/api/auth/login", {
@@ -1641,124 +1932,6 @@ describe("RBAC", () => {
     const token = await signJwt(user.id, "member", jwtSecret);
     return { memberId: user.id, memberCookie: `sketch_session=${token}` };
   }
-
-  describe("admin-only routes return 403 for members", () => {
-    it("POST /api/users", async () => {
-      const app = createApp(db, config);
-      const { jwtSecret } = await setupWithAdmin(app);
-      const { memberCookie } = await createMemberSession(jwtSecret);
-
-      const res = await app.request("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: memberCookie },
-        body: JSON.stringify({ name: "New User" }),
-      });
-      expect(res.status).toBe(403);
-
-      const body = await res.json();
-      expect(body.error.code).toBe("FORBIDDEN");
-    });
-
-    it("DELETE /api/users/:id", async () => {
-      const app = createApp(db, config);
-      const { jwtSecret } = await setupWithAdmin(app);
-      const { memberCookie } = await createMemberSession(jwtSecret);
-
-      const res = await app.request("/api/users/some-id", {
-        method: "DELETE",
-        headers: { Cookie: memberCookie },
-      });
-      expect(res.status).toBe(403);
-    });
-
-    it("DELETE /api/channels/slack", async () => {
-      const app = createApp(db, config);
-      const { jwtSecret } = await setupWithAdmin(app);
-      const { memberCookie } = await createMemberSession(jwtSecret);
-
-      const res = await app.request("/api/channels/slack", {
-        method: "DELETE",
-        headers: { Cookie: memberCookie },
-      });
-      expect(res.status).toBe(403);
-    });
-
-    it("PUT /api/channels/email", async () => {
-      const app = createApp(db, config);
-      const { jwtSecret } = await setupWithAdmin(app);
-      const { memberCookie } = await createMemberSession(jwtSecret);
-
-      const res = await app.request("/api/channels/email", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Cookie: memberCookie },
-        body: JSON.stringify({ smtpHost: "mail.example.com" }),
-      });
-      expect(res.status).toBe(403);
-    });
-
-    it("DELETE /api/channels/email", async () => {
-      const app = createApp(db, config);
-      const { jwtSecret } = await setupWithAdmin(app);
-      const { memberCookie } = await createMemberSession(jwtSecret);
-
-      const res = await app.request("/api/channels/email", {
-        method: "DELETE",
-        headers: { Cookie: memberCookie },
-      });
-      expect(res.status).toBe(403);
-    });
-
-    it("POST /api/channels/email/test", async () => {
-      const app = createApp(db, config);
-      const { jwtSecret } = await setupWithAdmin(app);
-      const { memberCookie } = await createMemberSession(jwtSecret);
-
-      const res = await app.request("/api/channels/email/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: memberCookie },
-        body: JSON.stringify({}),
-      });
-      expect(res.status).toBe(403);
-    });
-
-    it("POST /api/skills", async () => {
-      const app = createApp(db, config);
-      const { jwtSecret } = await setupWithAdmin(app);
-      const { memberCookie } = await createMemberSession(jwtSecret);
-
-      const res = await app.request("/api/skills", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: memberCookie },
-        body: JSON.stringify({ name: "Test Skill" }),
-      });
-      expect(res.status).toBe(403);
-    });
-
-    it("PUT /api/skills/:id", async () => {
-      const app = createApp(db, config);
-      const { jwtSecret } = await setupWithAdmin(app);
-      const { memberCookie } = await createMemberSession(jwtSecret);
-
-      const res = await app.request("/api/skills/some-id", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Cookie: memberCookie },
-        body: JSON.stringify({ name: "Updated" }),
-      });
-      expect(res.status).toBe(403);
-    });
-
-    it("DELETE /api/skills/:id", async () => {
-      const app = createApp(db, config);
-      const { jwtSecret } = await setupWithAdmin(app);
-      const { memberCookie } = await createMemberSession(jwtSecret);
-
-      const res = await app.request("/api/skills/some-id", {
-        method: "DELETE",
-        headers: { Cookie: memberCookie },
-      });
-      expect(res.status).toBe(403);
-    });
-  });
 
   describe("read routes allow members", () => {
     it("GET /api/users", async () => {
@@ -1797,7 +1970,7 @@ describe("RBAC", () => {
       expect(body.user.name).toBe("Updated Name");
     });
 
-    it("PATCH /api/users/:id returns 403 for other user's profile", async () => {
+    it("PATCH /api/users/:id allows editing another user's profile", async () => {
       const app = createApp(db, config);
       const { jwtSecret } = await setupWithAdmin(app);
       const { memberCookie } = await createMemberSession(jwtSecret);
@@ -1809,32 +1982,15 @@ describe("RBAC", () => {
       const res = await app.request(`/api/users/${other.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Cookie: memberCookie },
-        body: JSON.stringify({ name: "Hacked" }),
-      });
-      expect(res.status).toBe(403);
-
-      const body = await res.json();
-      expect(body.error.code).toBe("FORBIDDEN");
-    });
-
-    it("PATCH own profile ignores email field for members", async () => {
-      const app = createApp(db, config);
-      const { jwtSecret } = await setupWithAdmin(app);
-      const { memberId, memberCookie } = await createMemberSession(jwtSecret);
-
-      const res = await app.request(`/api/users/${memberId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Cookie: memberCookie },
-        body: JSON.stringify({ name: "Updated", email: "hacker@evil.com" }),
+        body: JSON.stringify({ name: "Updated by Peer" }),
       });
       expect(res.status).toBe(200);
 
       const body = await res.json();
-      expect(body.user.name).toBe("Updated");
-      expect(body.user.email).toBeNull();
+      expect(body.user.name).toBe("Updated by Peer");
     });
 
-    it("POST /api/users/:id/verification returns 403 for other user", async () => {
+    it("POST /api/users/:id/verification returns 400 NO_EMAIL for user without email", async () => {
       const app = createApp(db, config);
       const { jwtSecret } = await setupWithAdmin(app);
       const { memberCookie } = await createMemberSession(jwtSecret);
@@ -1846,7 +2002,10 @@ describe("RBAC", () => {
         method: "POST",
         headers: { Cookie: memberCookie },
       });
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(400);
+
+      const body = await res.json();
+      expect(body.error.code).toBe("NO_EMAIL");
     });
   });
 });

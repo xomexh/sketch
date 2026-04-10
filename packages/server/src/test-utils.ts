@@ -1,3 +1,5 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import Database from "better-sqlite3";
@@ -80,6 +82,8 @@ export function createTestConfig(overrides: Partial<Config> = {}): Config {
     MAX_UPLOAD_SIZE_MB: 50,
     EXPERIMENTAL_FLAG: true,
     DATA_DIR: "./data",
+    CLAUDE_CONFIG_DIR: join(tmpdir(), "test-claude"),
+    SKETCH_CONFIG_DIR: join(tmpdir(), "test-sketch"),
     PORT: 3000,
     LOG_LEVEL: "info",
     ...overrides,

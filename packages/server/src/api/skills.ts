@@ -1,18 +1,16 @@
 import type { Dirent } from "node:fs";
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import type { Config } from "../config";
 import { type LoadedSkill, loadClaudeSkillsFromDirAsync } from "../skills/loader";
-import { requireAdmin } from "./middleware";
 
-function getOrgSkillsDir(): string {
-  return join(homedir(), ".claude", "skills");
+function getOrgSkillsDir(claudeConfigDir: string): string {
+  return join(claudeConfigDir, "skills");
 }
 
-function loadOrgSkills(): Promise<LoadedSkill[]> {
-  return loadClaudeSkillsFromDirAsync(getOrgSkillsDir());
+function loadOrgSkills(claudeConfigDir: string): Promise<LoadedSkill[]> {
+  return loadClaudeSkillsFromDirAsync(getOrgSkillsDir(claudeConfigDir));
 }
 
 interface WorkspaceSkill {
@@ -65,8 +63,8 @@ function slugify(input: string): string {
     .slice(0, 64);
 }
 
-function orgSkillMdPath(id: string): string {
-  return join(getOrgSkillsDir(), id, "SKILL.md");
+function orgSkillMdPath(claudeConfigDir: string, id: string): string {
+  return join(getOrgSkillsDir(claudeConfigDir), id, "SKILL.md");
 }
 
 function workspaceSkillDir(dataDir: string, workspaceId: string, id: string): string {
@@ -95,11 +93,11 @@ function renderSkillMd(data: { name: string; description: string; category: stri
   return fm + body + (body.endsWith("\n") || body === "" ? "" : "\n");
 }
 
-export function skillsRoutes(config: Pick<Config, "DATA_DIR">) {
+export function skillsRoutes(config: Pick<Config, "DATA_DIR" | "CLAUDE_CONFIG_DIR">) {
   const routes = new Hono();
 
   routes.get("/", async (c) => {
-    const orgSkills = await loadOrgSkills();
+    const orgSkills = await loadOrgSkills(config.CLAUDE_CONFIG_DIR);
     const workspaceSkills = await loadWorkspaceSkills(config.DATA_DIR);
 
     const byId = new Map<string, LoadedSkill>();
@@ -121,7 +119,7 @@ export function skillsRoutes(config: Pick<Config, "DATA_DIR">) {
     const id = assertSkillId(c.req.param("id"));
     if (!id) return c.json({ error: { code: "BAD_REQUEST", message: "Invalid skill id" } }, 400);
 
-    const orgSkills = await loadOrgSkills();
+    const orgSkills = await loadOrgSkills(config.CLAUDE_CONFIG_DIR);
     const workspaceSkills = await loadWorkspaceSkills(config.DATA_DIR);
 
     const all: LoadedSkill[] = [
@@ -137,7 +135,7 @@ export function skillsRoutes(config: Pick<Config, "DATA_DIR">) {
     return c.json({ skill });
   });
 
-  routes.post("/", requireAdmin(), async (c) => {
+  routes.post("/", async (c) => {
     const body = (await c.req.json().catch(() => null)) as {
       name?: string;
       description?: string;
@@ -154,7 +152,7 @@ export function skillsRoutes(config: Pick<Config, "DATA_DIR">) {
     const normalizedBase = assertSkillId(baseId);
     if (!normalizedBase) return c.json({ error: { code: "BAD_REQUEST", message: "Invalid skill id" } }, 400);
 
-    const existingOrg = new Set((await loadOrgSkills()).map((s) => s.id));
+    const existingOrg = new Set((await loadOrgSkills(config.CLAUDE_CONFIG_DIR)).map((s) => s.id));
     let id = normalizedBase;
     let suffix = 2;
     while (existingOrg.has(id)) {
@@ -166,16 +164,16 @@ export function skillsRoutes(config: Pick<Config, "DATA_DIR">) {
     const description = typeof body.description === "string" ? body.description.trim() : "";
     const md = renderSkillMd({ name: body.name.trim(), description, category, body: body.body });
 
-    const skillDir = join(getOrgSkillsDir(), id);
+    const skillDir = join(getOrgSkillsDir(config.CLAUDE_CONFIG_DIR), id);
     await mkdir(skillDir, { recursive: true });
-    await writeFile(orgSkillMdPath(id), md, "utf-8");
+    await writeFile(orgSkillMdPath(config.CLAUDE_CONFIG_DIR, id), md, "utf-8");
 
-    const skill = (await loadOrgSkills()).find((s) => s.id === id) ?? null;
+    const skill = (await loadOrgSkills(config.CLAUDE_CONFIG_DIR)).find((s) => s.id === id) ?? null;
     if (!skill) return c.json({ error: { code: "UNKNOWN", message: "Failed to create skill" } }, 500);
     return c.json({ skill }, 201);
   });
 
-  routes.put("/:id", requireAdmin(), async (c) => {
+  routes.put("/:id", async (c) => {
     const id = assertSkillId(c.req.param("id"));
     if (!id) return c.json({ error: { code: "BAD_REQUEST", message: "Invalid skill id" } }, 400);
 
@@ -190,7 +188,7 @@ export function skillsRoutes(config: Pick<Config, "DATA_DIR">) {
       return c.json({ error: { code: "BAD_REQUEST", message: "Missing required fields" } }, 400);
     }
 
-    const orgSkills = await loadOrgSkills();
+    const orgSkills = await loadOrgSkills(config.CLAUDE_CONFIG_DIR);
     const workspaceSkills = await loadWorkspaceSkills(config.DATA_DIR);
 
     const existingOrg = orgSkills.find((s) => s.id === id);
@@ -214,12 +212,12 @@ export function skillsRoutes(config: Pick<Config, "DATA_DIR">) {
     const md = renderSkillMd({ name: body.name.trim(), description, category, body: body.body });
 
     if (existingOrg) {
-      await writeFile(orgSkillMdPath(id), md, "utf-8");
+      await writeFile(orgSkillMdPath(config.CLAUDE_CONFIG_DIR, id), md, "utf-8");
     } else if (existingWorkspace) {
       await writeFile(workspaceSkillMdPath(config.DATA_DIR, existingWorkspace.workspaceId, id), md, "utf-8");
     }
 
-    const orgAfter = await loadOrgSkills();
+    const orgAfter = await loadOrgSkills(config.CLAUDE_CONFIG_DIR);
     const workspaceAfter = await loadWorkspaceSkills(config.DATA_DIR);
     const updated =
       orgAfter.find((s) => s.id === id) ?? workspaceAfter.find(({ skill }) => skill.id === id)?.skill ?? null;
@@ -227,11 +225,11 @@ export function skillsRoutes(config: Pick<Config, "DATA_DIR">) {
     return c.json({ skill: updated });
   });
 
-  routes.delete("/:id", requireAdmin(), async (c) => {
+  routes.delete("/:id", async (c) => {
     const id = assertSkillId(c.req.param("id"));
     if (!id) return c.json({ error: { code: "BAD_REQUEST", message: "Invalid skill id" } }, 400);
 
-    const orgSkills = await loadOrgSkills();
+    const orgSkills = await loadOrgSkills(config.CLAUDE_CONFIG_DIR);
     const workspaceSkills = await loadWorkspaceSkills(config.DATA_DIR);
 
     const existingOrg = orgSkills.find((s) => s.id === id);
@@ -242,7 +240,7 @@ export function skillsRoutes(config: Pick<Config, "DATA_DIR">) {
     }
 
     if (existingOrg) {
-      const skillDir = join(getOrgSkillsDir(), id);
+      const skillDir = join(getOrgSkillsDir(config.CLAUDE_CONFIG_DIR), id);
       await rm(skillDir, { recursive: true, force: true });
     } else if (existingWorkspace) {
       const skillDir = workspaceSkillDir(config.DATA_DIR, existingWorkspace.workspaceId, id);

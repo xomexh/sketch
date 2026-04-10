@@ -219,6 +219,7 @@ export class TaskScheduler {
           workspaceKey,
           userMessage: `[Scheduled Task] ${task.prompt}`,
           workspaceDir,
+          claudeConfigDir: this.deps.config.CLAUDE_CONFIG_DIR,
           userName: "System",
           logger,
           platform: task.platform as "slack" | "whatsapp",

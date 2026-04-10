@@ -101,8 +101,8 @@ describe("auth middleware - existing local auth", () => {
 
 describe("auth middleware - managed SSO", () => {
   const findUserByEmail = vi.fn(async (email: string) => {
-    if (email === "admin@test.com") return { id: "user-1", role: "admin" as const };
-    if (email === "member@test.com") return { id: "user-2", role: "member" as const };
+    if (email === "admin@test.com") return { id: "user-1" };
+    if (email === "member@test.com") return { id: "user-2" };
     return null;
   });
 
@@ -155,8 +155,8 @@ describe("auth middleware - managed SSO", () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.role).toBe("admin");
-    expect(body.sub).toBe("admin@test.com");
+    expect(body.role).toBe("member");
+    expect(body.sub).toBe("user-1");
     expect(findUserByEmail).toHaveBeenCalledWith("admin@test.com");
   });
 
@@ -209,8 +209,7 @@ describe("auth middleware - managed SSO", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.role).toBe("member");
-    // sub in context should be the email (for downstream compatibility), not the UUID
-    expect(body.sub).toBe("member@test.com");
+    expect(body.sub).toBe("user-2");
     expect(findUserByEmail).toHaveBeenCalledWith("member@test.com");
   });
 
@@ -288,7 +287,7 @@ describe("auth middleware - managed SSO", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.role).toBe("member");
-    expect(body.sub).toBe("member@test.com");
+    expect(body.sub).toBe("user-2");
     expect(findUserByEmail).toHaveBeenCalledWith("member@test.com");
   });
 });

@@ -59,6 +59,8 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
   } = deps;
   const maxFileBytes = config.MAX_FILE_SIZE_MB * 1024 * 1024;
 
+  const toPhoneJid = (phoneNumber: string) => `${phoneNumber.replace("+", "")}@s.whatsapp.net`;
+
   /**
    * Sends a DM to a user via their WhatsApp number. Used both in normal DM handling and in
    * outreach response runs so the same function is available at adapter level.
@@ -109,6 +111,7 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
           workspaceKey: requesterUserId,
           userMessage: message,
           workspaceDir,
+          claudeConfigDir: config.CLAUDE_CONFIG_DIR,
           userName: requester.name,
           userEmail: requester.email,
           userPhone: requester.whatsapp_number,
@@ -159,10 +162,11 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
   whatsapp.onMessage(async (message) => {
     if (message.type === "dm") {
       // --- DM handler ---
+      const replyJid = toPhoneJid(message.phoneNumber);
       const user = await repos.users.findByWhatsappNumber(message.phoneNumber);
       if (!user) {
         await whatsapp.sendText(
-          message.jid,
+          replyJid,
           "Sorry, you're not authorized to use this bot. Contact your admin to get access.",
         );
         return;
@@ -173,8 +177,9 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
       userQueue.enqueue(async () => {
         const workspaceDir = await ensureWorkspace(config, user.id);
         const settingsRow = await repos.settings.get();
+        const deliveryJid = toPhoneJid(user.whatsapp_number ?? message.phoneNumber);
 
-        whatsapp.startComposing(message.jid);
+        whatsapp.startComposing(deliveryJid);
 
         try {
           const attachments: Attachment[] = [];
@@ -194,7 +199,7 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
             }
           }
 
-          const onMessage = createWhatsAppMessageHandler(whatsapp, message.jid);
+          const onMessage = createWhatsAppMessageHandler(whatsapp, deliveryJid);
 
           const waIntegrationMcpServers = await buildMcpServers(user.email);
 
@@ -235,7 +240,7 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
           const waTaskContext = {
             platform: "whatsapp" as const,
             contextType: "dm" as const,
-            deliveryTarget: message.jid,
+            deliveryTarget: deliveryJid,
             createdBy: user.id,
           };
 
@@ -244,6 +249,7 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
             workspaceKey: user.id,
             userMessage,
             workspaceDir,
+            claudeConfigDir: config.CLAUDE_CONFIG_DIR,
             userName: user.name,
             userEmail: user.email,
             userPhone: user.whatsapp_number ?? message.phoneNumber,
@@ -270,7 +276,7 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
               if (whatsapp.isConnected) {
                 const ext = filePath.split(".").pop() ?? "";
                 const mime = extensionToMime(ext);
-                await whatsapp.sendFile(message.jid, filePath, mime, basename(filePath));
+                await whatsapp.sendFile(deliveryJid, filePath, mime, basename(filePath));
               }
             } catch (err) {
               logger.warn({ err, filePath }, "Failed to send file via WhatsApp");
@@ -279,10 +285,10 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
         } catch (err) {
           logger.error({ err, userId: user.id }, "Agent run failed (WhatsApp)");
           if (whatsapp.isConnected) {
-            await whatsapp.sendText(message.jid, "Something went wrong, try again.");
+            await whatsapp.sendText(deliveryJid, "Something went wrong, try again.");
           }
         } finally {
-          whatsapp.stopComposing(message.jid);
+          whatsapp.stopComposing(deliveryJid);
         }
       });
       return;
@@ -358,6 +364,7 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
           workspaceKey: `wa-group-${groupJid}`,
           userMessage,
           workspaceDir,
+          claudeConfigDir: config.CLAUDE_CONFIG_DIR,
           userName,
           userEmail: user?.email,
           userPhone: user?.whatsapp_number ?? null,

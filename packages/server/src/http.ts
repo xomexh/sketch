@@ -6,10 +6,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { type Context, Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import type { Kysely } from "kysely";
 import type { Logger } from "pino";
-import { authRoutes } from "./api/auth";
+import { type MagicLinkSender, authRoutes } from "./api/auth";
 import { channelRoutes } from "./api/channels";
 import { connectorRoutes } from "./api/connectors";
 import { emailRoutes } from "./api/email";
@@ -22,6 +23,7 @@ import { scheduledTaskRoutes } from "./api/scheduled-tasks";
 import { settingsRoutes } from "./api/settings";
 import { setupRoutes } from "./api/setup";
 import { skillsRoutes } from "./api/skills";
+import { verifyJwt } from "./auth/jwt";
 
 import { oauthRoutes } from "./api/oauth";
 import { systemRoutes } from "./api/system";
@@ -35,8 +37,10 @@ import { createMcpServerRepository } from "./db/repositories/mcp-servers";
 import { createProviderIdentityRepository } from "./db/repositories/provider-identities";
 import { createSettingsRepository } from "./db/repositories/settings";
 
+import { getSmtpConfig } from "./api/shared";
 import { createUserRepository } from "./db/repositories/users";
 import type { DB } from "./db/schema";
+import { createEmailTransport, sendMagicLinkEmail } from "./email";
 import type { TaskScheduler } from "./scheduler/service";
 import type { SlackBot } from "./slack/bot";
 import type { WhatsAppBot } from "./whatsapp/bot";
@@ -94,15 +98,59 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
         ? async (email) => {
             const user = await users.findByEmail(email);
             if (!user) return null;
-            return { id: user.id, role: user.role as "admin" | "member" };
+            return { id: user.id };
           }
         : undefined,
     }),
   );
 
+  const sendMagicLink: MagicLinkSender = async ({ user, magicLinkUrl, botName }) => {
+    const channels: string[] = [];
+
+    const slack = deps?.getSlack?.();
+    if (slack && user.slack_user_id) {
+      try {
+        const row = await settings.get();
+        const dmChannelId = await slack.openDmChannel(user.slack_user_id, row?.slack_bot_token ?? undefined);
+        if (dmChannelId) {
+          const text = `Here's your sign-in link for ${botName}:\n${magicLinkUrl}\n\nThis link expires in 15 minutes and can only be used once.`;
+          await slack.postMessage(dmChannelId, text);
+          channels.push("slack");
+        }
+      } catch (err) {
+        logger.warn({ err }, "Failed to send magic link via Slack");
+      }
+    }
+
+    const settingsRow = await settings.get();
+    const smtp = settingsRow ? getSmtpConfig(settingsRow) : null;
+    if (smtp && user.email) {
+      try {
+        const transport = createEmailTransport(smtp);
+        await sendMagicLinkEmail(transport, user.email, magicLinkUrl, botName, smtp.from);
+        channels.push("email");
+      } catch (err) {
+        logger.warn({ err }, "Failed to send magic link via email");
+      }
+    }
+
+    if (deps?.whatsapp && user.whatsapp_number) {
+      try {
+        const jid = `${user.whatsapp_number.replace("+", "")}@s.whatsapp.net`;
+        const text = `Here's your sign-in link for ${botName}:\n${magicLinkUrl}\n\nThis link expires in 15 minutes and can only be used once.`;
+        await deps.whatsapp.sendText(jid, text);
+        channels.push("whatsapp");
+      } catch (err) {
+        logger.warn({ err }, "Failed to send magic link via WhatsApp");
+      }
+    }
+
+    return channels;
+  };
+
   // API routes
   app.route("/api/health", healthRoutes(db));
-  app.route("/api/auth", authRoutes(settings, db, { config, logger }));
+  app.route("/api/auth", authRoutes(settings, db, { config, logger, userRepo: users, sendMagicLink }));
   app.route(
     "/api/setup",
     setupRoutes(
@@ -111,6 +159,7 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
         managedUrl: config.MANAGED_URL,
         onSlackTokensUpdated: deps?.onSlackTokensUpdated,
         onLlmSettingsUpdated: deps?.onLlmSettingsUpdated,
+        userRepo: users,
       },
       config.EXPERIMENTAL_FLAG,
     ),
@@ -170,6 +219,14 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
         systemSecret: config.SYSTEM_SECRET,
         onSlackTokensUpdated: onSlackTokensUpdated ? () => onSlackTokensUpdated() : undefined,
         userRepo: users,
+        mcpServers,
+        whatsappStatus: whatsapp
+          ? () => ({
+              connected: whatsapp.isConnected,
+              phoneNumber: whatsapp.phoneNumber,
+              pairingInProgress,
+            })
+          : undefined,
         startWhatsAppPairing: whatsapp
           ? (c: Context) => {
               if (whatsapp.isConnected) {
@@ -220,9 +277,34 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   const monorepoDir = resolve(import.meta.dirname, "../../web/dist");
   const webDistDir = existsSync(bundledDir) ? bundledDir : monorepoDir;
 
+  // Managed login redirect: runs before SPA static serving so unauthenticated
+  // requests never load the OSS login page. Must be outside the existsSync
+  // check so it works even when web assets aren't built (e.g. CI).
+  if (config.MANAGED_URL) {
+    app.use("*", async (c, next) => {
+      const path = c.req.path;
+      if (path.startsWith("/api/") || path === "/health") {
+        return next();
+      }
+
+      const platformToken = getCookie(c, "sketch_platform_session");
+      const isValidPlatformSession =
+        !!platformToken &&
+        !!config.MANAGED_AUTH_SECRET &&
+        !!(await verifyJwt(platformToken, config.MANAGED_AUTH_SECRET));
+
+      if (!isValidPlatformSession) {
+        return c.redirect(`${config.MANAGED_URL}/login`);
+      }
+
+      return next();
+    });
+  }
+
   if (existsSync(webDistDir)) {
-    // Serve hashed assets (JS, CSS, images)
+    // Serve static files: Vite-hashed bundles (/assets/) and logo/favicon PNGs (/logos/)
     app.use("/assets/*", serveStatic({ root: webDistDir }));
+    app.use("/logos/*", serveStatic({ root: webDistDir }));
 
     // SPA catch-all: any non-API route returns index.html for client-side routing
     const indexHtml = readFileSync(join(webDistDir, "index.html"), "utf-8");

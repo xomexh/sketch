@@ -10,15 +10,27 @@ import type { Kysely } from "kysely";
 import type { Logger } from "pino";
 import { verifyEmailToken } from "../auth/email-verify";
 import { signJwt, verifyJwt } from "../auth/jwt";
-import { createRateLimitedMagicLinkToken, findVerifiedUserByEmail, verifyMagicLinkToken } from "../auth/magic-link";
+import {
+  type VerifiedUser,
+  createRateLimitedMagicLinkToken,
+  findVerifiedUserByEmail,
+  verifyMagicLinkToken,
+} from "../auth/magic-link";
 import { verifyPassword } from "../auth/password";
 import type { Config } from "../config";
 import type { createSettingsRepository } from "../db/repositories/settings";
+import type { createUserRepository } from "../db/repositories/users";
 import type { DB } from "../db/schema";
-import { createEmailTransport, sendMagicLinkEmail } from "../email";
-import { getSmtpConfig, resolveBaseUrl } from "./shared";
+import { resolveBaseUrl } from "./shared";
+
+export type MagicLinkSender = (opts: {
+  user: Pick<VerifiedUser, "email" | "slack_user_id" | "whatsapp_number">;
+  magicLinkUrl: string;
+  botName: string;
+}) => Promise<string[]>;
 
 export const SESSION_COOKIE = "sketch_session";
+const PLATFORM_COOKIE = "sketch_platform_session";
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
 
 type SettingsRepo = ReturnType<typeof createSettingsRepository>;
@@ -47,7 +59,16 @@ export async function createSession(
   setSessionCookie(c, token, isSecure(c));
 }
 
-export function authRoutes(settings: SettingsRepo, db: Kysely<DB>, deps: { config: Config; logger: Logger }) {
+export function authRoutes(
+  settings: SettingsRepo,
+  db: Kysely<DB>,
+  deps: {
+    config: Config;
+    logger: Logger;
+    userRepo: ReturnType<typeof createUserRepository>;
+    sendMagicLink: MagicLinkSender;
+  },
+) {
   const routes = new Hono();
 
   routes.post("/login", async (c) => {
@@ -75,7 +96,9 @@ export function authRoutes(settings: SettingsRepo, db: Kysely<DB>, deps: { confi
       await settings.update({ jwtSecret });
     }
 
-    await createSession(c, row.admin_email, "admin", jwtSecret);
+    const adminUser = await deps.userRepo.findByEmail(row.admin_email.toLowerCase());
+    const sub = adminUser?.id ?? row.admin_email;
+    await createSession(c, sub, "member", jwtSecret);
     return c.json({ authenticated: true, email: row.admin_email });
   });
 
@@ -84,47 +107,60 @@ export function authRoutes(settings: SettingsRepo, db: Kysely<DB>, deps: { confi
     return c.json({ authenticated: false });
   });
 
+  /**
+   * Two-phase session check: local sketch_session first, then managed
+   * sketch_platform_session (when MANAGED_AUTH_SECRET is configured).
+   * Falls through from local to managed so an expired local cookie
+   * doesn't block a valid platform session.
+   */
   routes.get("/session", async (c) => {
     const token = getCookie(c, SESSION_COOKIE);
-    if (!token) {
-      return c.json({ authenticated: false });
-    }
+    if (token) {
+      const row = await settings.get();
+      if (row?.jwt_secret) {
+        const payload = await verifyJwt(token, row.jwt_secret);
+        if (payload) {
+          let user = await db.selectFrom("users").selectAll().where("id", "=", payload.sub).executeTakeFirst();
 
-    const row = await settings.get();
-    if (!row?.jwt_secret) {
-      deleteCookie(c, SESSION_COOKIE, { path: "/" });
-      return c.json({ authenticated: false });
-    }
+          if (!user && payload.sub.includes("@")) {
+            user = await db.selectFrom("users").selectAll().where("email", "=", payload.sub).executeTakeFirst();
+          }
 
-    const payload = await verifyJwt(token, row.jwt_secret);
-    if (!payload) {
-      deleteCookie(c, SESSION_COOKIE, { path: "/" });
-      return c.json({ authenticated: false });
-    }
-
-    // Sliding renewal — issue a fresh JWT to extend the session
-    await createSession(c, payload.sub, payload.role, row.jwt_secret);
-
-    if (payload.role === "member") {
-      const user = await db.selectFrom("users").selectAll().where("id", "=", payload.sub).executeTakeFirst();
-      if (!user) {
-        deleteCookie(c, SESSION_COOKIE, { path: "/" });
-        return c.json({ authenticated: false });
+          if (user) {
+            await createSession(c, user.id, "member", row.jwt_secret);
+            return c.json({
+              authenticated: true,
+              role: "member" as const,
+              userId: user.id,
+              name: user.name,
+              email: user.email,
+            });
+          }
+        }
       }
-      return c.json({
-        authenticated: true,
-        role: "member" as const,
-        userId: user.id,
-        name: user.name,
-        email: user.email,
-      });
+      deleteCookie(c, SESSION_COOKIE, { path: "/" });
     }
 
-    return c.json({
-      authenticated: true,
-      role: "admin" as const,
-      email: payload.sub,
-    });
+    if (deps.config.MANAGED_AUTH_SECRET) {
+      const platformToken = getCookie(c, PLATFORM_COOKIE);
+      if (platformToken) {
+        const payload = await verifyJwt(platformToken, deps.config.MANAGED_AUTH_SECRET);
+        if (payload?.email) {
+          const user = await db.selectFrom("users").selectAll().where("email", "=", payload.email).executeTakeFirst();
+          if (user) {
+            return c.json({
+              authenticated: true,
+              role: payload.role,
+              userId: user.id,
+              name: user.name,
+              email: user.email,
+            });
+          }
+        }
+      }
+    }
+
+    return c.json({ authenticated: false });
   });
 
   routes.get("/verify-email", async (c) => {
@@ -151,31 +187,27 @@ export function authRoutes(settings: SettingsRepo, db: Kysely<DB>, deps: { confi
 
     const email = body.email.toLowerCase().trim();
 
-    // Always return success (prevent email enumeration)
-    const successResponse = { success: true };
+    const noChannelsResponse = { success: true, channels: [] as string[] };
 
     const user = await findVerifiedUserByEmail(db, email);
-    if (!user) return c.json(successResponse);
+    if (!user) return c.json(noChannelsResponse);
 
-    // Atomic rate-limit check + token creation in a single transaction
     const token = await createRateLimitedMagicLinkToken(db, user.id);
-    if (!token) return c.json(successResponse);
+    if (!token) return c.json(noChannelsResponse);
 
     const baseUrl = resolveBaseUrl(c, deps.config);
     const magicLinkUrl = `${baseUrl}/api/auth/magic-link/verify?token=${token}`;
 
-    // Reuse settings already fetched by the middleware cache path where possible,
-    // but we need SMTP config which requires a fresh read.
     const settingsRow = await settings.get();
-    const smtp = settingsRow ? getSmtpConfig(settingsRow) : null;
-    if (smtp) {
-      const transport = createEmailTransport(smtp);
-      await sendMagicLinkEmail(transport, email, magicLinkUrl, settingsRow?.bot_name ?? "Sketch", smtp.from);
-    } else {
-      deps.logger.info({ magicLinkUrl }, "Magic link (SMTP not configured)");
+    const botName = settingsRow?.bot_name ?? "Sketch";
+
+    const channels = await deps.sendMagicLink({ user, magicLinkUrl, botName });
+
+    if (channels.length === 0) {
+      deps.logger.info({ magicLinkUrl }, "Magic link (no delivery channels configured)");
     }
 
-    return c.json(successResponse);
+    return c.json({ success: true, channels });
   });
 
   routes.get("/magic-link/verify", async (c) => {

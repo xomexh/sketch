@@ -42,7 +42,7 @@ type SettingsRepo = ReturnType<typeof createSettingsRepository>;
 export interface AuthMiddlewareOpts {
   managedAuthSecret?: string;
   managedUrl?: string;
-  findUserByEmail?: (email: string) => Promise<{ id: string; role: "admin" | "member" } | null>;
+  findUserByEmail?: (email: string) => Promise<{ id: string } | null>;
 }
 
 export function createAuthMiddleware(settings: SettingsRepo, opts?: AuthMiddlewareOpts) {
@@ -118,8 +118,8 @@ export function createAuthMiddleware(settings: SettingsRepo, opts?: AuthMiddlewa
           return c.json({ error: { code: "FORBIDDEN", message: "User not found in this tenant" } }, 403);
         }
 
-        c.set("role", user.role);
-        c.set("sub", payload.email);
+        c.set("role", "member");
+        c.set("sub", user.id);
         return next();
       }
     }
@@ -143,16 +143,6 @@ export function createAuthMiddleware(settings: SettingsRepo, opts?: AuthMiddlewa
     c.set("role", payload.role);
     c.set("sub", payload.sub);
 
-    return next();
-  };
-}
-
-export function requireAdmin() {
-  return async (c: Context, next: Next) => {
-    const role = c.get("role");
-    if (role !== "admin") {
-      return c.json({ error: { code: "FORBIDDEN", message: "Admin access required" } }, 403);
-    }
     return next();
   };
 }

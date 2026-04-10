@@ -23,7 +23,6 @@ import { getConnector, runConnectorSync } from "../connectors/sync";
 import type { ConnectorCredentials, OAuthCredentials } from "../connectors/types";
 import type { createConnectorRepository } from "../db/repositories/connectors";
 import type { DB } from "../db/schema";
-import { requireAdmin } from "./middleware";
 
 type ConnectorRepo = ReturnType<typeof createConnectorRepository>;
 
@@ -120,7 +119,7 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
   });
 
   /** Create a new connector — validates credentials then auto-triggers first sync. */
-  routes.post("/", requireAdmin(), async (c) => {
+  routes.post("/", async (c) => {
     const body = await c.req.json();
     const parsed = createConnectorSchema.safeParse(body);
     if (!parsed.success) {
@@ -315,7 +314,7 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
   });
 
   /** Browse Google Drive shared drives for the folder picker. */
-  routes.post("/google-drive/browse", requireAdmin(), async (c) => {
+  routes.post("/google-drive/browse", async (c) => {
     const body = await c.req.json();
     const parsed = browseGoogleDriveSchema.safeParse(body);
     if (!parsed.success) {
@@ -452,7 +451,7 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
   });
 
   /** Delete a connector. */
-  routes.delete("/:id", requireAdmin(), async (c) => {
+  routes.delete("/:id", async (c) => {
     const config = await connectorRepo.findConfigById(c.req.param("id"));
     if (!config) {
       return c.json({ error: { code: "NOT_FOUND", message: "Connector not found" } }, 404);
@@ -462,7 +461,7 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
   });
 
   /** Update connector scope config (add/remove drives, folders, etc.). */
-  routes.patch("/:id/scope", requireAdmin(), async (c) => {
+  routes.patch("/:id/scope", async (c) => {
     const config = await connectorRepo.findConfigById(c.req.param("id"));
     if (!config) {
       return c.json({ error: { code: "NOT_FOUND", message: "Connector not found" } }, 404);
@@ -500,7 +499,7 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
   });
 
   /** Trigger a manual sync (creates a sync job). */
-  routes.post("/:id/syncs", requireAdmin(), async (c) => {
+  routes.post("/:id/syncs", async (c) => {
     const config = await connectorRepo.findConfigById(c.req.param("id"));
     if (!config) {
       return c.json({ error: { code: "NOT_FOUND", message: "Connector not found" } }, 404);
@@ -552,7 +551,7 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
   });
 
   /** Enrich files with AI-generated summaries and context (creates an enrichment job). */
-  routes.post("/:id/enrichments", requireAdmin(), async (c) => {
+  routes.post("/:id/enrichments", async (c) => {
     const config = await connectorRepo.findConfigById(c.req.param("id"));
     if (!config) {
       return c.json({ error: { code: "NOT_FOUND", message: "Connector not found" } }, 404);
@@ -575,7 +574,7 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
   });
 
   /** Enrich a single file (tagging + embedding). For testing/debugging. */
-  routes.post("/files/:fileId/enrichments", requireAdmin(), async (c) => {
+  routes.post("/files/:fileId/enrichments", async (c) => {
     const fileId = c.req.param("fileId");
     const file = await db
       .selectFrom("indexed_files")

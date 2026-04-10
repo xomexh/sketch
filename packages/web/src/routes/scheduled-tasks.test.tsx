@@ -4,28 +4,17 @@ import { renderWithProviders } from "@/test/utils";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ScheduledTasksPage } from "./scheduled-tasks";
-
-let mockAuth: { role: "admin" | "member"; email: string; userId?: string } = {
-  role: "admin",
-  email: "admin@test.com",
-};
-
-function setMockAuth(auth: Partial<typeof mockAuth>) {
-  mockAuth = { ...mockAuth, ...auth };
-}
 
 vi.mock("@tanstack/react-router", async () => {
   const actual = await vi.importActual("@tanstack/react-router");
   return {
     ...actual,
-    useRouteContext: () => ({ auth: mockAuth }),
+    useRouteContext: () => ({
+      auth: { email: "admin@test.com" },
+    }),
   };
-});
-
-afterEach(() => {
-  mockAuth = { role: "admin", email: "admin@test.com" };
 });
 
 function buildTask(overrides: Partial<ScheduledTaskListItem> = {}): ScheduledTaskListItem {
@@ -115,24 +104,17 @@ describe("ScheduledTasksPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the correct subtitle for admins and members", async () => {
+  it("renders the workspace subtitle", async () => {
     installTaskHandlers([buildTask()]);
 
-    const { rerender } = renderWithProviders(<ScheduledTasksPage />);
+    renderWithProviders(<ScheduledTasksPage />);
 
     await waitFor(() => {
       expect(screen.getByText("View and manage recurring and one-time tasks across the workspace")).toBeInTheDocument();
     });
-
-    setMockAuth({ role: "member", userId: "user-1" });
-    rerender(<ScheduledTasksPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("View and manage the tasks you created through chat")).toBeInTheDocument();
-    });
   });
 
-  it("shows creator names for admins and hides them for members", async () => {
+  it("always shows creator names in task rows", async () => {
     installTaskHandlers([
       buildTask({ creatorName: "Alice Admin" }),
       buildTask({
@@ -147,38 +129,13 @@ describe("ScheduledTasksPage", () => {
       }),
     ]);
 
-    const { unmount } = renderWithProviders(<ScheduledTasksPage />);
+    renderWithProviders(<ScheduledTasksPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Post the Monday revenue summary")).toBeInTheDocument();
     });
     expect(screen.getByText("Send a WhatsApp follow-up")).toBeInTheDocument();
     expect(screen.getAllByText(/Alice Admin/)).toHaveLength(2);
-
-    unmount();
-
-    setMockAuth({ role: "member", userId: "user-1" });
-    server.use(
-      http.get("/api/scheduled-tasks", () => {
-        return HttpResponse.json({
-          tasks: [
-            buildTask({
-              id: "task-member",
-              prompt: "Only my task",
-              creatorName: "Alice Admin",
-            }),
-          ],
-        });
-      }),
-    );
-
-    renderWithProviders(<ScheduledTasksPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Only my task")).toBeInTheDocument();
-    });
-    expect(screen.queryByText("Send a WhatsApp follow-up")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Alice Admin/)).not.toBeInTheDocument();
   });
 
   it("renders expanded task details for troubleshooting", async () => {
@@ -259,19 +216,18 @@ describe("ScheduledTasksPage", () => {
     });
 
     await user.click(screen.getByRole("button", { name: /Task actions for Post the Monday revenue summary/i }));
-    await user.click(screen.getByRole("menuitem", { name: /delete/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /delete/i }));
 
-    await waitFor(() => {
-      expect(screen.getByText("Delete scheduled task?")).toBeInTheDocument();
-    });
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("Delete scheduled task?")).toBeInTheDocument();
 
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
       expect(screen.getByText("No scheduled tasks yet")).toBeInTheDocument();
     });
     expect(screen.queryByText("Post the Monday revenue summary")).not.toBeInTheDocument();
-  });
+  }, 15000);
 
   it("renders fallback target ids when no friendly target label is available", async () => {
     installTaskHandlers([

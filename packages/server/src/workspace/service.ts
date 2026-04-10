@@ -8,7 +8,6 @@
  * entire file contents just to determine editability (previously done via istextorbinary).
  */
 import { mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { ensureWorkspace } from "../agent/workspace";
 import type { Config } from "../config";
@@ -46,9 +45,8 @@ function isEditableMimeType(mimeType: string | null): boolean {
 
 export async function resolveWorkspaceRoot(config: Config, userId: string, scope: WorkspaceScope): Promise<string> {
   if (scope === "org") {
-    const orgDir = join(homedir(), ".claude");
-    await mkdir(orgDir, { recursive: true });
-    return orgDir;
+    await mkdir(config.CLAUDE_CONFIG_DIR, { recursive: true });
+    return config.CLAUDE_CONFIG_DIR;
   }
   return ensureWorkspace(config, userId);
 }
@@ -57,7 +55,7 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
   return {
     getWorkspacePath(userId: string, scope: WorkspaceScope): string {
       if (scope === "org") {
-        return join(homedir(), ".claude");
+        return config.CLAUDE_CONFIG_DIR;
       }
       return join(config.DATA_DIR, "workspaces", userId);
     },

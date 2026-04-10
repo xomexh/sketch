@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Kysely } from "kysely";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { hashPassword } from "../auth/password";
+import { createMcpServerRepository } from "../db/repositories/mcp-servers";
 import { createSettingsRepository } from "../db/repositories/settings";
 import { createUserRepository } from "../db/repositories/users";
 import type { DB } from "../db/schema";
@@ -29,6 +30,8 @@ function createTestSystemApp(
     systemSecret: string;
     onSlackTokensUpdated?: ReturnType<typeof vi.fn>;
     userRepo?: ReturnType<typeof createUserRepository>;
+    mcpServers?: ReturnType<typeof createMcpServerRepository>;
+    whatsappStatus?: () => { connected: boolean; phoneNumber: string | null; pairingInProgress: boolean };
     startWhatsAppPairing?: ReturnType<typeof vi.fn>;
     cancelWhatsAppPairing?: ReturnType<typeof vi.fn>;
   },
@@ -264,7 +267,7 @@ describe("PUT /api/system/identity", () => {
     expect(settings?.org_name).toBe("Acme Updated");
   });
 
-  it("creates admin user row when no user with that email exists", async () => {
+  it("creates admin user row with name derived from email when name not provided", async () => {
     const settingsRepo = createSettingsRepository(db);
     const userRepo = createUserRepository(db);
     const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
@@ -287,14 +290,43 @@ describe("PUT /api/system/identity", () => {
     const user = await userRepo.findByEmail("newadmin@acme.com");
     expect(user).toBeDefined();
     expect(user?.email).toBe("newadmin@acme.com");
-    expect(user?.role).toBe("admin");
+    expect(user?.role).toBeNull();
     expect(user?.name).toBe("newadmin");
+    expect(user?.email_verified_at).not.toBeNull();
   });
 
-  it("updates existing user row when user with that email already exists", async () => {
+  it("creates admin user row with real name when name is provided", async () => {
     const settingsRepo = createSettingsRepository(db);
     const userRepo = createUserRepository(db);
-    await userRepo.create({ name: "Old Name", email: "existing@acme.com", role: "member" });
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
+
+    const hash = await hashPassword("password");
+    const res = await app.request("/api/system/identity", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        adminEmail: "roopak@acme.com",
+        adminPasswordHash: hash,
+        name: "Roopak Nijhara",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+
+    const user = await userRepo.findByEmail("roopak@acme.com");
+    expect(user).toBeDefined();
+    expect(user?.name).toBe("Roopak Nijhara");
+    expect(user?.role).toBeNull();
+    expect(user?.email_verified_at).not.toBeNull();
+  });
+
+  it("updates existing user row with name and verified email when user already exists", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const userRepo = createUserRepository(db);
+    await userRepo.create({ name: "Old Name", email: "existing@acme.com" });
 
     const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
 
@@ -309,6 +341,7 @@ describe("PUT /api/system/identity", () => {
         adminEmail: "existing@acme.com",
         adminPasswordHash: hash,
         orgName: "Acme",
+        name: "New Name",
       }),
     });
 
@@ -316,7 +349,9 @@ describe("PUT /api/system/identity", () => {
 
     const user = await userRepo.findByEmail("existing@acme.com");
     expect(user).toBeDefined();
-    expect(user?.role).toBe("admin");
+    expect(user?.role).toBeNull();
+    expect(user?.name).toBe("New Name");
+    expect(user?.email_verified_at).not.toBeNull();
   });
 
   it("validates adminEmail as a valid email", async () => {
@@ -364,6 +399,131 @@ describe("PUT /api/system/identity", () => {
     const settings = await settingsRepo.get();
     expect(settings?.org_name).toBe("Acme Inc");
     expect(settings?.bot_name).toBe("SketchBot");
+  });
+});
+
+describe("POST /api/system/users", () => {
+  let db: Kysely<DB>;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+  });
+
+  afterEach(async () => {
+    await db.destroy();
+  });
+
+  it("returns 401 without Authorization header", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const userRepo = createUserRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
+
+    const res = await app.request("/api/system/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "member@acme.com", name: "Member Name" }),
+    });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("creates a verified member user and returns userId", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const userRepo = createUserRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
+
+    const res = await app.request("/api/system/users", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: "member@acme.com", name: "Member Name" }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(typeof body.userId).toBe("string");
+
+    const user = await userRepo.findByEmail("member@acme.com");
+    expect(user).toBeDefined();
+    expect(user?.role).toBeNull();
+    expect(user?.name).toBe("Member Name");
+    expect(user?.email_verified_at).toBeTruthy();
+    expect(body.userId).toBe(user?.id);
+  });
+
+  it("returns the existing user when the email already exists", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const userRepo = createUserRepository(db);
+    const existing = await userRepo.create({
+      email: "member@acme.com",
+      name: "Existing Member",
+      emailVerified: true,
+    });
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
+
+    const res = await app.request("/api/system/users", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: "member@acme.com", name: "New Name" }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ ok: true, userId: existing.id });
+
+    const user = await userRepo.findByEmail("member@acme.com");
+    expect(user?.id).toBe(existing.id);
+    expect(user?.name).toBe("Existing Member");
+  });
+
+  it("returns 400 when email is missing or invalid", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const userRepo = createUserRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
+
+    const missingEmailRes = await app.request("/api/system/users", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name: "Member Name" }),
+    });
+
+    const invalidEmailRes = await app.request("/api/system/users", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: "not-an-email", name: "Member Name" }),
+    });
+
+    expect(missingEmailRes.status).toBe(400);
+    expect(invalidEmailRes.status).toBe(400);
+  });
+
+  it("returns 400 when name is missing", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const userRepo = createUserRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, userRepo });
+
+    const res = await app.request("/api/system/users", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: "member@acme.com" }),
+    });
+
+    expect(res.status).toBe(400);
   });
 });
 
@@ -564,6 +724,75 @@ describe("PUT /api/system/llm", () => {
 
     const decrypted = await settingsRepo.get();
     expect(decrypted?.aws_secret_access_key).toBe("secret-key-value");
+  });
+});
+
+describe("GET /api/system/whatsapp", () => {
+  let db: Kysely<DB>;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    await seedAdmin(db);
+  });
+
+  afterEach(async () => {
+    await db.destroy();
+  });
+
+  it("returns 401 without Authorization header", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET });
+
+    const res = await app.request("/api/system/whatsapp", { method: "GET" });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns defaults when no whatsappStatus callback is provided", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET });
+
+    const res = await app.request("/api/system/whatsapp", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${SYSTEM_SECRET}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ connected: false, phoneNumber: null, pairingInProgress: false });
+  });
+
+  it("returns status from whatsappStatus callback", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const app = createTestSystemApp(settingsRepo, {
+      systemSecret: SYSTEM_SECRET,
+      whatsappStatus: () => ({ connected: true, phoneNumber: "+919876543210", pairingInProgress: false }),
+    });
+
+    const res = await app.request("/api/system/whatsapp", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${SYSTEM_SECRET}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ connected: true, phoneNumber: "+919876543210", pairingInProgress: false });
+  });
+
+  it("returns pairingInProgress when active", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const app = createTestSystemApp(settingsRepo, {
+      systemSecret: SYSTEM_SECRET,
+      whatsappStatus: () => ({ connected: false, phoneNumber: null, pairingInProgress: true }),
+    });
+
+    const res = await app.request("/api/system/whatsapp", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${SYSTEM_SECRET}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ connected: false, phoneNumber: null, pairingInProgress: true });
   });
 });
 
@@ -778,5 +1007,144 @@ describe("settings.create() with orgName and botName", () => {
     const settings = await settingsRepo.get();
     expect(settings?.admin_email).toBe("admin@acme.com");
     expect(settings?.org_name).toBeNull();
+  });
+});
+
+describe("PUT /api/system/integrations/canvas", () => {
+  let db: Kysely<DB>;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    await seedAdmin(db);
+  });
+
+  afterEach(async () => {
+    await db.destroy();
+  });
+
+  it("creates Canvas provider with correct fields", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const mcpServers = createMcpServerRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, mcpServers });
+
+    const res = await app.request("/api/system/integrations/canvas", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ apiKey: "canvas_sk_test_key", apiUrl: "https://app.canvasx.ai" }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ ok: true });
+
+    const provider = await mcpServers.findByType("canvas");
+    expect(provider).not.toBeNull();
+    expect(provider?.type).toBe("canvas");
+    expect(provider?.display_name).toBe("Canvas");
+    expect(provider?.url).toBe("https://app.canvasx.ai/mcp");
+    expect(provider?.api_url).toBe("https://app.canvasx.ai");
+    expect(provider?.credentials).toBe(JSON.stringify({ apiKey: "canvas_sk_test_key" }));
+    expect(provider?.mode).toBe("skill");
+  });
+
+  it("updates existing provider on second call (idempotent)", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const mcpServers = createMcpServerRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, mcpServers });
+
+    await app.request("/api/system/integrations/canvas", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ apiKey: "key-1", apiUrl: "https://canvas-v1.example.com" }),
+    });
+
+    const res = await app.request("/api/system/integrations/canvas", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ apiKey: "key-2", apiUrl: "https://canvas-v2.example.com" }),
+    });
+
+    expect(res.status).toBe(200);
+
+    const all = await mcpServers.listAll();
+    const canvasProviders = all.filter((s) => s.type === "canvas");
+    expect(canvasProviders).toHaveLength(1);
+    expect(canvasProviders[0].credentials).toBe(JSON.stringify({ apiKey: "key-2" }));
+    expect(canvasProviders[0].api_url).toBe("https://canvas-v2.example.com");
+    expect(canvasProviders[0].url).toBe("https://canvas-v2.example.com/mcp");
+  });
+
+  it("returns 401 without authorization", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const mcpServers = createMcpServerRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, mcpServers });
+
+    const res = await app.request("/api/system/integrations/canvas", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey: "canvas_sk_test_key", apiUrl: "https://app.canvasx.ai" }),
+    });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 400 with missing apiKey", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const mcpServers = createMcpServerRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, mcpServers });
+
+    const res = await app.request("/api/system/integrations/canvas", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ apiUrl: "https://app.canvasx.ai" }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 with missing apiUrl", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const mcpServers = createMcpServerRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, mcpServers });
+
+    const res = await app.request("/api/system/integrations/canvas", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ apiKey: "canvas_sk_test_key" }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 with invalid apiUrl", async () => {
+    const settingsRepo = createSettingsRepository(db);
+    const mcpServers = createMcpServerRepository(db);
+    const app = createTestSystemApp(settingsRepo, { systemSecret: SYSTEM_SECRET, mcpServers });
+
+    const res = await app.request("/api/system/integrations/canvas", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${SYSTEM_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ apiKey: "canvas_sk_test_key", apiUrl: "not-a-url" }),
+    });
+
+    expect(res.status).toBe(400);
   });
 });

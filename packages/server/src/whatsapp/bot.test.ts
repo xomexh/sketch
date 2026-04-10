@@ -195,6 +195,136 @@ describe("WhatsAppBot.disconnect", () => {
   });
 });
 
+describe("WhatsAppBot reconnect lifecycle", () => {
+  let db: Kysely<DB>;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    db = await createTestDb();
+  });
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    await db.destroy();
+  });
+
+  function createConnectionSocket() {
+    const handlers = new Map<string, (payload: unknown) => Promise<void>>();
+    const socket = {
+      ev: {
+        on: (event: string, handler: (payload: unknown) => Promise<void>) => {
+          handlers.set(event, handler);
+        },
+      },
+    };
+    return {
+      socket,
+      emitConnectionUpdate: (payload: unknown) => handlers.get("connection.update")?.(payload),
+    };
+  }
+
+  it("ignores close events from stale sockets", async () => {
+    const bot = new WhatsAppBot({ db, logger: createTestLogger() });
+    const stale = createConnectionSocket();
+    const current = createConnectionSocket();
+    const createSocket = vi.fn().mockResolvedValue(undefined);
+
+    (bot as unknown as { sock: unknown; activeSocketGeneration: number; createSocket: typeof createSocket }).sock =
+      current.socket;
+    (bot as unknown as { activeSocketGeneration: number }).activeSocketGeneration = 2;
+    (bot as unknown as { createSocket: typeof createSocket }).createSocket = createSocket;
+    (
+      bot as unknown as {
+        registerConnectionHandler: (
+          socket: unknown,
+          authState: { clearCreds: () => Promise<void> },
+          socketGeneration: number,
+        ) => void;
+      }
+    ).registerConnectionHandler(stale.socket as never, { clearCreds: vi.fn().mockResolvedValue(undefined) }, 1);
+
+    await stale.emitConnectionUpdate({
+      connection: "close",
+      lastDisconnect: { error: { output: { statusCode: 500 }, message: "stale close" } },
+    });
+    await vi.runAllTimersAsync();
+
+    expect(createSocket).not.toHaveBeenCalled();
+  });
+
+  it("schedules only one reconnect for repeated close events", async () => {
+    const bot = new WhatsAppBot({ db, logger: createTestLogger() });
+    const current = createConnectionSocket();
+    const createSocket = vi.fn().mockResolvedValue(undefined);
+
+    (bot as unknown as { sock: unknown; activeSocketGeneration: number; createSocket: typeof createSocket }).sock =
+      current.socket;
+    (bot as unknown as { activeSocketGeneration: number }).activeSocketGeneration = 1;
+    (bot as unknown as { createSocket: typeof createSocket }).createSocket = createSocket;
+    (
+      bot as unknown as {
+        registerConnectionHandler: (
+          socket: unknown,
+          authState: { clearCreds: () => Promise<void> },
+          socketGeneration: number,
+        ) => void;
+      }
+    ).registerConnectionHandler(current.socket as never, { clearCreds: vi.fn().mockResolvedValue(undefined) }, 1);
+
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+
+    await current.emitConnectionUpdate({
+      connection: "close",
+      lastDisconnect: { error: { output: { statusCode: 500 }, message: "disconnect" } },
+    });
+    await current.emitConnectionUpdate({
+      connection: "close",
+      lastDisconnect: { error: { output: { statusCode: 500 }, message: "disconnect again" } },
+    });
+
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(createSocket).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(createSocket).toHaveBeenCalledTimes(1);
+
+    randomSpy.mockRestore();
+  });
+
+  it("cancels a pending reconnect when the socket opens again", async () => {
+    const bot = new WhatsAppBot({ db, logger: createTestLogger() });
+    const current = createConnectionSocket();
+    const createSocket = vi.fn().mockResolvedValue(undefined);
+
+    (bot as unknown as { sock: unknown; activeSocketGeneration: number; createSocket: typeof createSocket }).sock =
+      current.socket;
+    (bot as unknown as { activeSocketGeneration: number }).activeSocketGeneration = 1;
+    (bot as unknown as { createSocket: typeof createSocket }).createSocket = createSocket;
+    (
+      bot as unknown as {
+        registerConnectionHandler: (
+          socket: unknown,
+          authState: { clearCreds: () => Promise<void> },
+          socketGeneration: number,
+        ) => void;
+      }
+    ).registerConnectionHandler(current.socket as never, { clearCreds: vi.fn().mockResolvedValue(undefined) }, 1);
+
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+
+    await current.emitConnectionUpdate({
+      connection: "close",
+      lastDisconnect: { error: { output: { statusCode: 500 }, message: "disconnect" } },
+    });
+    await current.emitConnectionUpdate({ connection: "open" });
+    await vi.runAllTimersAsync();
+
+    expect(createSocket).not.toHaveBeenCalled();
+
+    randomSpy.mockRestore();
+  });
+});
+
 describe("WhatsAppBot.composing", () => {
   let db: Kysely<DB>;
 

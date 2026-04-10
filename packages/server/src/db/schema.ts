@@ -54,6 +54,7 @@ export interface SettingsTable {
   aws_access_key_id: string | null;
   aws_secret_access_key: string | null;
   aws_region: string | null;
+  model_id: string | null;
   jwt_secret: string | null;
   smtp_host: string | null;
   smtp_port: number | null;

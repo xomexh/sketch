@@ -7,7 +7,6 @@ import { runEnrichment } from "../connectors/enrichment";
 import { createLlmCallFn } from "../connectors/llm";
 import type { createSettingsRepository } from "../db/repositories/settings";
 import type { DB } from "../db/schema";
-import { requireAdmin } from "./middleware";
 
 const searchConfigSchema = z.object({
   geminiApiKey: z.string().nullable().optional(),
@@ -36,7 +35,7 @@ export function settingsRoutes(settings: SettingsRepo, db?: Kysely<DB>, logger?:
     });
   });
 
-  routes.put("/search", requireAdmin(), async (c) => {
+  routes.put("/search", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const parsed = searchConfigSchema.safeParse(body);
     if (!parsed.success) {
@@ -56,7 +55,7 @@ export function settingsRoutes(settings: SettingsRepo, db?: Kysely<DB>, logger?:
     });
   });
 
-  routes.post("/search/enrichments", requireAdmin(), async (c) => {
+  routes.post("/search/enrichments", async (c) => {
     if (!db || !logger) {
       return c.json({ error: { code: "NOT_AVAILABLE", message: "Enrichment not available" } }, 500);
     }

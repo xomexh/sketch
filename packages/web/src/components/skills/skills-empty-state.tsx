@@ -7,7 +7,6 @@ interface SkillsEmptyStateProps {
   category?: string;
   onCreateClick: () => void;
   onClearSearch?: () => void;
-  showCreateButton?: boolean;
 }
 
 export function SkillsEmptyState({
@@ -16,7 +15,6 @@ export function SkillsEmptyState({
   category,
   onCreateClick,
   onClearSearch,
-  showCreateButton = true,
 }: SkillsEmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
@@ -29,12 +27,10 @@ export function SkillsEmptyState({
           <p className="mt-1 max-w-xs text-xs text-muted-foreground">
             Skills let you define custom behaviors, connect integrations, and automate workflows with Sketch.
           </p>
-          {showCreateButton && (
-            <Button onClick={onCreateClick} size="sm" className="mt-4 gap-1.5">
-              <PlusIcon size={14} weight="bold" />
-              Create Your First Skill
-            </Button>
-          )}
+          <Button onClick={onCreateClick} size="sm" className="mt-4 gap-1.5">
+            <PlusIcon size={14} weight="bold" />
+            Create Your First Skill
+          </Button>
         </>
       )}
 
@@ -45,7 +41,7 @@ export function SkillsEmptyState({
           </div>
           <h3 className="mt-4 text-sm font-medium">No skills match &lsquo;{searchQuery}&rsquo;</h3>
           <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-            Try a different search term{showCreateButton ? " or create a new skill" : ""}.
+            Try a different search term or create a new skill.
           </p>
           <div className="mt-4 flex items-center gap-2">
             {onClearSearch && (
@@ -53,12 +49,10 @@ export function SkillsEmptyState({
                 Clear Search
               </Button>
             )}
-            {showCreateButton && (
-              <Button onClick={onCreateClick} size="sm" className="gap-1.5">
-                <PlusIcon size={14} weight="bold" />
-                Create Skill
-              </Button>
-            )}
+            <Button onClick={onCreateClick} size="sm" className="gap-1.5">
+              <PlusIcon size={14} weight="bold" />
+              Create Skill
+            </Button>
           </div>
         </>
       )}
@@ -70,16 +64,12 @@ export function SkillsEmptyState({
           </div>
           <h3 className="mt-4 text-sm font-medium">No {category} skills yet</h3>
           <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-            {showCreateButton
-              ? `Create your first ${category?.toLowerCase()} skill to get started.`
-              : "No active skills in this category."}
+            {`Create your first ${category?.toLowerCase()} skill to get started.`}
           </p>
-          {showCreateButton && (
-            <Button onClick={onCreateClick} size="sm" className="mt-4 gap-1.5">
-              <PlusIcon size={14} weight="bold" />
-              Create Skill
-            </Button>
-          )}
+          <Button onClick={onCreateClick} size="sm" className="mt-4 gap-1.5">
+            <PlusIcon size={14} weight="bold" />
+            Create Skill
+          </Button>
         </>
       )}
     </div>

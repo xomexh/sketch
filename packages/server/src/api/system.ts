@@ -4,10 +4,12 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
+import type { createMcpServerRepository } from "../db/repositories/mcp-servers";
 import type { createSettingsRepository } from "../db/repositories/settings";
 import type { createUserRepository } from "../db/repositories/users";
 
 type SettingsRepo = ReturnType<typeof createSettingsRepository>;
+type McpServersRepo = ReturnType<typeof createMcpServerRepository>;
 type UserRepo = ReturnType<typeof createUserRepository>;
 
 type SlackTokensCallback = (tokens: { botToken: string; appToken?: string }) => unknown;
@@ -17,6 +19,8 @@ interface SystemDeps {
   // biome-ignore lint/complexity/noBannedTypes: Function is needed here to accommodate Vitest mock types in tests
   onSlackTokensUpdated?: Function;
   userRepo?: UserRepo;
+  mcpServers?: McpServersRepo;
+  whatsappStatus?: () => { connected: boolean; phoneNumber: string | null; pairingInProgress: boolean };
   // biome-ignore lint/complexity/noBannedTypes: Function is needed here to accommodate Vitest mock types in tests
   startWhatsAppPairing?: Function;
   // biome-ignore lint/complexity/noBannedTypes: Function is needed here to accommodate Vitest mock types in tests
@@ -33,20 +37,33 @@ const identitySchema = z.object({
   adminPasswordHash: z.string().min(1),
   orgName: z.string().optional(),
   botName: z.string().optional(),
+  name: z.string().optional(),
 });
 
 const llmSchema = z.discriminatedUnion("provider", [
   z.object({
     provider: z.literal("anthropic"),
     apiKey: z.string().min(1),
+    modelId: z.string().optional(),
   }),
   z.object({
     provider: z.literal("bedrock"),
     accessKeyId: z.string().min(1),
     secretAccessKey: z.string().min(1),
     region: z.string().min(1),
+    modelId: z.string().optional(),
   }),
 ]);
+
+const systemUserSchema = z.object({
+  email: z.string().email(),
+  name: z.string().trim().min(1),
+});
+
+const canvasIntegrationSchema = z.object({
+  apiKey: z.string().min(1),
+  apiUrl: z.string().url(),
+});
 
 async function verifyAnthropicApiKey(apiKey: string): Promise<void> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -131,12 +148,12 @@ export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
     }
 
     if (deps.userRepo) {
+      const displayName = parsed.data.name || adminEmail.split("@")[0];
       const existingUser = await deps.userRepo.findByEmail(adminEmail);
       if (existingUser) {
-        await deps.userRepo.update(existingUser.id, { role: "admin" });
+        await deps.userRepo.update(existingUser.id, { name: displayName, emailVerified: true });
       } else {
-        const namePart = adminEmail.split("@")[0];
-        await deps.userRepo.create({ name: namePart, email: adminEmail, role: "admin" });
+        await deps.userRepo.create({ name: displayName, email: adminEmail, emailVerified: true });
       }
     }
 
@@ -160,6 +177,7 @@ export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
       await settings.update({
         llmProvider: "anthropic",
         anthropicApiKey: data.apiKey,
+        modelId: data.modelId,
       });
     } else {
       // TODO: Bedrock credential verification deferred -- no existing verification logic for AWS credentials
@@ -168,10 +186,53 @@ export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
         awsAccessKeyId: data.accessKeyId,
         awsSecretAccessKey: data.secretAccessKey,
         awsRegion: data.region,
+        modelId: data.modelId,
       });
     }
 
     return c.json({ ok: true });
+  });
+
+  routes.get("/llm", async (c) => {
+    const row = await settings.get();
+    if (!row) {
+      return c.json({ provider: null, modelId: null });
+    }
+    return c.json({
+      provider: row.llm_provider ?? null,
+      modelId: row.model_id ?? null,
+    });
+  });
+
+  routes.post("/users", async (c) => {
+    if (!deps.userRepo) {
+      return c.json({ error: { code: "NOT_FOUND", message: "User management not available" } }, 404);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const parsed = systemUserSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: { code: "BAD_REQUEST", message: parsed.error.message } }, 400);
+    }
+
+    const email = parsed.data.email.toLowerCase();
+    const existing = await deps.userRepo.findByEmail(email);
+    if (existing) {
+      return c.json({ ok: true, userId: existing.id });
+    }
+
+    const user = await deps.userRepo.create({
+      email,
+      name: parsed.data.name,
+      emailVerified: true,
+    });
+
+    return c.json({ ok: true, userId: user.id });
+  });
+
+  routes.get("/whatsapp", (c) => {
+    const status = deps.whatsappStatus?.() ?? { connected: false, phoneNumber: null, pairingInProgress: false };
+    return c.json(status);
   });
 
   routes.get("/whatsapp/pair", async (c) => {
@@ -185,6 +246,38 @@ export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
     if (deps.cancelWhatsAppPairing) {
       deps.cancelWhatsAppPairing();
     }
+    return c.json({ ok: true });
+  });
+
+  routes.put("/integrations/canvas", async (c) => {
+    if (!deps.mcpServers) {
+      return c.json({ error: { code: "NOT_FOUND", message: "MCP servers not available" } }, 404);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const parsed = canvasIntegrationSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: { code: "BAD_REQUEST", message: parsed.error.message } }, 400);
+    }
+
+    const { apiKey, apiUrl } = parsed.data;
+    const credentials = JSON.stringify({ apiKey });
+    const mcpUrl = `${apiUrl}/mcp`;
+
+    const existing = await deps.mcpServers.findByType("canvas");
+    if (existing) {
+      await deps.mcpServers.update(existing.id, { credentials, apiUrl, url: mcpUrl });
+    } else {
+      await deps.mcpServers.create({
+        type: "canvas",
+        displayName: "Canvas",
+        url: mcpUrl,
+        apiUrl,
+        credentials,
+        mode: "skill",
+      });
+    }
+
     return c.json({ ok: true });
   });
 

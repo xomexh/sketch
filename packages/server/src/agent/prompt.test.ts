@@ -7,6 +7,7 @@ describe("buildSystemContext", () => {
       platform: "slack",
       userName: "Alice",
       workspaceDir: "/data/workspaces/u123",
+      orgDir: "/data/.claude",
       orgName: "Acme Corp",
       botName: "Sketch",
     });
@@ -54,6 +55,7 @@ describe("buildSystemContext", () => {
       platform: "whatsapp",
       userName: "Bob",
       workspaceDir: "/data/workspaces/u456",
+      orgDir: "/data/.claude",
     });
 
     it("includes WhatsApp formatting rules", () => {
@@ -103,6 +105,7 @@ describe("buildSystemContext", () => {
       platform: "slack",
       userName: "Carol",
       workspaceDir: "/data/workspaces/channel-C001",
+      orgDir: "/data/.claude",
       channelContext: {
         channelName: "general",
       },
@@ -140,6 +143,7 @@ describe("buildSystemContext", () => {
       platform: "slack",
       userName: "Eve",
       workspaceDir: "/data/workspaces/u789",
+      orgDir: "/data/.claude",
     });
 
     it("includes file attachments section", () => {
@@ -169,11 +173,12 @@ describe("buildSystemContext", () => {
         platform: "slack",
         userName: "Alice",
         workspaceDir: "/data/workspaces/u123",
+        orgDir: "/data/.claude",
       });
       expect(result).toContain("## Memory");
       expect(result).toContain("Personal memory");
       expect(result).toContain("Org memory");
-      expect(result).toContain("~/.claude/CLAUDE.md");
+      expect(result).toContain("/data/.claude/CLAUDE.md");
     });
 
     it("includes concise writing instruction", () => {
@@ -181,6 +186,7 @@ describe("buildSystemContext", () => {
         platform: "slack",
         userName: "Alice",
         workspaceDir: "/data/workspaces/u123",
+        orgDir: "/data/.claude",
       });
       expect(result).toContain("single concise line");
       expect(result).toContain("topic headings");
@@ -191,6 +197,7 @@ describe("buildSystemContext", () => {
         platform: "slack",
         userName: "Alice",
         workspaceDir: "/data/workspaces/u123",
+        orgDir: "/data/.claude",
       });
       expect(result).not.toContain("shared by all users");
     });
@@ -200,6 +207,7 @@ describe("buildSystemContext", () => {
         platform: "slack",
         userName: "Alice",
         workspaceDir: "/data/workspaces/channel-C001",
+        orgDir: "/data/.claude",
         channelContext: {
           channelName: "general",
         },
@@ -213,6 +221,7 @@ describe("buildSystemContext", () => {
       platform: "whatsapp",
       userName: "Alice",
       workspaceDir: "/data/workspaces/wa-group-123",
+      orgDir: "/data/.claude",
       groupContext: {
         groupName: "Engineering Team",
         groupDescription: "Daily standups and discussions",
@@ -255,6 +264,7 @@ describe("buildSystemContext", () => {
         platform: "slack",
         userName: "Alice",
         workspaceDir: "/data/workspaces/u123",
+        orgDir: "/data/.claude",
       });
       expect(result).toContain("## About Sketch");
       expect(result).toContain("managed by the admin");
@@ -267,6 +277,7 @@ describe("buildSystemContext", () => {
         platform: "slack",
         userName: "Alice",
         workspaceDir: "/data/workspaces/u123",
+        orgDir: "/data/.claude",
       });
       expect(result).toContain("## Context Protocol");
     });
@@ -276,6 +287,7 @@ describe("buildSystemContext", () => {
         platform: "slack",
         userName: "Alice",
         workspaceDir: "/data/workspaces/u123",
+        orgDir: "/data/.claude",
       });
       expect(result).toContain("<context>");
       expect(result).toContain("<outreach>");
@@ -288,6 +300,7 @@ describe("buildSystemContext", () => {
         platform: "slack",
         userName: "Alice",
         workspaceDir: "/data/workspaces/u123",
+        orgDir: "/data/.claude",
       });
       expect(result).toContain("Never mention <context>");
     });
@@ -300,6 +313,7 @@ describe("buildSystemContext", () => {
         userName: "Alice",
         userEmail: "alice@example.com",
         workspaceDir: "/data/workspaces/u123",
+        orgDir: "/data/.claude",
       });
       expect(result).toContain("Email: alice@example.com");
     });
@@ -310,6 +324,7 @@ describe("buildSystemContext", () => {
         userName: "Alice",
         userEmail: null,
         workspaceDir: "/data/workspaces/u123",
+        orgDir: "/data/.claude",
       });
       expect(result).toContain("Email: not configured");
     });
@@ -319,6 +334,7 @@ describe("buildSystemContext", () => {
         platform: "slack",
         userName: "Alice",
         workspaceDir: "/data/workspaces/u123",
+        orgDir: "/data/.claude",
       });
       expect(result).toContain("Email: not configured");
     });
@@ -329,6 +345,7 @@ describe("buildSystemContext", () => {
         userName: "Alice",
         userEmail: "alice@example.com",
         workspaceDir: "/data/workspaces/channel-C001",
+        orgDir: "/data/.claude",
         channelContext: { channelName: "general" },
       });
       expect(result).not.toContain("Email:");
@@ -342,6 +359,7 @@ describe("buildSystemContext", () => {
         userName: "Alice",
         userPhone: "+1234567890",
         workspaceDir: "/data/workspaces/u123",
+        orgDir: "/data/.claude",
       });
       expect(result).toContain("Phone: +1234567890");
     });
@@ -352,6 +370,7 @@ describe("buildSystemContext", () => {
         userName: "Alice",
         userPhone: null,
         workspaceDir: "/data/workspaces/u123",
+        orgDir: "/data/.claude",
       });
       expect(result).not.toContain("Phone:");
     });
@@ -362,6 +381,7 @@ describe("buildSystemContext", () => {
         userName: "Alice",
         userPhone: "+1234567890",
         workspaceDir: "/data/workspaces/channel-C001",
+        orgDir: "/data/.claude",
         channelContext: { channelName: "general" },
       });
       expect(result).not.toContain("Phone:");
@@ -373,6 +393,7 @@ describe("buildSystemContext", () => {
         userName: "Alice",
         userPhone: "+1234567890",
         workspaceDir: "/data/workspaces/wa-group-123",
+        orgDir: "/data/.claude",
         groupContext: { groupName: "Engineering Team" },
       });
       expect(result).not.toContain("Phone:");
@@ -385,6 +406,7 @@ describe("buildSystemContext", () => {
         userEmail: "alice@example.com",
         userPhone: "+1234567890",
         workspaceDir: "/data/workspaces/u123",
+        orgDir: "/data/.claude",
       });
       expect(result).toContain("Email: alice@example.com");
       expect(result).toContain("Phone: +1234567890");
@@ -396,6 +418,7 @@ describe("buildSystemContext", () => {
       platform: "whatsapp",
       userName: "Bob",
       workspaceDir: "/data/workspaces/wa-group-456",
+      orgDir: "/data/.claude",
       groupContext: {
         groupName: "Casual Chat",
       },
@@ -780,6 +803,7 @@ describe("buildSystemContext Information Discovery section", () => {
       platform: "slack",
       userName: "Alice",
       workspaceDir: "/data/workspaces/u123",
+      orgDir: "/data/.claude",
     });
     expect(result).toContain("## Information Discovery");
   });
@@ -789,10 +813,11 @@ describe("buildSystemContext Information Discovery section", () => {
       platform: "slack",
       userName: "Alice",
       workspaceDir: "/data/workspaces/u123",
+      orgDir: "/data/.claude",
     });
     expect(result).toContain("find it yourself first");
     expect(result).toContain("workspace files");
-    expect(result).toContain("org directory (~/.claude/)");
+    expect(result).toContain("org directory (/data/.claude/)");
     expect(result).toContain("reach out to team members");
   });
 
@@ -801,6 +826,7 @@ describe("buildSystemContext Information Discovery section", () => {
       platform: "slack",
       userName: "Alice",
       workspaceDir: "/data/workspaces/u123",
+      orgDir: "/data/.claude",
     });
     expect(result).toContain("max 2");
   });
@@ -810,6 +836,7 @@ describe("buildSystemContext Information Discovery section", () => {
       platform: "slack",
       userName: "Alice",
       workspaceDir: "/data/workspaces/u123",
+      orgDir: "/data/.claude",
     });
     expect(result).toContain("scheduled task to follow up");
   });
@@ -819,6 +846,7 @@ describe("buildSystemContext Information Discovery section", () => {
       platform: "slack",
       userName: "Alice",
       workspaceDir: "/data/workspaces/u123",
+      orgDir: "/data/.claude",
     });
     expect(result).toContain("considered a failure");
   });
@@ -830,8 +858,9 @@ describe("buildSystemContext workspace and org directory", () => {
       platform: "slack",
       userName: "Alice",
       workspaceDir: "/data/workspaces/u123",
+      orgDir: "/data/.claude",
     });
-    expect(result).toContain("~/.claude/ (the shared org directory)");
+    expect(result).toContain("/data/.claude/ (the shared org directory)");
   });
 
   it("includes org directory line in memory section", () => {
@@ -839,8 +868,9 @@ describe("buildSystemContext workspace and org directory", () => {
       platform: "slack",
       userName: "Alice",
       workspaceDir: "/data/workspaces/u123",
+      orgDir: "/data/.claude",
     });
     expect(result).toContain("Org directory");
-    expect(result).toContain("~/.claude/ is the shared org workspace");
+    expect(result).toContain("/data/.claude/ is the shared org workspace");
   });
 });

@@ -3,7 +3,8 @@
  * Uses zod for schema validation and dotenv for .env file loading.
  * Fails fast on startup with all errors printed at once.
  */
-import { dirname, isAbsolute, resolve } from "node:path";
+import { homedir } from "node:os";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
 import "dotenv/config";
 
@@ -36,9 +37,9 @@ export const configSchema = z.object({
   SYSTEM_SECRET: z.string().optional(),
 
   // Bootstrap (managed seed)
-  BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
-  BOOTSTRAP_ADMIN_PASSWORD_HASH: z.string().optional(),
-  BOOTSTRAP_SLACK_BOT_TOKEN: z.string().optional(),
+  BOOTSTRAP_ADMIN_EMAIL: z.preprocess((v) => (v === "" ? undefined : v), z.string().email().optional()),
+  BOOTSTRAP_ADMIN_PASSWORD_HASH: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  BOOTSTRAP_SLACK_BOT_TOKEN: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
 
   // Managed mode
   MANAGED_URL: z.string().optional(),
@@ -47,6 +48,9 @@ export const configSchema = z.object({
   // PostHog (optional, enables LLM Analytics via OpenTelemetry)
   POSTHOG_API_KEY: z.string().optional(),
   POSTHOG_HOST: z.string().default("https://us.i.posthog.com"),
+
+  CLAUDE_CONFIG_DIR: z.string().default(join(homedir(), ".claude")),
+  SKETCH_CONFIG_DIR: z.string().default(join(homedir(), ".sketch")),
 
   // Server
   // Public-facing base URL (used for OAuth redirect URIs, email links, etc.)
@@ -78,6 +82,12 @@ export function loadConfig(): Config {
   }
   if (!isAbsolute(config.SQLITE_PATH)) {
     config.SQLITE_PATH = resolve(projectRoot, config.SQLITE_PATH);
+  }
+  if (!isAbsolute(config.CLAUDE_CONFIG_DIR)) {
+    config.CLAUDE_CONFIG_DIR = resolve(projectRoot, config.CLAUDE_CONFIG_DIR);
+  }
+  if (!isAbsolute(config.SKETCH_CONFIG_DIR)) {
+    config.SKETCH_CONFIG_DIR = resolve(projectRoot, config.SKETCH_CONFIG_DIR);
   }
 
   return config;

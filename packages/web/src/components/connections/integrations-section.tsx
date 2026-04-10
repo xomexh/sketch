@@ -1,11 +1,10 @@
 import { api } from "@/lib/api";
 import { PlugIcon, PlusIcon, SpinnerGapIcon, TrashIcon } from "@phosphor-icons/react";
-import type { IntegrationConnection, McpServerRecord } from "@sketch/shared";
+import type { IntegrationConnection } from "@sketch/shared";
 /**
  * Integrations section: shows the user's connected apps via an integration provider.
- * Members can add/disconnect apps. Admins see a read-only header.
+ * All users can add and disconnect apps.
  */
-import { Badge } from "@sketch/ui/components/badge";
 import { Button } from "@sketch/ui/components/button";
 import { Skeleton } from "@sketch/ui/components/skeleton";
 import { getAbbreviation } from "@sketch/ui/lib/utils";
@@ -13,24 +12,19 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 export function IntegrationsSection({
-  provider,
   connections,
   isLoadingConnections,
-  isMember,
   providerId,
   onAdd,
   onDisconnect,
 }: {
-  provider: McpServerRecord;
   connections: IntegrationConnection[];
   isLoadingConnections: boolean;
-  isMember: boolean;
   providerId: string;
   onAdd: () => void;
   onDisconnect: () => void;
 }) {
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
-  const providerLabel = provider.type === "canvas" ? "Canvas" : (provider.type ?? "Provider");
 
   const handleDisconnect = async (connectionId: string) => {
     setDisconnectingId(connectionId);
@@ -47,21 +41,6 @@ export function IntegrationsSection({
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-medium text-muted-foreground">Integrations</p>
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-            via {providerLabel}
-          </Badge>
-        </div>
-        {isMember && (
-          <Button size="sm" className="gap-1.5" onClick={onAdd}>
-            <PlusIcon size={14} weight="bold" />
-            Add integration
-          </Button>
-        )}
-      </div>
-
       {isLoadingConnections ? (
         <div className="overflow-hidden rounded-lg border border-border bg-card">
           {[1, 2, 3].map((i) => (
@@ -80,20 +59,12 @@ export function IntegrationsSection({
           <div className="flex size-12 items-center justify-center rounded-full bg-muted">
             <PlugIcon size={24} className="text-muted-foreground" />
           </div>
-          <p className="mt-4 text-sm font-medium">
-            {isMember ? "No apps connected yet" : "Integrations available for members"}
-          </p>
-          <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-            {isMember
-              ? "Add an integration to connect your apps."
-              : "Members can connect their personal apps from this page."}
-          </p>
-          {isMember && (
-            <Button size="sm" className="mt-4 gap-1.5" onClick={onAdd}>
-              <PlusIcon size={14} weight="bold" />
-              Add integration
-            </Button>
-          )}
+          <p className="mt-4 text-sm font-medium">No apps connected yet</p>
+          <p className="mt-1 max-w-xs text-xs text-muted-foreground">Add an integration to connect your apps.</p>
+          <Button size="sm" className="mt-4 gap-1.5" onClick={onAdd}>
+            <PlusIcon size={14} weight="bold" />
+            Add integration
+          </Button>
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-border bg-card">
@@ -102,7 +73,6 @@ export function IntegrationsSection({
               key={connection.id}
               connection={connection}
               isLast={i === connections.length - 1}
-              isMember={isMember}
               isDisconnecting={disconnectingId === connection.id}
               onDisconnect={() => handleDisconnect(connection.id)}
             />
@@ -116,13 +86,11 @@ export function IntegrationsSection({
 function ConnectionRow({
   connection,
   isLast,
-  isMember,
   isDisconnecting,
   onDisconnect,
 }: {
   connection: IntegrationConnection;
   isLast: boolean;
-  isMember: boolean;
   isDisconnecting: boolean;
   onDisconnect: () => void;
 }) {
@@ -164,17 +132,15 @@ function ConnectionRow({
         )}
       </div>
 
-      {isMember && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 text-muted-foreground hover:text-destructive"
-          onClick={onDisconnect}
-          disabled={isDisconnecting}
-        >
-          {isDisconnecting ? <SpinnerGapIcon size={14} className="animate-spin" /> : <TrashIcon size={14} />}
-        </Button>
-      )}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-7 text-muted-foreground hover:text-destructive"
+        onClick={onDisconnect}
+        disabled={isDisconnecting}
+      >
+        {isDisconnecting ? <SpinnerGapIcon size={14} className="animate-spin" /> : <TrashIcon size={14} />}
+      </Button>
     </div>
   );
 }

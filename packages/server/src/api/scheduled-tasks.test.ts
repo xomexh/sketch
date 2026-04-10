@@ -132,7 +132,7 @@ describe("Scheduled Tasks API", () => {
     expect(whatsappTask.canResume).toBe(true);
   });
 
-  it("returns only the member's tasks", async () => {
+  it("returns all tasks regardless of who created them", async () => {
     await seedAdmin(db);
     const users = createUserRepository(db);
     const tasks = createScheduledTaskRepository(db);
@@ -184,9 +184,9 @@ describe("Scheduled Tasks API", () => {
     expect(res.status).toBe(200);
 
     const body = await res.json();
-    expect(body.tasks).toHaveLength(1);
-    expect(body.tasks[0].id).toBe("task-alice");
-    expect(body.tasks[0].targetLabel).toBe("Alice");
+    expect(body.tasks).toHaveLength(2);
+    const ids = body.tasks.map((t: { id: string }) => t.id).sort();
+    expect(ids).toEqual(["task-alice", "task-bob"]);
   });
 
   it("falls back to raw delivery targets when metadata is missing", async () => {
@@ -225,46 +225,6 @@ describe("Scheduled Tasks API", () => {
 
     const body = await res.json();
     expect(body.tasks[0].targetLabel).toBe("unknown@g.us");
-  });
-
-  it("returns 403 when a member pauses another user's task", async () => {
-    await seedAdmin(db);
-    const users = createUserRepository(db);
-    const tasks = createScheduledTaskRepository(db);
-    const alice = await users.create({ name: "Alice", email: "alice@test.com" });
-    const bob = await users.create({ name: "Bob", email: "bob@test.com" });
-
-    await tasks.add({
-      id: "task-bob",
-      platform: "slack",
-      context_type: "dm",
-      delivery_target: "D123",
-      thread_ts: null,
-      prompt: "Bob task",
-      schedule_type: "interval",
-      schedule_value: "3600",
-      timezone: "UTC",
-      session_mode: "chat",
-      created_by: bob.id,
-      status: "active",
-      next_run_at: null,
-    });
-
-    const scheduler = {
-      pauseTask: vi.fn(),
-      resumeTask: vi.fn(),
-      removeTask: vi.fn(),
-    };
-    const app = createApp(db, config, { scheduler });
-    const cookie = await getMemberCookie(db, alice.id);
-
-    const res = await app.request("/api/scheduled-tasks/task-bob/pause", {
-      method: "POST",
-      headers: { Cookie: cookie },
-    });
-
-    expect(res.status).toBe(403);
-    expect(scheduler.pauseTask).not.toHaveBeenCalled();
   });
 
   it("returns the updated task after pause and resume", async () => {

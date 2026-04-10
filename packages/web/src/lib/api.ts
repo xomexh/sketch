@@ -285,7 +285,7 @@ export const api = {
     },
     magicLink: {
       request(email: string) {
-        return request<{ success: boolean }>("/api/auth/magic-link", {
+        return request<{ success: boolean; channels: string[] }>("/api/auth/magic-link", {
           method: "POST",
           body: JSON.stringify({ email }),
         });

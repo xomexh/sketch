@@ -4,6 +4,8 @@ import { loadConfig, validateConfig } from "./config";
 const config = loadConfig();
 validateConfig(config);
 
+process.env.CLAUDE_CONFIG_DIR = config.CLAUDE_CONFIG_DIR;
+
 const handle = await createServer(config);
 
 async function shutdown() {

@@ -5,5 +5,9 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     environment: "node",
     setupFiles: ["src/test-setup.ts"],
+    env: {
+      DATA_DIR: "/tmp/sketch-test-data",
+    },
+    maxWorkers: 2,
   },
 });

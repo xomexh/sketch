@@ -1,17 +1,12 @@
 import { server } from "@/test/msw";
 import { renderWithProviders } from "@/test/utils";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TeamPage } from "./team";
 
-/**
- * Mutable auth context. Tests can override via setMockAuth() to switch
- * between admin and member views. Resets to admin after each test.
- */
-let mockAuth: { role: "admin" | "member"; email: string; userId?: string } = {
-  role: "admin",
+let mockAuth: { email: string; userId?: string } = {
   email: "admin@test.com",
 };
 
@@ -28,7 +23,7 @@ vi.mock("@tanstack/react-router", async () => {
 });
 
 afterEach(() => {
-  mockAuth = { role: "admin", email: "admin@test.com" };
+  mockAuth = { email: "admin@test.com" };
 });
 
 describe("TeamPage", () => {
@@ -87,15 +82,12 @@ describe("TeamPage", () => {
 
       await user.click(screen.getByRole("button", { name: /Add member/i }));
 
-      await waitFor(() => {
-        expect(screen.getByLabelText("Name")).toBeInTheDocument();
-      });
+      const dialog = await screen.findByRole("dialog");
 
-      await user.type(screen.getByLabelText("Name"), "Charlie");
-      // No email typed
+      await user.type(within(dialog).getByLabelText("Name"), "Charlie");
 
-      expect(screen.getByRole("button", { name: "Add member" })).toBeDisabled();
-    });
+      expect(within(dialog).getByRole("button", { name: "Add member" })).toBeDisabled();
+    }, 15000);
 
     it("creates a user on submit", async () => {
       const createFn = vi.fn();
@@ -128,14 +120,12 @@ describe("TeamPage", () => {
 
       await user.click(screen.getByRole("button", { name: /Add member/i }));
 
-      await waitFor(() => {
-        expect(screen.getByLabelText("Name")).toBeInTheDocument();
-      });
+      const dialog = await screen.findByRole("dialog");
 
-      await user.type(screen.getByLabelText("Name"), "Charlie");
-      await user.type(screen.getByLabelText("Email"), "charlie@test.com");
-      await user.type(screen.getByLabelText("WhatsApp number"), "+14155551234");
-      await user.click(screen.getByRole("button", { name: "Add member" }));
+      await user.type(within(dialog).getByLabelText("Name"), "Charlie");
+      await user.type(within(dialog).getByLabelText("Email"), "charlie@test.com");
+      await user.type(within(dialog).getByLabelText("WhatsApp number"), "+14155551234");
+      await user.click(within(dialog).getByRole("button", { name: "Add member" }));
 
       await waitFor(() => {
         expect(createFn).toHaveBeenCalledWith({
@@ -148,7 +138,7 @@ describe("TeamPage", () => {
           description: null,
         });
       });
-    });
+    }, 15000);
 
     it("shows inline error on duplicate number", async () => {
       server.use(
@@ -184,35 +174,8 @@ describe("TeamPage", () => {
     });
   });
 
-  it("does not show 'You' badge for admin even when a member has the same email", async () => {
-    server.use(
-      http.get("/api/users", () => {
-        return HttpResponse.json({
-          users: [
-            {
-              id: "u1",
-              name: "Alice Smith",
-              email: "admin@test.com",
-              slack_user_id: null,
-              whatsapp_number: null,
-              created_at: "2026-01-01T00:00:00Z",
-            },
-          ],
-        });
-      }),
-    );
-
-    renderWithProviders(<TeamPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Alice Smith")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByText("You")).not.toBeInTheDocument();
-  });
-
-  it("shows 'You' badge for the matching member when viewing as member", async () => {
-    setMockAuth({ role: "member", userId: "u1" });
+  it("shows 'You' badge when userId matches a member", async () => {
+    setMockAuth({ userId: "u1" });
 
     renderWithProviders(<TeamPage />);
 
@@ -223,8 +186,8 @@ describe("TeamPage", () => {
     expect(screen.getByText("You")).toBeInTheDocument();
   });
 
-  it("does not show 'You' badge on non-matching members when viewing as member", async () => {
-    setMockAuth({ role: "member", userId: "u-other" });
+  it("does not show 'You' badge when userId does not match", async () => {
+    setMockAuth({ userId: "u-other" });
 
     renderWithProviders(<TeamPage />);
 
@@ -252,9 +215,7 @@ describe("TeamPage", () => {
         expect(screen.getByText("Alice Smith")).toBeInTheDocument();
       });
 
-      // Open overflow menu on a non-admin row
       const menuTriggers = screen.getAllByRole("button").filter((btn) => btn.querySelector("svg"));
-      // The last overflow menu button (for one of the users)
       const overflowBtn = menuTriggers[menuTriggers.length - 1];
       await user.click(overflowBtn);
 

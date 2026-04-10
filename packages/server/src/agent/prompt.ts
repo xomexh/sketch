@@ -70,6 +70,7 @@ export function buildSystemContext(params: {
   userEmail?: string | null;
   userPhone?: string | null;
   workspaceDir: string;
+  orgDir: string;
   orgName?: string | null;
   botName?: string | null;
   channelContext?: {
@@ -156,7 +157,7 @@ export function buildSystemContext(params: {
   sections.push(
     "## Workspace Isolation",
     `Your working directory is ${params.workspaceDir}`,
-    "You can read, write, and execute files within this directory and in ~/.claude/ (the shared org directory).",
+    `You can read, write, and execute files within this directory and in ${params.orgDir}/ (the shared org directory).`,
     "NEVER access files outside these two directories.",
   );
 
@@ -174,8 +175,8 @@ export function buildSystemContext(params: {
     "**Personal memory** — your workspace CLAUDE.md. Loaded automatically at session start.",
     "When the user asks you to remember something, save it there.",
     "",
-    "**Org directory** — ~/.claude/ is the shared org workspace. Contains org memory (CLAUDE.md), skills, and any org-wide files. You can read and write files here.",
-    "**Org memory** — ~/.claude/CLAUDE.md. Shared across all users, loaded automatically.",
+    `**Org directory** — ${params.orgDir}/ is the shared org workspace. Contains org memory (CLAUDE.md), skills, and any org-wide files. You can read and write files here.`,
+    `**Org memory** — ${params.orgDir}/CLAUDE.md. Shared across all users, loaded automatically.`,
     "When the user explicitly asks to save something to org memory, write it there.",
     "",
     "**Writing memories:** Each memory entry must be a single concise line. Never write paragraphs or detailed notes.",
@@ -199,7 +200,7 @@ export function buildSystemContext(params: {
   sections.push(
     "## Information Discovery",
     "When you need information on something, find it yourself first.",
-    "Check workspace files, org directory (~/.claude/), and if not found locally, reach out to team members (max 2) who can help.",
+    `Check workspace files, org directory (${params.orgDir}/), and if not found locally, reach out to team members (max 2) who can help.`,
     "Set up a one-time scheduled task to follow up after an hour or next morning in case they don't respond.",
     "Failing to follow this process is considered a failure.",
   );

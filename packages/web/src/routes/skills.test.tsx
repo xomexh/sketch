@@ -3,9 +3,7 @@ import { renderWithProviders } from "@/test/utils";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-let mockRole: "admin" | "member" = "admin";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@tanstack/react-router")>();
@@ -13,9 +11,8 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     ...mod,
     useRouteContext: () => ({
       auth: {
-        role: mockRole,
-        displayName: mockRole === "admin" ? "Admin" : "Member",
-        displayIdentifier: `${mockRole}@test.com`,
+        displayName: "Test User",
+        displayIdentifier: "user@test.com",
       },
     }),
   };
@@ -55,11 +52,7 @@ function skillsHandler(skills = mockSkills) {
   );
 }
 
-describe("SkillsPage (admin)", () => {
-  beforeEach(() => {
-    mockRole = "admin";
-  });
-
+describe("SkillsPage", () => {
   it("renders skill cards", async () => {
     skillsHandler();
     renderWithProviders(<SkillsPage />);
@@ -78,22 +71,14 @@ describe("SkillsPage (admin)", () => {
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
-  it("shows empty state when no skills exist", async () => {
+  it("shows empty state with Create button when no skills exist", async () => {
     skillsHandler([]);
     renderWithProviders(<SkillsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Teach Sketch new tricks")).toBeInTheDocument();
     });
-  });
-
-  it("shows Create Your First Skill button in empty state for admin", async () => {
-    skillsHandler([]);
-    renderWithProviders(<SkillsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Create Your First Skill/i })).toBeInTheDocument();
-    });
+    expect(screen.getByRole("button", { name: /Create Your First Skill/i })).toBeInTheDocument();
   });
 
   it("shows error state when API fails", async () => {
@@ -110,7 +95,7 @@ describe("SkillsPage (admin)", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
-  it("shows Create Skill button in header for admin", async () => {
+  it("shows Create Skill button in header", async () => {
     skillsHandler();
     renderWithProviders(<SkillsPage />);
 
@@ -129,7 +114,6 @@ describe("SkillsPage (admin)", () => {
       expect(screen.getByText("CRM Lead Creator")).toBeInTheDocument();
     });
 
-    // Open the search bar — the search toggle is a button with only an SVG (no text)
     const searchToggle = screen
       .getAllByRole("button")
       .find((btn) => btn.querySelector("svg") && btn.textContent?.trim() === "") as HTMLElement;
@@ -241,14 +225,12 @@ describe("SkillsPage (admin)", () => {
       expect(screen.getByText("CRM Lead Creator")).toBeInTheDocument();
     });
 
-    // Click into a skill to view it
     await user.click(screen.getByText("CRM Lead Creator"));
 
     await waitFor(() => {
       expect(screen.getByText("You are a CRM assistant.")).toBeInTheDocument();
     });
 
-    // Open the three-dot action menu
     const menuTriggers = screen.getAllByRole("button").filter((btn) => btn.querySelector("svg"));
     const actionMenuBtn = menuTriggers[menuTriggers.length - 1];
     await user.click(actionMenuBtn);
@@ -258,7 +240,6 @@ describe("SkillsPage (admin)", () => {
     });
     await user.click(screen.getByText("Delete"));
 
-    // Confirm in the delete dialog
     await waitFor(() => {
       expect(screen.getByText(/permanently removed/i)).toBeInTheDocument();
     });
@@ -283,79 +264,5 @@ describe("SkillsPage (admin)", () => {
     expect(screen.getByText("CRM Lead Creator")).toBeInTheDocument();
     expect(screen.getByText("Meeting Scheduler")).toBeInTheDocument();
     expect(screen.getByText("Slack Notifier")).toBeInTheDocument();
-  });
-});
-
-describe("SkillsPage (member)", () => {
-  beforeEach(() => {
-    mockRole = "member";
-  });
-
-  it("hides Create Skill button for members", async () => {
-    skillsHandler();
-    renderWithProviders(<SkillsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("CRM Lead Creator")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByRole("button", { name: /Create Skill/i })).not.toBeInTheDocument();
-  });
-
-  it("hides Create Your First Skill button in empty state for members", async () => {
-    skillsHandler([]);
-    renderWithProviders(<SkillsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Teach Sketch new tricks")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByRole("button", { name: /Create Your First Skill/i })).not.toBeInTheDocument();
-  });
-
-  it("members can view skills", async () => {
-    skillsHandler();
-    renderWithProviders(<SkillsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("CRM Lead Creator")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Meeting Scheduler")).toBeInTheDocument();
-  });
-
-  it("members can view skill details", async () => {
-    skillsHandler();
-    const user = userEvent.setup();
-    renderWithProviders(<SkillsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("CRM Lead Creator")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByText("CRM Lead Creator"));
-
-    await waitFor(() => {
-      expect(screen.getByText("You are a CRM assistant.")).toBeInTheDocument();
-    });
-  });
-
-  it("members do not see edit or action menu in skill detail view", async () => {
-    skillsHandler();
-    const user = userEvent.setup();
-    renderWithProviders(<SkillsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("CRM Lead Creator")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByText("CRM Lead Creator"));
-
-    await waitFor(() => {
-      expect(screen.getByText("You are a CRM assistant.")).toBeInTheDocument();
-    });
-
-    // Only the back button should have an SVG icon; no edit or three-dot menu
-    const svgButtons = screen.getAllByRole("button").filter((btn) => btn.querySelector("svg"));
-    expect(svgButtons).toHaveLength(1); // just the back arrow
   });
 });

@@ -1,10 +1,17 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Config } from "../config";
 import { syncFeaturedSkills } from "./sync";
 
-const SKILLS_CACHE = join(homedir(), ".sketch", "skills-repo");
-const SKILLS_TARGET = join(homedir(), ".claude", "skills");
+const CLAUDE_CONFIG_DIR = "/tmp/test-claude";
+const SKETCH_CONFIG_DIR = "/tmp/test-sketch";
+const SKILLS_CACHE = join(SKETCH_CONFIG_DIR, "skills-repo");
+const SKILLS_TARGET = join(CLAUDE_CONFIG_DIR, "skills");
+
+const fakeConfig = {
+  CLAUDE_CONFIG_DIR,
+  SKETCH_CONFIG_DIR,
+} as Config;
 
 vi.mock("node:child_process", () => ({
   execSync: vi.fn(),
@@ -53,7 +60,7 @@ describe("syncFeaturedSkills", () => {
     });
 
     const logger = makeLogger();
-    await syncFeaturedSkills(logger as never);
+    await syncFeaturedSkills(fakeConfig, logger as never);
 
     expect(execSync).toHaveBeenCalledWith(
       expect.stringContaining("git clone --depth 1"),
@@ -70,7 +77,7 @@ describe("syncFeaturedSkills", () => {
     });
 
     const logger = makeLogger();
-    await syncFeaturedSkills(logger as never);
+    await syncFeaturedSkills(fakeConfig, logger as never);
 
     expect(execSync).toHaveBeenCalledWith(
       "git pull --ff-only",
@@ -90,7 +97,7 @@ describe("syncFeaturedSkills", () => {
     vi.mocked(readFileSync).mockReturnValue(MANIFEST_WITH_SKILLS);
 
     const logger = makeLogger();
-    await syncFeaturedSkills(logger as never);
+    await syncFeaturedSkills(fakeConfig, logger as never);
 
     expect(cpSync).toHaveBeenCalledTimes(2);
     expect(cpSync).toHaveBeenCalledWith(join(SKILLS_CACHE, "skills/skill-a"), join(SKILLS_TARGET, "skill-a"), {
@@ -111,7 +118,7 @@ describe("syncFeaturedSkills", () => {
     });
 
     const logger = makeLogger();
-    await expect(syncFeaturedSkills(logger as never)).resolves.toBeUndefined();
+    await expect(syncFeaturedSkills(fakeConfig, logger as never)).resolves.toBeUndefined();
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ err: expect.any(Error) }),
       "Failed to sync featured skills, continuing with existing skills",
@@ -126,7 +133,7 @@ describe("syncFeaturedSkills", () => {
     });
 
     const logger = makeLogger();
-    await syncFeaturedSkills(logger as never);
+    await syncFeaturedSkills(fakeConfig, logger as never);
 
     expect(logger.warn).toHaveBeenCalledWith("No manifest.json found in skills repo, skipping skill copy");
     expect(cpSync).not.toHaveBeenCalled();
@@ -141,7 +148,7 @@ describe("syncFeaturedSkills", () => {
     vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ skills: {} }));
 
     const logger = makeLogger();
-    await syncFeaturedSkills(logger as never);
+    await syncFeaturedSkills(fakeConfig, logger as never);
 
     expect(mkdirSync).toHaveBeenCalledWith(SKILLS_TARGET, { recursive: true });
   });

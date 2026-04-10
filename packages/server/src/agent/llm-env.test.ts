@@ -11,6 +11,7 @@ const ENV_KEYS = [
   "AWS_SECRET_ACCESS_KEY",
   "AWS_REGION",
   "ANTHROPIC_API_KEY",
+  "ANTHROPIC_MODEL",
 ] as const;
 
 function snapshotEnv() {
@@ -63,6 +64,7 @@ describe("applyLlmEnvFromSettings", () => {
         aws_access_key_id: null,
         aws_secret_access_key: null,
         aws_region: null,
+        model_id: null,
       },
       logger as never,
     );
@@ -90,6 +92,7 @@ describe("applyLlmEnvFromSettings", () => {
         aws_access_key_id: null,
         aws_secret_access_key: null,
         aws_region: null,
+        model_id: null,
       },
       logger as never,
     );
@@ -113,6 +116,7 @@ describe("applyLlmEnvFromSettings", () => {
         aws_access_key_id: "AKIA...",
         aws_secret_access_key: "secret",
         aws_region: "us-west-2",
+        model_id: null,
       },
       logger as never,
     );
@@ -140,6 +144,7 @@ describe("applyLlmEnvFromSettings", () => {
         aws_access_key_id: "",
         aws_secret_access_key: "secret",
         aws_region: "us-west-2",
+        model_id: null,
       },
       logger as never,
     );
@@ -167,6 +172,7 @@ describe("applyLlmEnvFromSettings", () => {
         aws_access_key_id: null,
         aws_secret_access_key: null,
         aws_region: null,
+        model_id: null,
       },
       logger as never,
     );

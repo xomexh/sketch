@@ -97,6 +97,9 @@ export class WhatsAppBot {
   private handler: WhatsAppMessageHandler | null = null;
   private recentlySent = new Set<string>();
   private reconnectAttempt = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private activeSocketGeneration = 0;
+  private stopping = false;
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private lastMessageAt = 0;
   private authState: Awaited<ReturnType<typeof createDbAuthState>> | null = null;
@@ -140,6 +143,8 @@ export class WhatsAppBot {
    * completes (connected or failed) — keeps the SSE stream alive until then.
    */
   async startPairing(callbacks: PairingCallbacks): Promise<void> {
+    this.clearReconnectTimer();
+    this.stopping = false;
     if (this.sock) {
       this.sock.end(undefined);
       this.sock = null;
@@ -161,6 +166,7 @@ export class WhatsAppBot {
       syncFullHistory: false,
       markOnlineOnConnect: false,
     });
+    this.activeSocketGeneration += 1;
 
     this.sock.ev.on("creds.update", authState.saveCreds);
     this.registerGroupEventHandlers();
@@ -241,6 +247,8 @@ export class WhatsAppBot {
   }
 
   async stop(): Promise<void> {
+    this.stopping = true;
+    this.clearReconnectTimer();
     this.stopWatchdog();
     if (this.sock) {
       this.sock.end(undefined);
@@ -249,6 +257,8 @@ export class WhatsAppBot {
   }
 
   async disconnect(): Promise<void> {
+    this.stopping = true;
+    this.clearReconnectTimer();
     this.stopWatchdog();
     if (this.sock) {
       this.sock.end(undefined);
@@ -354,11 +364,14 @@ export class WhatsAppBot {
   // --- Internal ---
 
   private async createSocket(): Promise<void> {
+    this.clearReconnectTimer();
+    this.stopping = false;
     const authState = await createDbAuthState(this.db, this.logger);
     this.authState = authState;
     const version = await getWaVersion();
+    const socketGeneration = this.activeSocketGeneration + 1;
 
-    this.sock = makeWASocket({
+    const socket = makeWASocket({
       version: version as WAVersion,
       auth: {
         creds: authState.state.creds,
@@ -375,19 +388,31 @@ export class WhatsAppBot {
       },
     });
 
-    this.sock.ev.on("creds.update", authState.saveCreds);
-    this.registerConnectionHandler(authState);
-    this.registerMessageHandler();
-    this.registerGroupEventHandlers();
+    this.activeSocketGeneration = socketGeneration;
+    this.sock = socket;
+    socket.ev.on("creds.update", authState.saveCreds);
+    this.registerConnectionHandler(socket, authState, socketGeneration);
+    this.registerMessageHandler(socket, socketGeneration);
+    this.registerGroupEventHandlers(socket, socketGeneration);
     this.startWatchdog();
   }
 
-  private registerConnectionHandler(authState: Awaited<ReturnType<typeof createDbAuthState>>): void {
-    this.sock?.ev.on("connection.update", async (update) => {
+  private registerConnectionHandler(
+    socket: WASocket,
+    authState: Awaited<ReturnType<typeof createDbAuthState>>,
+    socketGeneration: number,
+  ): void {
+    socket.ev.on("connection.update", async (update) => {
+      if (socketGeneration !== this.activeSocketGeneration || socket !== this.sock) {
+        this.logger.debug({ socketGeneration }, "Ignoring WhatsApp connection update from stale socket");
+        return;
+      }
+
       const { connection, lastDisconnect } = update;
 
       if (connection === "open") {
-        this.logger.info("WhatsApp connected");
+        this.clearReconnectTimer();
+        this.logger.info({ socketGeneration }, "WhatsApp connected");
         this.reconnectAttempt = 0;
       }
 
@@ -395,26 +420,40 @@ export class WhatsAppBot {
         const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
 
         if (statusCode === DisconnectReason.loggedOut) {
-          this.logger.warn("WhatsApp logged out — clearing credentials");
+          this.clearReconnectTimer();
+          this.logger.warn({ socketGeneration }, "WhatsApp logged out — clearing credentials");
           await authState.clearCreds();
           this.stopWatchdog();
+          if (socket === this.sock) {
+            this.sock = null;
+          }
           return;
         }
 
-        this.reconnectAttempt++;
-        const delay = Math.min(RECONNECT_BASE_MS * RECONNECT_FACTOR ** (this.reconnectAttempt - 1), RECONNECT_MAX_MS);
+        if (this.stopping) {
+          this.logger.info({ socketGeneration }, "WhatsApp socket closed during shutdown");
+          return;
+        }
+
+        const nextAttempt = this.reconnectAttempt + 1;
+        const delay = Math.min(RECONNECT_BASE_MS * RECONNECT_FACTOR ** (nextAttempt - 1), RECONNECT_MAX_MS);
         const jitter = delay * RECONNECT_JITTER * Math.random();
-        this.logger.info(
-          { attempt: this.reconnectAttempt, delayMs: Math.round(delay + jitter) },
-          "WhatsApp reconnecting",
-        );
-        setTimeout(() => this.createSocket(), delay + jitter);
+        if (this.scheduleReconnect(delay + jitter, socketGeneration, nextAttempt)) {
+          this.reconnectAttempt = nextAttempt;
+        }
       }
     });
   }
 
-  private registerMessageHandler(): void {
-    this.sock?.ev.on("messages.upsert", async ({ messages, type }) => {
+  private registerMessageHandler(
+    socket: WASocket = this.sock as WASocket,
+    socketGeneration = this.activeSocketGeneration,
+  ): void {
+    socket.ev.on("messages.upsert", async ({ messages, type }) => {
+      if (socketGeneration !== this.activeSocketGeneration || socket !== this.sock) {
+        return;
+      }
+
       if (type !== "notify") return;
 
       for (const msg of messages) {
@@ -555,15 +594,26 @@ export class WhatsAppBot {
    * Refresh group metadata cache on group changes so cachedGroupMetadata
    * stays fresh and Baileys doesn't re-fetch on every sendMessage.
    */
-  private registerGroupEventHandlers(): void {
-    this.sock?.ev.on("groups.update", async (updates) => {
+  private registerGroupEventHandlers(
+    socket: WASocket = this.sock as WASocket,
+    socketGeneration = this.activeSocketGeneration,
+  ): void {
+    socket.ev.on("groups.update", async (updates) => {
+      if (socketGeneration !== this.activeSocketGeneration || socket !== this.sock) {
+        return;
+      }
+
       for (const update of updates) {
         if (!update.id) continue;
         await this.refreshGroupMetadata(update.id);
       }
     });
 
-    this.sock?.ev.on("group-participants.update", async (event) => {
+    socket.ev.on("group-participants.update", async (event) => {
+      if (socketGeneration !== this.activeSocketGeneration || socket !== this.sock) {
+        return;
+      }
+
       await this.refreshGroupMetadata(event.id);
     });
   }
@@ -625,6 +675,32 @@ export class WhatsAppBot {
     if (this.watchdogTimer) {
       clearInterval(this.watchdogTimer);
       this.watchdogTimer = null;
+    }
+  }
+
+  private scheduleReconnect(delayMs: number, socketGeneration: number, attempt: number): boolean {
+    if (this.reconnectTimer) {
+      this.logger.debug({ socketGeneration }, "WhatsApp reconnect already scheduled");
+      return false;
+    }
+
+    const roundedDelay = Math.round(delayMs);
+    this.logger.info({ attempt, delayMs: roundedDelay, socketGeneration }, "WhatsApp reconnecting");
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.stopping || socketGeneration !== this.activeSocketGeneration) {
+        this.logger.debug({ socketGeneration }, "Skipping WhatsApp reconnect from stale socket");
+        return;
+      }
+      void this.createSocket();
+    }, delayMs);
+    return true;
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
   }
 }

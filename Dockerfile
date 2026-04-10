@@ -30,6 +30,8 @@ RUN pnpm --filter @sketch/server deploy --prod --legacy /app/pruned
 # ── Stage 2: Runtime ──────────────────────────────────────────────
 FROM node:24-slim AS runtime
 
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy only the bundled output and production node_modules

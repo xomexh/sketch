@@ -5,7 +5,7 @@ import { Outlet, createRoute, redirect, useRouteContext } from "@tanstack/react-
 import { rootRoute } from "./root";
 
 export interface AuthContext {
-  role: "admin" | "member";
+  role?: "admin" | "member";
   email?: string;
   userId?: string;
   name?: string;
@@ -29,15 +29,13 @@ async function checkAuth(): Promise<{ auth: AuthContext }> {
     throw redirect({ to: "/login" });
   }
 
-  const role = session.role ?? "admin";
-
   return {
     auth: {
-      role,
+      role: session.role,
       email: session.email,
       userId: session.userId,
       name: session.name,
-      displayName: role === "admin" ? "Admin" : (session.name ?? "Member"),
+      displayName: session.name ?? "User",
       displayIdentifier: session.email ?? session.name ?? "User",
     },
   };

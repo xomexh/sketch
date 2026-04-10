@@ -2,6 +2,44 @@
 
 All notable changes to this project are documented here.
 
+## [0.17.4] -- 2026-04-08
+
+- Fix WhatsApp DM replies for LID-based inbound messages by normalizing outbound delivery to the user's phone-number JID
+- Normalize composing, text replies, file uploads, error replies, and task-context delivery targets for WhatsApp DMs
+- Add regression coverage for inbound `@lid` DMs to ensure replies go back to the canonical phone JID
+
+## [0.17.3] -- 2026-04-07
+
+- Fix WhatsApp reconnect loop caused by stale Baileys sockets scheduling overlapping reconnects
+- Ignore stale socket events, enforce single-flight reconnects, and cancel pending reconnects after recovery
+- Add regression tests for stale socket close events and duplicate reconnect scheduling
+
+## [0.17.2] -- 2026-04-07
+
+- Add model_id to LLM settings with provider-appropriate defaults (us.anthropic.claude-sonnet-4-6 for Bedrock, claude-sonnet-4-6 for Anthropic)
+- Fix: hide managed account link for non-admin users
+- 1,224 tests (1,122 server + 102 frontend)
+
+## [0.17.0] -- 2026-04-07
+
+- Configurable CLAUDE_CONFIG_DIR and SKETCH_CONFIG_DIR for EFS persistence in managed Fargate deployments
+- System prompt uses actual org directory path instead of hardcoded ~/.claude/
+- Security: remove blanket /data/ exception from bash path validation
+- Security: fix startsWith prefix collision in file path permission checks
+- 1,223 tests (1,121 server + 102 frontend)
+
+## [0.16.0] -- 2026-04-06
+
+- Remove admin/member role distinction: all authenticated users get the same permissions (backend + frontend)
+- Migration 028: backfill admin user row in users table, rekey workspaces from email to UUID
+- Unify JWT sub to always use UUID, upgrade legacy email-based sessions on next login
+- Redesign Connections page as tabbed Integrations page (Applications + MCPs tabs) at /integrations
+- Channel-based magic link delivery: send sign-in link via Slack DM, email, and/or WhatsApp (all configured channels)
+- Dynamic login page: shows which channels received the magic link
+- Self-deletion guard on DELETE /api/users/:id
+- Cross-dialect fix for migration UNIQUE constraint check (SQLite + Postgres)
+- 1,220 tests (1,118 server + 102 frontend)
+
 ## [0.15.0-alpha.1] — 2026-03-31
 
 - Managed onboarding system API: PUT /system/identity (admin account + user row), PUT /system/llm (Anthropic/Bedrock with verification), GET/DELETE /system/whatsapp/pair (SSE pairing), POST /system/onboarding/complete

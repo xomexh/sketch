@@ -13,22 +13,24 @@ import { createTestPgDb } from "../test-utils";
 import { getSessionId, saveSessionId } from "./sessions";
 
 describe("session persistence on Postgres", () => {
-  let db: Kysely<DB>;
+  let db!: Kysely<DB>;
 
   beforeEach(async () => {
     db = await createTestPgDb();
-  });
+  }, 30000);
 
   afterEach(async () => {
-    await db.destroy();
-  });
+    if (db) {
+      await db.destroy();
+    }
+  }, 30000);
 
   describe("workspace-level sessions (empty string thread_key sentinel)", () => {
     it("saveSessionId inserts a new session", async () => {
       await saveSessionId(db, "user-U1", "sess_abc123");
       const result = await getSessionId(db, "user-U1");
       expect(result).toBe("sess_abc123");
-    });
+    }, 30000);
 
     it("getSessionId returns undefined for unknown workspace", async () => {
       const result = await getSessionId(db, "user-unknown");

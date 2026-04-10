@@ -1,20 +1,13 @@
 /**
  * Security tests for the settings API.
  *
- * Verifies:
- * 1. GET /api/settings/search does not return the raw gemini_api_key — should
- *    return geminiApiKeyConfigured (boolean) instead.
- * 2. PUT /api/settings/search requires admin — members get 403.
- * 3. POST /api/settings/search/run-enrichment requires admin — members get 403.
- *
- * These tests are the Phase 2 TDD red step and will fail until the fixes are applied.
+ * Verifies GET /api/settings/search does not return the raw gemini_api_key —
+ * should return geminiApiKeyConfigured (boolean) instead.
  */
 import type { Kysely } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { signJwt } from "../auth/jwt";
 import { hashPassword } from "../auth/password";
 import { createSettingsRepository } from "../db/repositories/settings";
-import { createUserRepository } from "../db/repositories/users";
 import type { DB } from "../db/schema";
 import { createApp } from "../http";
 import { createTestConfig, createTestDb, createTestLogger } from "../test-utils";
@@ -36,16 +29,6 @@ async function loginAdmin(app: ReturnType<typeof createApp>) {
     body: JSON.stringify({ email: "admin@test.com", password: "testpassword123" }),
   });
   return res.headers.get("set-cookie") ?? "";
-}
-
-async function getMemberCookie(db: Kysely<DB>): Promise<string> {
-  const users = createUserRepository(db);
-  const settings = createSettingsRepository(db);
-  const user = await users.create({ name: "Test Member", email: "member@test.com" });
-  const row = await settings.get();
-  if (!row?.jwt_secret) throw new Error("JWT secret not found in test DB");
-  const token = await signJwt(user.id, "member", row.jwt_secret);
-  return `sketch_session=${token}`;
 }
 
 describe("Settings API — security", () => {
@@ -98,39 +81,6 @@ describe("Settings API — security", () => {
       const body = await res.json();
       expect(body.geminiApiKey).toBeUndefined();
       expect(body.geminiApiKeyConfigured).toBe(false);
-    });
-  });
-
-  describe("PUT /api/settings/search — admin guard", () => {
-    it("returns 403 for member role", async () => {
-      const app = createApp(db, config, { logger });
-      const memberCookie = await getMemberCookie(db);
-
-      const res = await app.request("/api/settings/search", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Cookie: memberCookie },
-        body: JSON.stringify({ geminiApiKey: "new-key", enrichmentEnabled: true }),
-      });
-
-      expect(res.status).toBe(403);
-      const body = await res.json();
-      expect(body.error.code).toBe("FORBIDDEN");
-    });
-  });
-
-  describe("POST /api/settings/search/enrichments — admin guard", () => {
-    it("returns 403 for member role", async () => {
-      const app = createApp(db, config, { logger });
-      const memberCookie = await getMemberCookie(db);
-
-      const res = await app.request("/api/settings/search/enrichments", {
-        method: "POST",
-        headers: { Cookie: memberCookie },
-      });
-
-      expect(res.status).toBe(403);
-      const body = await res.json();
-      expect(body.error.code).toBe("FORBIDDEN");
     });
   });
 });

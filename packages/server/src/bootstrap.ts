@@ -67,7 +67,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
   logger.info("Database ready");
 
   // 2.5. Sync featured skills
-  await syncFeaturedSkills(logger);
+  await syncFeaturedSkills(config, logger);
 
   // 3. Repositories
   const users = createUserRepository(db);

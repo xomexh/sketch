@@ -14,7 +14,6 @@ import {
   getCategoryLabel,
   isSkillEnabled,
 } from "@/lib/skills-data";
-import { useDashboardAuth } from "@/routes/dashboard";
 import { PlusIcon } from "@phosphor-icons/react";
 import { Button } from "@sketch/ui/components/button";
 import { Skeleton } from "@sketch/ui/components/skeleton";
@@ -166,8 +165,6 @@ export function SkillsPage() {
   });
 
   // ── Derived data ──────────────────────────────────────────
-  const auth = useDashboardAuth();
-  const isAdmin = auth.role === "admin";
 
   // TODO: Switch the active tab to per-user visibility once viewer identity is available
   // by using `isSkillActiveForUser` and `getSkillSourcesForUser`.
@@ -347,7 +344,6 @@ export function SkillsPage() {
       <div className="mx-auto max-w-3xl px-6 py-8">
         <SkillDetailView
           skill={selectedSkill}
-          isAdmin={isAdmin}
           activeTab="details"
           onTabChange={() => {}}
           onBack={handleBackToListing}
@@ -373,7 +369,6 @@ export function SkillsPage() {
       <div className="mx-auto max-w-3xl px-6 py-8">
         <SkillDetailView
           skill={selectedSkill}
-          isAdmin={isAdmin}
           activeTab={activeTab}
           onTabChange={setActiveTab}
           onBack={handleBackToListing}
@@ -433,12 +428,10 @@ export function SkillsPage() {
           <h1 className="text-xl font-bold">Skills</h1>
           <p className="mt-1 text-sm text-muted-foreground">Discover and manage your bot&apos;s capabilities.</p>
         </div>
-        {isAdmin && (
-          <Button size="sm" className="gap-1.5" onClick={handleCreateClick}>
-            <PlusIcon size={14} weight="bold" />
-            Create Skill
-          </Button>
-        )}
+        <Button size="sm" className="gap-1.5" onClick={handleCreateClick}>
+          <PlusIcon size={14} weight="bold" />
+          Create Skill
+        </Button>
       </div>
 
       {/* Active / Explore tabs */}
@@ -483,7 +476,6 @@ export function SkillsPage() {
             category={activeCategories.length > 0 ? activeCategories.map(getCategoryLabel).join(", ") : undefined}
             onCreateClick={handleCreateClick}
             onClearSearch={searchQuery.trim() ? () => setSearchQuery("") : undefined}
-            showCreateButton={isAdmin}
           />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -491,7 +483,6 @@ export function SkillsPage() {
               <SkillCard
                 key={skill.id}
                 skill={skill}
-                isAdmin={isAdmin}
                 onCardClick={handleCardClick}
                 onDuplicate={handleDuplicate}
                 onDelete={handleDeleteClick}

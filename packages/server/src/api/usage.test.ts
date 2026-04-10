@@ -430,22 +430,6 @@ describe("Usage API", () => {
       expect(agentUser.messageCount).toBe(1);
     });
 
-    it("returns 403 for non-admin (UAT-4, UAT-7)", async () => {
-      const users = createUserRepository(db);
-      const member = await users.create({ name: "Member", email: "member@test.com" });
-
-      const app = createApp(db, config, { logger });
-      const memberCookie = await getMemberCookie(db, member.id);
-
-      const res = await app.request("/api/usage/summary", {
-        headers: { Cookie: memberCookie },
-      });
-
-      expect(res.status).toBe(403);
-      const body = await res.json();
-      expect(body.error.code).toBe("FORBIDDEN");
-    });
-
     it("returns zeros for empty period", async () => {
       const app = createApp(db, config, { logger });
       const adminCookie = await loginAdmin(app);

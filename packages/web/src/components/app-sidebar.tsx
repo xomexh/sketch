@@ -54,7 +54,7 @@ interface NavItem {
   disabled?: boolean;
 }
 
-const experimentalNavLabels = new Set(["Files", "Connections"]);
+const experimentalNavLabels = new Set(["Files"]);
 
 const allPrimaryNav: NavItem[] = [
   { label: "Channels", icon: <ChatCircleIcon size={18} />, href: "/channels" },
@@ -63,7 +63,7 @@ const allPrimaryNav: NavItem[] = [
   { label: "Scheduled Tasks", icon: <CalendarDotsIcon size={18} />, href: "/scheduled-tasks" },
   { label: "Skills", icon: <BrainIcon size={18} />, href: "/skills" },
   { label: "Workspace", icon: <FolderIcon size={18} />, href: "/workspace" },
-  { label: "Connections", icon: <LinkSimpleIcon size={18} />, href: "/connections" },
+  { label: "Integrations", icon: <LinkSimpleIcon size={18} />, href: "/integrations" },
   { label: "Usage", icon: <ChartBarIcon size={18} />, href: "/usage" },
 ];
 
@@ -74,7 +74,7 @@ export function AppSidebar({
 }: {
   displayName: string;
   displayIdentifier: string;
-  role: "admin" | "member";
+  role?: "admin" | "member";
 }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -142,7 +142,7 @@ export function AppSidebar({
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-              {setupStatus?.managedUrl ? (
+              {setupStatus?.managedUrl && role === "admin" ? (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild tooltip="Account">
                     <a href={setupStatus.managedUrl} target="_blank" rel="noopener noreferrer">

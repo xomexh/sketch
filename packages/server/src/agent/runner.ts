@@ -74,6 +74,7 @@ export interface RunAgentParams {
   workspaceKey: string;
   userMessage: string;
   workspaceDir: string;
+  claudeConfigDir: string;
   userName: string;
   userEmail?: string | null;
   userPhone?: string | null;
@@ -153,6 +154,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
     userEmail: params.userEmail,
     userPhone: params.userPhone,
     workspaceDir: absWorkspace,
+    orgDir: params.claudeConfigDir,
     orgName: params.orgName,
     botName: params.botName,
     channelContext: params.channelContext,
@@ -224,7 +226,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
     enqueueMessage: params.enqueueMessage,
   });
 
-  const baseCanUseTool = createCanUseTool(absWorkspace, logger);
+  const baseCanUseTool = createCanUseTool(absWorkspace, logger, params.claudeConfigDir);
   const canUseToolTimings: CanUseToolTiming[] = [];
   const timedCanUseTool = async (toolName: string, input: Record<string, unknown>) => {
     canUseToolTimings.push({ toolName, calledAt: Date.now() });

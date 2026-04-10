@@ -77,6 +77,8 @@ export class SlackBot {
   private mentionHandler: SlackMessageHandler | null = null;
   private threadMessageHandler: SlackMessageHandler | null = null;
   private botUserId: string | null = null;
+  private seenEvents = new Map<string, number>();
+  private seenEventsTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: SlackBotConfig) {
     this.logger = config.logger;
@@ -100,6 +102,15 @@ export class SlackBot {
         token: config.botToken,
         receiver: new NoOpReceiver(),
       });
+      this.seenEventsTimer = setInterval(
+        () => {
+          const cutoff = Date.now() - 5 * 60 * 1000;
+          for (const [id, ts] of this.seenEvents) {
+            if (ts < cutoff) this.seenEvents.delete(id);
+          }
+        },
+        2 * 60 * 1000,
+      );
     }
   }
 
@@ -254,6 +265,15 @@ export class SlackBot {
       return {};
     }
 
+    const eventId = body.event_id as string | undefined;
+    if (eventId) {
+      if (this.seenEvents.has(eventId)) {
+        this.logger.debug({ eventId }, "Duplicate Slack event, skipping");
+        return {};
+      }
+      this.seenEvents.set(eventId, Date.now());
+    }
+
     // processEvent dispatches to registered handlers. Errors (e.g. auth failures
     // from Bolt's internal authorization) are logged but not surfaced to the
     // caller — the HTTP 200 has already been committed by the time handlers run.
@@ -363,6 +383,7 @@ export class SlackBot {
   }
 
   async stop(): Promise<void> {
+    if (this.seenEventsTimer) clearInterval(this.seenEventsTimer);
     await this.app.stop();
   }
 }

@@ -215,15 +215,18 @@ export function ConnectionsBanner({ onConnect }: { onConnect: () => void }) {
     return () => cancelAnimationFrame(frameId);
   }, []);
 
+  /**
+   * Parallax: shift based on cursor offset from centre, scaled per-icon depth
+   * 0.6 – 1.0
+   */
   const updateIcons = useCallback((mx: number, my: number) => {
     for (let i = 0; i < ICONS.length; i++) {
       const el = iconRefs.current[i];
       if (!el) continue;
       const icon = ICONS[i];
 
-      // Parallax: shift based on cursor offset from centre, scaled per-icon depth
-      const depth = 0.6 + (i % 5) * 0.1; // 0.6 – 1.0
-      const shiftX = (mx - 0.5) * 20 * depth; // ±10px at edges
+      const depth = 0.6 + (i % 5) * 0.1;
+      const shiftX = (mx - 0.5) * 20 * depth;
       const shiftY = (my - 0.5) * 20 * depth;
 
       const cx = Math.max(-10, Math.min(10, shiftX));

@@ -150,7 +150,7 @@ export function emailRoutes(settings: SettingsRepo) {
     }
 
     const code = generateCode();
-    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+    const expiresAt = Date.now() + 10 * 60 * 1000;
     pendingCodes.set(parsed.data.email.toLowerCase(), { code, expiresAt });
 
     try {

@@ -121,6 +121,10 @@ export function tagStructuredContent(content: string, fileName: string, sourcePa
   };
 }
 
+/**
+ * Parses a CSV sheet's lines into headers and samples. Returned `rowCount` is data rows only
+ * (the first line is treated as the header and excluded from the count).
+ */
 function parseSheetWithCount(sheet: {
   name: string;
   lines: string[];
@@ -131,7 +135,7 @@ function parseSheetWithCount(sheet: {
   return {
     name: sheet.name,
     headers: headers.filter(Boolean),
-    rowCount: Math.max(0, sheet.rowCount - 1), // subtract header row
+    rowCount: Math.max(0, sheet.rowCount - 1),
     sampleLines: sheet.lines,
   };
 }

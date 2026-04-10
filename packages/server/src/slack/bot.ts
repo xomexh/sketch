@@ -64,8 +64,10 @@ export interface SlackBotConfig {
   mode: "socket" | "http";
   botToken: string;
   logger: Logger;
-  appToken?: string; // Required for socket mode
-  signingSecret?: string; // Required for http mode
+  /** App-level token; required when `mode` is `"socket"`. */
+  appToken?: string;
+  /** Request signing secret; required when `mode` is `"http"`. */
+  signingSecret?: string;
 }
 
 export class SlackBot {
@@ -237,6 +239,10 @@ export class SlackBot {
    * Verifies the Slack request signature, then dispatches the event to the Bolt
    * app. Used in HTTP mode where events arrive via POST /slack/events instead of
    * a WebSocket connection.
+   *
+   * `processEvent` runs registered handlers with a no-op `ack`. Errors inside Bolt
+   * (e.g. authorization) are logged via `.catch` only — they are not propagated to
+   * the HTTP layer because the response body is returned before async work finishes.
    */
   async processHttpRequest(rawBody: string, headers: Record<string, string>): Promise<Record<string, unknown>> {
     const timestamp = headers["x-slack-request-timestamp"];
@@ -274,9 +280,6 @@ export class SlackBot {
       this.seenEvents.set(eventId, Date.now());
     }
 
-    // processEvent dispatches to registered handlers. Errors (e.g. auth failures
-    // from Bolt's internal authorization) are logged but not surfaced to the
-    // caller — the HTTP 200 has already been committed by the time handlers run.
     this.app
       .processEvent({
         body,

@@ -45,10 +45,13 @@ async function loadWorkspaceSkills(dataDir: string): Promise<WorkspaceSkill[]> {
   return skillsByWorkspace.flat();
 }
 
+/**
+ * Validates a skill id for use as a single path segment: safe charset and length, rejects `..`
+ * and path separators so directory traversal and unpredictable folder names are ruled out.
+ */
 function assertSkillId(id: string): string | null {
   const trimmed = id.trim();
   if (!trimmed) return null;
-  // Prevent traversal and keep folder names predictable
   if (!/^[a-z0-9][a-z0-9-_]{0,63}$/i.test(trimmed)) return null;
   if (trimmed.includes("..") || trimmed.includes("/") || trimmed.includes("\\")) return null;
   return trimmed;
@@ -76,7 +79,6 @@ function workspaceSkillMdPath(dataDir: string, workspaceId: string, id: string):
 }
 
 function renderFrontMatterString(value: string): string {
-  // JSON string escaping is compatible with double-quoted YAML scalars for our simple metadata fields.
   return JSON.stringify(value);
 }
 
@@ -115,6 +117,10 @@ export function skillsRoutes(config: Pick<Config, "DATA_DIR" | "CLAUDE_CONFIG_DI
     return c.json({ skills: Array.from(byId.values()) });
   });
 
+  /**
+   * `GET /:id` — merges org and workspace skills; if the same id exists in both, the org copy is kept
+   * and the workspace entry is skipped.
+   */
   routes.get("/:id", async (c) => {
     const id = assertSkillId(c.req.param("id"));
     if (!id) return c.json({ error: { code: "BAD_REQUEST", message: "Invalid skill id" } }, 400);
@@ -124,10 +130,7 @@ export function skillsRoutes(config: Pick<Config, "DATA_DIR" | "CLAUDE_CONFIG_DI
 
     const all: LoadedSkill[] = [
       ...orgSkills,
-      ...workspaceSkills
-        // Prefer org definitions when ids collide
-        .filter(({ skill }) => !orgSkills.some((s) => s.id === skill.id))
-        .map(({ skill }) => skill),
+      ...workspaceSkills.filter(({ skill }) => !orgSkills.some((s) => s.id === skill.id)).map(({ skill }) => skill),
     ];
 
     const skill = all.find((s) => s.id === id);

@@ -70,8 +70,6 @@ export function channelRoutes(deps: ChannelDeps) {
     return c.json({ success: true });
   });
 
-  // --- Email SMTP endpoints ---
-
   routes.post("/email/test", async (c) => {
     const body = await c.req.json();
     const parsed = smtpConfigSchema.safeParse(body);

@@ -1,11 +1,12 @@
 /**
- * MCP servers API routes.
- * Unified CRUD for both plain MCP servers and integration providers.
- * Admin-only server management. Member-only connection management.
- * Connection testing via @modelcontextprotocol/sdk.
+ * MCP servers API routes: unified CRUD for plain MCP servers and integration providers.
  *
- * Integration-specific sub-resources (apps, connections) delegate to the
- * provider adapter from integrations/factory.ts, scoped to the member's email.
+ * **CRUD** — `GET/POST /`, `PATCH/DELETE /:id` (admin). **Connection tests** —
+ * `POST /connection-tests` (body URL + credentials) and `POST /:id/connection-tests` (stored server).
+ * Tests use the MCP SDK with Streamable HTTP first, then SSE; see {@link testMcpConnection}.
+ *
+ * **Integrations** — `GET /:id/apps`, `POST|GET /:id/connections`, `DELETE /:id/connections/:connectionId`
+ * require `type` + `api_url`; handlers delegate to {@link createProvider} with the member's email.
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
@@ -20,6 +21,7 @@ import { canvasCredentialsSchema } from "../integrations/types";
 type McpServerRepo = ReturnType<typeof createMcpServerRepository>;
 type UserRepo = ReturnType<typeof createUserRepository>;
 
+/** JSON-parse credentials and mask values whose keys look like secrets (key/secret in the name). */
 function maskCredentials(rawCredentials: string): Record<string, string> {
   try {
     const parsed = JSON.parse(rawCredentials) as Record<string, string>;
@@ -86,6 +88,10 @@ function friendlyConnectionError(err: unknown): string {
   return msg;
 }
 
+/**
+ * Connects with Streamable HTTP transport, falls back to SSE, then lists tools.
+ * On failure, closes the client; errors from `close` are ignored.
+ */
 async function testMcpConnection(
   url: string,
   credentials: string,
@@ -110,9 +116,7 @@ async function testMcpConnection(
   } catch (err) {
     try {
       await client.close();
-    } catch {
-      // ignore close errors
-    }
+    } catch {}
     return { status: "error", error: friendlyConnectionError(err) };
   }
 }
@@ -161,6 +165,7 @@ async function resolveUserEmail(
   return { ok: true, email: user.email };
 }
 
+/** API shape for a server row; masks credential fields for responses. */
 function serializeServer(row: {
   id: string;
   type: string | null;
@@ -187,10 +192,9 @@ function serializeServer(row: {
   };
 }
 
+/** Registers MCP server routes on a Hono app (admin CRUD, connection tests, integration sub-routes). */
 export function mcpServerRoutes(mcpServers: McpServerRepo, users: UserRepo) {
   const routes = new Hono();
-
-  // --- MCP Server CRUD (admin-only) ---
 
   routes.get("/", async (c) => {
     const servers = await mcpServers.listAll();
@@ -277,8 +281,6 @@ export function mcpServerRoutes(mcpServers: McpServerRepo, users: UserRepo) {
     return c.json({ success: true });
   });
 
-  // --- Connection testing ---
-
   routes.post("/connection-tests", async (c) => {
     const body = await c.req.json();
     const parsed = connectionTestSchema.safeParse(body);
@@ -300,8 +302,6 @@ export function mcpServerRoutes(mcpServers: McpServerRepo, users: UserRepo) {
     const result = await testMcpConnection(row.url, row.credentials);
     return c.json(result);
   });
-
-  // --- Integration sub-resources ---
 
   routes.get("/:id/apps", async (c) => {
     const resolved = await resolveProvider(c, mcpServers);

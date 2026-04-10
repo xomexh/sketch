@@ -572,7 +572,6 @@ Use this when the user asks about a project, person, or any named thing tracked 
           }
         }
 
-        // Layer 2: users table fallback if no entity matches
         if (results.length === 0 && deps.userRepo) {
           const users = await deps.userRepo.list();
           for (const query of queries) {
@@ -630,7 +629,6 @@ Use this after SearchEntities to dive deeper into a specific entity. The respons
           since,
         });
 
-        // Enrich mentions with file metadata
         const lines: string[] = [];
         const aliases = entity.aliases ? (JSON.parse(entity.aliases) as string[]) : [];
         const aliasStr = aliases.length > 0 ? ` (aliases: ${aliases.join(", ")})` : "";

@@ -3,6 +3,8 @@
  *
  * Multimodal embeddings — text and images in the same vector space.
  * Uses the Gemini API directly (REST) to avoid adding a heavy SDK dependency.
+ * Text embedding chunks inputs in batches; a one-item batch calls `embedContent`, otherwise
+ * `batchEmbedContents`.
  *
  * API reference: https://ai.google.dev/gemini-api/docs/embeddings
  */
@@ -52,12 +54,10 @@ export function createGeminiEmbeddingProvider(apiKey: string): EmbeddingProvider
 
       const allEmbeddings: number[][] = [];
 
-      // Process in batches
       for (let i = 0; i < texts.length; i += BATCH_SIZE) {
         const batch = texts.slice(i, i + BATCH_SIZE);
 
         if (batch.length === 1) {
-          // Single text — use embedContent
           const result = (await request(GEMINI_EMBED_URL, {
             content: { parts: [{ text: batch[0] }] },
             taskType: "RETRIEVAL_DOCUMENT",
@@ -65,7 +65,6 @@ export function createGeminiEmbeddingProvider(apiKey: string): EmbeddingProvider
 
           allEmbeddings.push(result.embedding.values);
         } else {
-          // Multiple texts — use batchEmbedContents
           const result = (await request(GEMINI_BATCH_URL, {
             requests: batch.map((text) => ({
               model: "models/gemini-embedding-2-preview",

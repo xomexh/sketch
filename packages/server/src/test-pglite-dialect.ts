@@ -64,9 +64,11 @@ class PGliteDriver implements Driver {
     await this.#pglite.waitReady;
   }
 
+  /**
+   * Chains each acquisition on `#queue` so callers wait until the current holder
+   * calls `release` on the {@link LockedConnection} before the next acquire runs.
+   */
   async acquireConnection(): Promise<DatabaseConnection> {
-    // PGlite is single-connection. Chain each acquisition onto the queue so
-    // callers wait for the current holder to release before proceeding.
     const release = await new Promise<() => void>((resolve) => {
       this.#queue = this.#queue.then(() => new Promise<void>((releaseResolve) => resolve(releaseResolve)));
     });

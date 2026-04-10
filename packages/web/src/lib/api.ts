@@ -58,7 +58,6 @@ export interface ScheduledTaskListItem {
  */
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { ...((options?.headers as Record<string, string>) ?? {}) };
-  // Skip Content-Type for FormData — the browser sets it automatically with the correct multipart boundary
   if (options?.body && !(options.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
   }

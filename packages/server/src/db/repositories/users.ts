@@ -75,7 +75,6 @@ export function createUserRepository(db: Kysely<DB>) {
         if (data.emailVerified) {
           values.email_verified_at = new Date().toISOString();
         } else {
-          // Reset verification when email changes
           const existing = await db.selectFrom("users").select("email").where("id", "=", id).executeTakeFirst();
           if (existing && existing.email !== data.email) {
             values.email_verified_at = null;

@@ -230,9 +230,7 @@ export function OnboardingPage({ initialSetupStatus }: { initialSetupStatus?: Se
             try {
               await persistAccount(email, password, { showWarning: true });
               goToStep(2);
-            } catch {
-              // Error toast is handled by account mutation.
-            }
+            } catch {}
           }}
         />
       );
@@ -252,9 +250,7 @@ export function OnboardingPage({ initialSetupStatus }: { initialSetupStatus?: Se
             try {
               await persistIdentity(orgName, name);
               goToStep(isManaged ? 4 : 3);
-            } catch {
-              // Error toast is handled by identity mutation.
-            }
+            } catch {}
           }}
         />
       );

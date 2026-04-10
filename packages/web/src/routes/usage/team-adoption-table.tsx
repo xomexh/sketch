@@ -194,7 +194,10 @@ export function TeamAdoptionTable({
   );
   const allEntities: TeamEntity[] = useMemo(() => [...members, ...groups, ...agents], [members, groups, agents]);
 
-  // Reset page when underlying data changes (e.g. period switch)
+  /**
+   * When `allEntities` is replaced (e.g. after a period or data refresh), return to page 1 so we
+   * do not stay on an empty page if the new result set is shorter.
+   */
   const prevEntitiesRef = useRef(allEntities);
   if (prevEntitiesRef.current !== allEntities) {
     prevEntitiesRef.current = allEntities;

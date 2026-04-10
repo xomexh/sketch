@@ -1,6 +1,14 @@
 /**
- * WhatsApp adapter — wires WhatsApp event handlers (DM, group) onto a WhatsAppBot.
+ * WhatsApp adapter — wires WhatsApp event handlers onto a WhatsAppBot.
  * Extracted from index.ts for testability.
+ *
+ * - **DM** — per-user queue; rejects unknown numbers; optional media download; merges pending inbound/outbound
+ *   outreach into the prompt via {@link buildSketchContext} when present; composing indicator; `runAgent` with DM task context.
+ * - **Group (not mentioned)** — appends to {@link GroupBuffer} for passive context only.
+ * - **Group (mention)** — per-group queue; drains buffered messages into {@link buildSketchContext}; loads group metadata;
+ *   `runAgent` with group workspace key and `groupContext`.
+ *
+ * `sendDmViaWhatsApp` and `enqueueMessageViaWhatsApp` are defined at adapter scope so outreach flows can reuse them.
  */
 import { basename, join } from "node:path";
 import type { WAMessage } from "@whiskeysockets/baileys";
@@ -43,6 +51,7 @@ export interface WhatsAppAdapterDeps {
   outreachRepo?: OutreachRepository;
 }
 
+/** Registers DM and group handlers on `whatsapp`; see module file comment. */
 export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapterDeps): void {
   const {
     db,
@@ -161,7 +170,6 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
 
   whatsapp.onMessage(async (message) => {
     if (message.type === "dm") {
-      // --- DM handler ---
       const replyJid = toPhoneJid(message.phoneNumber);
       const user = await repos.users.findByWhatsappNumber(message.phoneNumber);
       if (!user) {
@@ -203,7 +211,6 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
 
           const waIntegrationMcpServers = await buildMcpServers(user.email);
 
-          // Resolve outreach context: pending inbound (recipient) and pending outbound (requester)
           const pendingInbound = outreachRepo ? await outreachRepo.findPendingForRecipient(user.id) : [];
           const pendingOutbound = outreachRepo ? await outreachRepo.findPendingForRequester(user.id) : [];
           let userMessage = message.text || "See attached files.";
@@ -293,8 +300,6 @@ export function wireWhatsAppHandlers(whatsapp: WhatsAppBot, deps: WhatsAppAdapte
       });
       return;
     }
-
-    // --- Group handler ---
 
     if (!message.isMentioned) {
       const user = message.senderPhone ? await repos.users.findByWhatsappNumber(message.senderPhone) : undefined;

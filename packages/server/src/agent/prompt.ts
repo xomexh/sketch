@@ -2,6 +2,11 @@ import type { Attachment } from "../files";
 import { formatAttachmentsForPrompt } from "../files";
 
 /**
+ * System and user-message prompt helpers: relative timestamps, outreach records, stable
+ * {@link buildSystemContext}, and {@link buildSketchContext} for dynamic `<context>` XML.
+ */
+
+/**
  * Returns a human-readable relative time string for a given ISO timestamp.
  * Rounds to the largest whole unit: minutes, hours, or days.
  * Values under one minute return "just now".
@@ -235,6 +240,11 @@ export function buildSystemContext(params: {
  * only appear when they have content, in order: <outreach>, <thread>, <sender>.
  * When no sections have content, returns just the plain message with no wrapper.
  *
+ * `<outreach>` combines pending inbound items (`pendingOutreach`) with requester-side response
+ * lines (`outreachResponses`). `<thread>` may start with `header`, then buffered messages and
+ * attachment summaries. `<sender>` is only added when `isSharedContext` is true, with optional
+ * phone and email for the current speaker.
+ *
  * This approach keeps dynamic context in the user message (not system prompt)
  * so it doesn't invalidate the SDK session cache on every change.
  */
@@ -244,7 +254,6 @@ export function buildSketchContext(params: SketchContextParams): string {
 
   const sectionParts: string[] = [];
 
-  // <outreach> section — recipient side (pendingOutreach) and requester side (outreachResponses)
   const outreachLines: string[] = [];
 
   if (params.pendingOutreach && params.pendingOutreach.length > 0) {
@@ -275,7 +284,6 @@ export function buildSketchContext(params: SketchContextParams): string {
     sectionParts.push(`<outreach>\n${outreachLines.join("\n")}\n</outreach>`);
   }
 
-  // <thread> section
   if (messages.length > 0) {
     const lines: string[] = [];
     if (header) lines.push(header);
@@ -288,7 +296,6 @@ export function buildSketchContext(params: SketchContextParams): string {
     sectionParts.push(`<thread>\n${lines.join("\n")}\n</thread>`);
   }
 
-  // <sender> section — only for shared contexts (channels/groups)
   if (isSharedContext) {
     const contactParts: string[] = [];
     if (currentUserPhone) contactParts.push(currentUserPhone);

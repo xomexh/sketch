@@ -2,6 +2,10 @@
  * Users API — CRUD for managing team members.
  * Primary use case: admin adds WhatsApp users so they can message the bot.
  * Slack users are auto-created on first DM and appear here as read-only.
+ *
+ * Email verification: `POST /` sends a link when an email is set and `type` is not `agent`.
+ * `PATCH /:id` sends a new link when the email field changes to a different non-null address.
+ * `POST /:id/verification` resends; {@link countRecentTokens} enforces at most five sends per hour per user.
  */
 import { emailSchema, whatsappNumberSchema } from "@sketch/shared";
 import { Hono } from "hono";
@@ -46,6 +50,7 @@ const updateUserSchema = z.object({
   reportsTo: z.string().nullable().optional(),
 });
 
+/** Builds a verification token and emails it when SMTP is configured; otherwise logs the URL for dev. */
 async function sendOrLogVerification(
   deps: UserRoutesDeps,
   userId: string,
@@ -69,6 +74,7 @@ async function sendOrLogVerification(
   return { sent: false };
 }
 
+/** User list/create/update/delete and email verification resend. */
 export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
   const routes = new Hono();
 
@@ -107,7 +113,6 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
         reportsTo: reportsTo ?? undefined,
       });
 
-      // Agents do not have email auth flows — skip verification
       let verificationSent = false;
       if (user.email && user.type !== "agent") {
         const baseUrl = resolveBaseUrl(c, deps.config);
@@ -169,7 +174,6 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
         reportsTo: reportsToValue,
       });
 
-      // Send verification email when email changes to a non-null value
       let verificationSent = false;
       if (emailChanged && user.email) {
         const baseUrl = resolveBaseUrl(c, deps.config);
@@ -189,7 +193,9 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
     }
   });
 
-  // Resend verification email
+  /**
+   * `POST /:id/verification` — resend verification email if the user has an unverified address.
+   */
   routes.post("/:id/verification", async (c) => {
     const id = c.req.param("id");
 
@@ -204,7 +210,6 @@ export function userRoutes(users: UserRepo, deps: UserRoutesDeps) {
       return c.json({ error: { code: "ALREADY_VERIFIED", message: "Email is already verified" } }, 400);
     }
 
-    // Rate limit: max 5 per hour
     const recentCount = await countRecentTokens(deps.db, id);
     if (recentCount >= 5) {
       return c.json(

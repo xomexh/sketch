@@ -110,7 +110,7 @@ export const categoryMeta: Record<SkillCategory, { iconBg: string; iconEmoji: st
 
 export interface SkillSourceTag {
   type: "individual" | "channel";
-  label: string; // "You" or "#channel-name"
+  label: string;
 }
 
 export function fromApiSkill(s: ApiSkill): Skill {

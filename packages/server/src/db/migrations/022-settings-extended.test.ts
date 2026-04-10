@@ -23,13 +23,11 @@ type SettingsRow = {
   onboarding_completed_at: string | null;
   created_at: string;
   updated_at: string;
-  // From 007-settings-smtp
   smtp_host: string | null;
   smtp_port: number | null;
   smtp_user: string | null;
   smtp_password: string | null;
   smtp_from: string | null;
-  // From this migration
   smtp_secure: number;
   google_oauth_client_id: string | null;
   google_oauth_client_secret: string | null;
@@ -43,7 +41,6 @@ function createBlankDb(): Kysely<unknown> {
 }
 
 async function createSettingsTable(db: Kysely<unknown>): Promise<void> {
-  // Matches 004-settings + 007-settings-smtp columns
   await db.schema
     .createTable("settings")
     .addColumn("id", "text", (col) => col.primaryKey().defaultTo("default"))
@@ -78,7 +75,6 @@ describe("022-settings-extended migration", () => {
   it("adds smtp_secure, google_oauth_client_id, google_oauth_client_secret, gemini_api_key columns", async () => {
     await up(db);
 
-    // Insert using the new columns to confirm they exist
     type InsertRow = Omit<SettingsRow, "created_at" | "updated_at">;
     await (db as Kysely<{ settings: InsertRow }>)
       .insertInto("settings")
@@ -110,7 +106,6 @@ describe("022-settings-extended migration", () => {
   });
 
   it("defaults smtp_secure to 1 (enabled) when not specified", async () => {
-    // Insert a row before migration to verify existing rows get the default
     type PreMigrationRow = Omit<
       SettingsRow,
       | "created_at"

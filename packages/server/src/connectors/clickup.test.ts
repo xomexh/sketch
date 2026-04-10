@@ -1,9 +1,3 @@
-/**
- * Tests for the ClickUp connector's retry logic.
- *
- * Verifies that 429 (rate limit) responses are bounded by MAX_RETRIES and
- * do not produce an infinite loop.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createClickUpConnector } from "./clickup";
 
@@ -20,7 +14,6 @@ describe("ClickUp 429 retry bounded", () => {
   });
 
   it("throws after MAX_RETRIES (3) consecutive 429 responses — does not loop infinitely", async () => {
-    // Return 429 every time
     fetchSpy.mockResolvedValue(
       new Response("rate limited", {
         status: 429,
@@ -30,12 +23,10 @@ describe("ClickUp 429 retry bounded", () => {
 
     const connector = createClickUpConnector();
 
-    // validateCredentials calls clickupRequest("/user", ...) which will hit 429
     await expect(connector.validateCredentials({ type: "api_key", api_key: token })).rejects.toThrow(
       /rate limited after/i,
     );
 
-    // Should have been called exactly MAX_RETRIES (3) times — not more
     expect(fetchSpy.mock.calls.length).toBeLessThanOrEqual(3);
   });
 

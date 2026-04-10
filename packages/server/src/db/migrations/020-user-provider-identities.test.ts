@@ -1,12 +1,3 @@
-/**
- * Tests for the 020-user-provider-identities migration.
- *
- * Uses a fresh blank in-memory SQLite database. The users table is created manually
- * (matching migration 001) before running up() since user_provider_identities has a
- * FK reference to users.id. Tests verify the table and unique index are created
- * correctly, that tokens default to null, and that the unique index on (user_id, provider)
- * is enforced. down() drops the table cleanly.
- */
 import SQLite from "better-sqlite3";
 import { Kysely, SqliteDialect, sql } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

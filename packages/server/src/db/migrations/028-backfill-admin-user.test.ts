@@ -1,12 +1,3 @@
-/**
- * Tests for the 028-backfill-admin-user migration.
- *
- * Uses a fresh in-memory SQLite database with the required tables
- * (settings, users, chat_sessions) created manually. Tests verify:
- * - Happy path: admin user row is created, chat_sessions rekeyed
- * - No-op: existing user with admin email is reused, no duplicate
- * - No settings: migration exits early without changes
- */
 import SQLite from "better-sqlite3";
 import { Kysely, SqliteDialect, sql } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

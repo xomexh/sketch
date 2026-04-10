@@ -27,7 +27,6 @@ function createBlankDb(): Kysely<unknown> {
 }
 
 async function createSettingsTable(db: Kysely<unknown>): Promise<void> {
-  // Matches 004-settings baseline plus enough columns to be realistic
   await db.schema
     .createTable("settings")
     .addColumn("id", "text", (col) => col.primaryKey().defaultTo("default"))
@@ -54,7 +53,6 @@ describe("024-settings-enrichment migration", () => {
   });
 
   it("adds the enrichment_enabled column with default 1 for existing rows", async () => {
-    // Insert a row before migration to verify existing rows get the default
     await (
       db as Kysely<{
         settings: { id: string; org_name: string | null; bot_name: string | null };

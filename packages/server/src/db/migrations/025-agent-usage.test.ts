@@ -1,10 +1,3 @@
-/**
- * Tests for the 025-agent-usage migration.
- *
- * Uses a fresh blank in-memory SQLite database. Tests verify that both tables
- * are created with correct columns and defaults, that FK cascade works,
- * that indexes exist, and that down() drops everything cleanly.
- */
 import SQLite from "better-sqlite3";
 import { Kysely, SqliteDialect, sql } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

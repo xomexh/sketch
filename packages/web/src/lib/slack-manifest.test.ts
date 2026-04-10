@@ -94,6 +94,6 @@ describe("generateSlackManifest", () => {
 
   it("returns pretty-printed JSON (2-space indent)", () => {
     const manifest = generateSlackManifest();
-    expect(manifest).toContain("\n  "); // 2-space indent
+    expect(manifest).toContain("\n  ");
   });
 });

@@ -1,9 +1,3 @@
-/**
- * Tests for auth middleware — existing local auth and managed SSO (Phase 7).
- *
- * The managed SSO path checks `sketch_platform_session` (signed with MANAGED_AUTH_SECRET)
- * before falling through to the existing `sketch_session` local auth path.
- */
 import { Hono } from "hono";
 import { SignJWT } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -106,10 +100,6 @@ describe("auth middleware - managed SSO", () => {
     return null;
   });
 
-  /**
-   * Creates a platform-style JWT with UUID in `sub` and email in `email` claim,
-   * matching the format the management plane issues.
-   */
   async function makePlatformToken(
     email: string,
     role: "admin" | "member",
@@ -172,7 +162,6 @@ describe("auth middleware - managed SSO", () => {
       headers: { Cookie: `sketch_platform_session=${token}` },
     });
     expect(res.status).toBe(200);
-    // Must be called with the email, NOT the UUID sub
     expect(findUserByEmail).toHaveBeenCalledWith("admin@test.com");
     expect(findUserByEmail).not.toHaveBeenCalledWith(uuid);
   });

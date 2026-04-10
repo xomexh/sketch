@@ -1,10 +1,3 @@
-/**
- * Tests for the scheduled_tasks repository.
- *
- * Uses an in-memory SQLite database with all migrations applied via createTestDb(),
- * which includes the 013-scheduled-tasks migration. Each test runs against a fresh
- * database to ensure isolation.
- */
 import type { Kysely } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestDb } from "../../test-utils";

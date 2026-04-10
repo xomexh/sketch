@@ -74,7 +74,6 @@ describe("createVerificationToken()", () => {
   it("cleans up expired tokens for the user", async () => {
     const user = await createUser("test@example.com");
 
-    // Insert an expired token directly
     await db
       .insertInto("email_verification_tokens")
       .values({
@@ -85,7 +84,6 @@ describe("createVerificationToken()", () => {
       })
       .execute();
 
-    // Creating a new token should clean up the expired one
     await createVerificationToken(db, user.id, "test@example.com");
 
     const expired = await db
@@ -184,7 +182,6 @@ describe("verifyEmailToken()", () => {
   it("returns null for an expired token", async () => {
     const user = await createUser("test@example.com");
 
-    // Insert an expired token directly
     await db
       .insertInto("email_verification_tokens")
       .values({
@@ -203,7 +200,6 @@ describe("verifyEmailToken()", () => {
     const user = await createUser("old@example.com");
     const token = await createVerificationToken(db, user.id, "old@example.com");
 
-    // Change the user's email
     await users.update(user.id, { email: "new@example.com" });
 
     const result = await verifyEmailToken(db, token);
@@ -253,7 +249,6 @@ describe("countRecentTokens()", () => {
   it("does not count tokens older than one hour", async () => {
     const user = await createUser("test@example.com");
 
-    // Insert an old token directly
     await db
       .insertInto("email_verification_tokens")
       .values({

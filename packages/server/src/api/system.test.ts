@@ -668,10 +668,6 @@ describe("PUT /api/system/llm", () => {
 
   it("encrypts sensitive fields when ENCRYPTION_KEY is set", async () => {
     const settingsRepo = createSettingsRepository(db, TEST_ENCRYPTION_KEY);
-    /**
-     * Re-seed with encrypted repo since seedAdmin used unencrypted repo;
-     * this ensures the test starts with a clean slate.
-     */
     await db.deleteFrom("settings").where("id", "=", "default").execute();
     const hash = await hashPassword("testpassword123");
     await settingsRepo.create({ adminEmail: "admin@test.com", adminPasswordHash: hash });

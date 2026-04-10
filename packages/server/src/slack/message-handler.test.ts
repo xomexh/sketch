@@ -108,7 +108,6 @@ describe("createSlackMessageHandler", () => {
 
       expect(bot.updateMessage).toHaveBeenCalledTimes(1);
       expect(bot.postThreadReply).toHaveBeenCalledTimes(1);
-      // First chunk went to updateMessage, second to postThreadReply
       expect(bot.updateMessage.mock.calls[0][2]).toBe(part1);
       expect(bot.postThreadReply.mock.calls[0][2]).toBe(part2);
     });

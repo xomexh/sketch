@@ -12,7 +12,6 @@ import type { PairingCallbacks, WhatsAppBot } from "./whatsapp/bot";
 
 const config = createTestConfig();
 
-/** Helper to insert an admin account into the settings table. */
 async function seedAdmin(db: Kysely<DB>, email = "admin@test.com", password = "testpassword123") {
   const settings = createSettingsRepository(db);
   const hash = await hashPassword(password);
@@ -29,9 +28,7 @@ describe("HTTP health endpoint", () => {
   afterEach(async () => {
     try {
       await db.destroy();
-    } catch {
-      // Already destroyed in some tests
-    }
+    } catch {}
   });
 
   describe("GET /api/health", () => {
@@ -63,14 +60,12 @@ describe("HTTP health endpoint", () => {
     it("returns 200 with HTML for unknown non-API routes (SPA routing)", async () => {
       const app = createApp(db, config);
       const res = await app.request("/nonexistent");
-      // When web dist exists, serves index.html; otherwise 404
       expect([200, 404]).toContain(res.status);
     });
 
     it("returns 404 for unknown /api/* routes", async () => {
       const app = createApp(db, config);
       const res = await app.request("/api/nonexistent");
-      // Without admin setup, returns 503 (setup required); with setup, 404
       expect([404, 503]).toContain(res.status);
     });
   });
@@ -193,7 +188,6 @@ describe("WhatsApp endpoints", () => {
     } as WhatsAppBot;
   }
 
-  /** Login and return the session cookie string. */
   async function loginAdmin(app: ReturnType<typeof createApp>) {
     const res = await app.request("/api/auth/login", {
       method: "POST",
@@ -230,12 +224,10 @@ describe("WhatsApp endpoints", () => {
       const app = createApp(db, config, { whatsapp });
       const cookie = await loginAdmin(app);
 
-      // First request starts pairing
       const res1 = await app.request("/api/channels/whatsapp/pair", { headers: { Cookie: cookie } });
       res1.text().catch(() => {});
       await new Promise((r) => setTimeout(r, 50));
 
-      // Second request should get 409
       const res2 = await app.request("/api/channels/whatsapp/pair", { headers: { Cookie: cookie } });
       expect(res2.status).toBe(409);
 
@@ -384,7 +376,6 @@ describe("WhatsApp endpoints", () => {
       const settings = createSettingsRepository(db);
       await settings.update({ onboardingCompletedAt: new Date().toISOString() });
 
-      // Mock where cancelPairing resolves the startPairing promise (like real sock.ws.close())
       let resolvePairing: (() => void) | null = null;
       const whatsapp = makeMockWhatsApp({
         startPairing: async (callbacks: PairingCallbacks) => {
@@ -400,12 +391,10 @@ describe("WhatsApp endpoints", () => {
       const app = createApp(db, config, { whatsapp });
       const cookie = await loginAdmin(app);
 
-      // Start pairing
       const res1 = await app.request("/api/channels/whatsapp/pair", { headers: { Cookie: cookie } });
       res1.text().catch(() => {});
       await new Promise((r) => setTimeout(r, 50));
 
-      // Cancel it — should wait for startPairing to resolve before responding
       const res = await app.request("/api/channels/whatsapp/pair", { method: "DELETE", headers: { Cookie: cookie } });
       expect(res.status).toBe(200);
 
@@ -452,7 +441,6 @@ describe("Slack disconnect endpoint", () => {
     } catch {}
   });
 
-  /** Login and return the session cookie string. */
   async function loginAdmin(app: ReturnType<typeof createApp>) {
     const res = await app.request("/api/auth/login", {
       method: "POST",
@@ -913,7 +901,6 @@ describe("Auth endpoints", () => {
       const logoutBody = await logoutRes.json();
       expect(logoutBody.authenticated).toBe(false);
 
-      // After logout, browser no longer sends the cookie
       const sessionRes = await app.request("/api/auth/session");
       const body = await sessionRes.json();
       expect(body.authenticated).toBe(false);
@@ -1261,7 +1248,6 @@ describe("Setup endpoints", () => {
       expect(body.success).toBe(true);
       expect(res.headers.get("set-cookie")).toContain("sketch_session=");
 
-      // Verify account was created but setup not yet completed
       const statusRes = await app.request("/api/setup/status");
       const status = await statusRes.json();
       expect(status.completed).toBe(false);
@@ -1907,7 +1893,6 @@ describe("RBAC", () => {
     } catch {}
   });
 
-  /** Seed admin, create admin user row, complete onboarding, return admin cookie + jwt_secret. */
   async function setupWithAdmin(app: ReturnType<typeof createApp>) {
     await seedAdmin(db);
     const users = createUserRepository(db);
@@ -1925,7 +1910,6 @@ describe("RBAC", () => {
     return { adminCookie, jwtSecret };
   }
 
-  /** Create a member user and return a member session cookie. */
   async function createMemberSession(jwtSecret: string) {
     const users = createUserRepository(db);
     const user = await users.create({ name: "Member User" });
@@ -1975,7 +1959,6 @@ describe("RBAC", () => {
       const { jwtSecret } = await setupWithAdmin(app);
       const { memberCookie } = await createMemberSession(jwtSecret);
 
-      // Create another user
       const users = createUserRepository(db);
       const other = await users.create({ name: "Other User" });
 

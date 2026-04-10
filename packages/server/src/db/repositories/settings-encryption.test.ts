@@ -178,7 +178,6 @@ describe("Settings repository encryption", () => {
 
   describe("error case", () => {
     it("get() throws a clear error if an enc:-prefixed value is present but no key is provided", async () => {
-      // Write via the encrypted repo, then read with an unkeyed repo.
       const encryptedSettings = createSettingsRepository(db, TEST_KEY);
       await encryptedSettings.create(SEED);
       await encryptedSettings.update({ slackBotToken: "xoxb-test-token" });

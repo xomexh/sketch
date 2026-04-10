@@ -29,7 +29,6 @@ describe("runMigrations on Postgres — full sequence", () => {
   }, 30000);
 
   it("runs all 027 migrations on a fresh Postgres database without error", async () => {
-    // createTestPgDb() already ran migrations — just verify no error was thrown.
     const rows = await sql<{ name: string }>`
       SELECT name FROM kysely_migration ORDER BY name ASC
     `.execute(db);
@@ -276,7 +275,6 @@ describe("runMigrations on Postgres — chat_sessions schema", () => {
 
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].data_type).toBe("integer");
-    // auto-increment in Postgres is expressed as nextval(sequence)
     expect(result.rows[0].column_default).toMatch(/nextval/i);
   });
 
@@ -291,7 +289,6 @@ describe("runMigrations on Postgres — chat_sessions schema", () => {
 
     expect(result.rows.length).toBeGreaterThanOrEqual(1);
 
-    // Verify the unique constraint covers workspace_key and thread_key
     const constraintName = result.rows[0].constraint_name;
     const columns = await sql<{ column_name: string }>`
       SELECT kcu.column_name

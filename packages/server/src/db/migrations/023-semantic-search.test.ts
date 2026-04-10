@@ -1,13 +1,3 @@
-/**
- * Tests for the 023-semantic-search migration.
- *
- * Uses a fresh blank in-memory SQLite database. Prerequisites created manually:
- * - connector_configs and indexed_files (from 019) — document_chunks and
- *   document_timeframes both FK reference indexed_files.id.
- *
- * Tests verify that both tables are created with correct columns, that unique/regular
- * indexes work, and that down() reverses the migration.
- */
 import SQLite from "better-sqlite3";
 import { Kysely, SqliteDialect, sql } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

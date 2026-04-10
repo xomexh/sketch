@@ -1,11 +1,3 @@
-/**
- * API route tests for mcp-servers endpoints.
- * Tests all 9 endpoints: CRUD (admin-only), connection testing, and
- * integration sub-resources (apps, connections) which require member role.
- *
- * Uses in-memory SQLite via createTestDb(), seeds admin for auth,
- * and mocks the provider factory + MCP SDK to avoid real network calls.
- */
 import type { Kysely } from "kysely";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { signJwt } from "../auth/jwt";

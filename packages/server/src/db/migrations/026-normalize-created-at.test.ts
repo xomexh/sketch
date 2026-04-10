@@ -103,7 +103,6 @@ describe("026-normalize-created-at migration", () => {
 
     await up026(db);
 
-    // Weekly period [2026-03-30T00:00:00.000Z, 2026-04-06T00:00:00.000Z)
     const result = await sql<{ count: number }>`
       SELECT COUNT(*) as count FROM agent_runs
       WHERE created_at >= '2026-03-30T00:00:00.000Z'

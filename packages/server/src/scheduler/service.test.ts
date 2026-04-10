@@ -1,14 +1,3 @@
-/**
- * Tests for TaskScheduler.
- *
- * Uses an in-memory SQLite DB (via createTestDb) for the repository layer and
- * mocks all external dependencies (croner, runAgent, SlackBot, WhatsAppBot,
- * QueueManager). Croner is vi.mock'd with a plain class so `new Cron()` returns
- * controllable instances tracked in a module-level array. Assertions about
- * scheduling use the instances array and the Cron class constructor call count.
- *
- * executeTask is called directly (not via cron callback) for deterministic tests.
- */
 import type { Kysely } from "kysely";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createScheduledTaskRepository } from "../db/repositories/scheduled-tasks";

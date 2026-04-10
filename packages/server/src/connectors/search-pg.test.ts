@@ -14,10 +14,6 @@ import type { DB } from "../db/schema";
 import { createTestPgDb } from "../test-utils";
 import { hybridSearch, searchFiles } from "./search";
 
-/**
- * Build a sparse vector string of `dims` dimensions.
- * `values` maps zero-based dimension indices to non-zero floats.
- */
 function makeVector(dims: number, values: Record<number, number> = {}): string {
   const arr = new Array(dims).fill(0);
   for (const [idx, val] of Object.entries(values)) {
@@ -188,7 +184,6 @@ describe("hybridSearch on Postgres — vector + FTS", () => {
     await insertFile(db, "f-vec-1", { fileName: "similar-doc.txt", summary: "machine learning overview" });
     await insertFile(db, "f-vec-2", { fileName: "distant-doc.txt", summary: "accounting spreadsheet" });
 
-    // Insert a document_chunks row for f-vec-1
     const chunkId = randomUUID();
     await db
       .insertInto("document_chunks")
@@ -201,13 +196,11 @@ describe("hybridSearch on Postgres — vector + FTS", () => {
       })
       .execute();
 
-    // Insert chunk embedding with a vector pointing in direction of dim 0
     const embeddingVec = makeVector(EMBEDDING_DIMENSIONS, { 0: 1.0 });
     await sql`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (${chunkId}, ${embeddingVec}::vector)`.execute(
       db,
     );
 
-    // Query with a vector closely aligned to f-vec-1's embedding
     const queryEmbedding = new Array(EMBEDDING_DIMENSIONS).fill(0);
     queryEmbedding[0] = 0.9;
     queryEmbedding[1] = 0.1;
@@ -231,7 +224,6 @@ describe("hybridSearch on Postgres — vector + FTS", () => {
     await insertFile(db, "f-tf-1", { fileName: "q1-review.txt", summary: "Q1 quarterly review" });
     await insertFile(db, "f-tf-2", { fileName: "q4-review.txt", summary: "Q4 quarterly review" });
 
-    // Add a timeframe for f-tf-1 (Q1 2024)
     await db
       .insertInto("document_timeframes")
       .values({
@@ -243,7 +235,6 @@ describe("hybridSearch on Postgres — vector + FTS", () => {
       })
       .execute();
 
-    // Add a timeframe for f-tf-2 (Q4 2024)
     await db
       .insertInto("document_timeframes")
       .values({

@@ -1,16 +1,9 @@
-/**
- * Tests for the search module.
- *
- * browseFiles: LIKE wildcard escaping (Phase 2)
- * searchFiles / hybridSearch: FTS5 query sanitization (Phase 7)
- */
 import type { Kysely } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DB } from "../db/schema";
 import { createTestDb } from "../test-utils";
 import { browseFiles, searchFiles } from "./search";
 
-/** Insert a minimal indexed_files row for testing path matching. */
 async function insertFile(db: Kysely<DB>, id: string, sourcePath: string, source = "google_drive") {
   await db
     .insertInto("indexed_files")
@@ -40,7 +33,6 @@ describe("browseFiles — LIKE wildcard escaping", () => {
 
   beforeEach(async () => {
     db = await createTestDb();
-    // Create the connector_configs row that indexed_files references
     await db
       .insertInto("connector_configs")
       .values({
@@ -56,34 +48,24 @@ describe("browseFiles — LIKE wildcard escaping", () => {
   afterEach(async () => {
     try {
       await db.destroy();
-    } catch {
-      // already destroyed
-    }
+    } catch {}
   });
 
   it("% in folderPath matches only paths containing a literal percent sign, not all paths", async () => {
-    // Two files: one whose path contains a literal "%" and one with a normal path.
     await insertFile(db, "file-percent", "My Drive / 100% Done");
     await insertFile(db, "file-normal", "My Drive / Regular Folder");
 
-    // If % is NOT escaped, searching for "100%" would match both rows because
-    // `%100%%` matches any string (the trailing unescaped % is a wildcard).
     const results = await browseFiles(db, { folderPath: "100%" });
 
-    // With correct escaping, only the file whose path actually contains "100%"
-    // should be returned.
     const ids = results.map((r) => r.id);
     expect(ids).toContain("file-percent");
     expect(ids).not.toContain("file-normal");
   });
 
   it("_ in folderPath matches only paths containing a literal underscore, not any single character", async () => {
-    // Two files: one with an underscore in the path, one without.
     await insertFile(db, "file-underscore", "My Drive / Project_Alpha");
     await insertFile(db, "file-no-underscore", "My Drive / ProjectBAlpha");
 
-    // Without escaping, `%Project_Alpha%` would match "ProjectBAlpha" too,
-    // because _ is a single-char wildcard. With escaping it must not.
     const results = await browseFiles(db, { folderPath: "Project_Alpha" });
 
     const ids = results.map((r) => r.id);
@@ -92,13 +74,11 @@ describe("browseFiles — LIKE wildcard escaping", () => {
   });
 
   it("a bare % folderPath does not return all files", async () => {
-    // Without escaping, folderPath="%" turns into LIKE `%%%` which matches everything.
     await insertFile(db, "file-a", "My Drive / FolderA");
     await insertFile(db, "file-b", "My Drive / FolderB");
 
     const results = await browseFiles(db, { folderPath: "%" });
 
-    // There are no files whose path contains a literal "%" — result should be empty.
     expect(results).toHaveLength(0);
   });
 });
@@ -144,14 +124,10 @@ describe("searchFiles — FTS5 query sanitization", () => {
   afterEach(async () => {
     try {
       await db.destroy();
-    } catch {
-      // already destroyed
-    }
+    } catch {}
   });
 
   it("a query with FTS5 special characters does not throw", async () => {
-    // Characters like *, (, ), ", +, -, OR, AND, NOT would cause FTS5 MATCH to
-    // throw a syntax error if passed through unsanitized.
     const specialQueries = [
       "planning*",
       "(planning)",

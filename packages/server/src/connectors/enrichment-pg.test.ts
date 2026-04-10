@@ -152,7 +152,6 @@ describe("file_embeddings on Postgres", () => {
     const vec2 = makeVector(EMBEDDING_DIMENSIONS, { 0: 0.9 });
 
     await sql`INSERT INTO file_embeddings (indexed_file_id, embedding) VALUES (${fileId}, ${vec1}::vector)`.execute(db);
-    // ON CONFLICT upsert — Postgres syntax (not INSERT OR REPLACE)
     await sql`
       INSERT INTO file_embeddings (indexed_file_id, embedding)
       VALUES (${fileId}, ${vec2}::vector)
@@ -163,7 +162,6 @@ describe("file_embeddings on Postgres", () => {
       SELECT indexed_file_id FROM file_embeddings WHERE indexed_file_id = ${fileId}
     `.execute(db);
 
-    // Upsert must not create a duplicate row
     expect(rows.rows).toHaveLength(1);
   });
 
@@ -199,8 +197,6 @@ describe("clearEnrichmentData on Postgres", () => {
     const fileId = randomUUID();
     await seedFile(db, fileId);
 
-    // On Postgres, chunk_embeddings and file_embeddings are real tables.
-    // clearEnrichmentData must not fail with "no such table".
     await expect(clearEnrichmentData(db, fileId)).resolves.toBeUndefined();
   });
 
@@ -275,7 +271,6 @@ describe("clearEnrichmentData on Postgres", () => {
     const fileId = randomUUID();
     await seedFile(db, fileId);
 
-    // First enrichment pass
     const chunkId1 = randomUUID();
     await db
       .insertInto("document_chunks")
@@ -285,7 +280,6 @@ describe("clearEnrichmentData on Postgres", () => {
     const vec1 = makeVector(EMBEDDING_DIMENSIONS, { 0: 0.5 });
     await sql`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (${chunkId1}, ${vec1}::vector)`.execute(db);
 
-    // Simulate re-enrichment: clear, then insert new chunks + embeddings
     await clearEnrichmentData(db, fileId);
 
     const chunkId2 = randomUUID();
@@ -297,7 +291,6 @@ describe("clearEnrichmentData on Postgres", () => {
     const vec2 = makeVector(EMBEDDING_DIMENSIONS, { 1: 0.8 });
     await sql`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (${chunkId2}, ${vec2}::vector)`.execute(db);
 
-    // Old chunk embedding must be gone, new one present
     const oldRows = await sql<{ chunk_id: string }>`
       SELECT chunk_id FROM chunk_embeddings WHERE chunk_id = ${chunkId1}
     `.execute(db);

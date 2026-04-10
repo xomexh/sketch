@@ -104,10 +104,8 @@ describe("findPendingForRecipient()", () => {
 
     const msg1 = await repo.create({ ...baseOutreach(), message: "Question 1" });
     const msg2 = await repo.create({ ...baseOutreach(), message: "Question 2" });
-    // Outreach for a different recipient — should not appear
     await repo.create({ ...baseOutreach(), recipientUserId: bob.id, message: "For Bob" });
 
-    // Ensure msg1 has an earlier created_at
     await db
       .updateTable("outreach_messages")
       .set({ created_at: "2026-03-14T08:00:00.000Z" })
@@ -206,7 +204,6 @@ describe("markResponded()", () => {
     await repo.markResponded(msg.id, "First response");
     const second = await repo.markResponded(msg.id, "Second response attempt");
 
-    // Row remains with the first response
     expect(second?.response).toBe("First response");
     expect(second?.status).toBe("responded");
   });

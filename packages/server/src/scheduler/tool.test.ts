@@ -1,10 +1,3 @@
-/**
- * Tests for the handleManageScheduledTasks tool handler.
- *
- * Uses a minimal mock TaskScheduler to isolate tool logic from DB/croner dependencies.
- * Covers context scoping (DM vs channel), default session mode selection, chat mode
- * rejection for top-level channels, required field validation, and CRUD delegation.
- */
 import { describe, expect, it, vi } from "vitest";
 import { handleManageScheduledTasks } from "../agent/sketch-tools";
 import type { TaskScheduler } from "./service";

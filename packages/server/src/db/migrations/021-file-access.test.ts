@@ -1,15 +1,3 @@
-/**
- * Tests for the 021-file-access migration.
- *
- * Uses a fresh blank in-memory SQLite database. Prerequisites created manually:
- * - connector_configs (from 019)
- * - indexed_files (from 019, without FTS/triggers for simplicity)
- *
- * Tests verify that access_scopes, access_scope_members, connector_files, and
- * file_access tables are created with correct columns and unique indexes, and that
- * the unique deduplication index on indexed_files(source, provider_file_id) is
- * enforced. down() reverses all of this.
- */
 import SQLite from "better-sqlite3";
 import { Kysely, SqliteDialect, sql } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -326,7 +314,6 @@ describe("021-file-access migration", () => {
       expect(result.rows).toHaveLength(0);
     }
 
-    // The deduplication index should also be gone
     const idxResult = await sql<{ name: string }>`
       SELECT name FROM sqlite_master WHERE type='index' AND name='idx_indexed_files_source_provider'
     `.execute(db);

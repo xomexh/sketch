@@ -1,9 +1,3 @@
-/**
- * Tests for the text chunking module.
- *
- * Verifies that text is split at paragraph boundaries, chunks respect the
- * max token limit, and overlap is preserved between chunks.
- */
 import { describe, expect, it } from "vitest";
 import { chunkText } from "./chunking";
 

@@ -1,9 +1,3 @@
-/**
- * Security tests for the settings API.
- *
- * Verifies GET /api/settings/search does not return the raw gemini_api_key —
- * should return geminiApiKeyConfigured (boolean) instead.
- */
 import type { Kysely } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { hashPassword } from "../auth/password";

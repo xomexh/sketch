@@ -1,11 +1,3 @@
-/**
- * Tests for DB-based session persistence on Postgres (PGlite).
- *
- * Exercises the same saveSessionId/getSessionId logic as sessions.test.ts but
- * against a real Postgres dialect. Specifically validates that the ON CONFLICT
- * target (workspace_key, thread_key) works correctly on Postgres, which requires
- * a plain column-based unique constraint (not an expression index).
- */
 import type { Kysely } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DB } from "../db/schema";

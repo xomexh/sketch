@@ -1,7 +1,3 @@
-/**
- * Tests for the mcp_servers repository.
- * Validates CRUD operations, slug auto-generation, and collision avoidance.
- */
 import type { Kysely } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestDb } from "../../test-utils";

@@ -1,8 +1,3 @@
-/**
- * Tests for DB-based session persistence.
- * Uses an in-memory SQLite database via Kysely + better-sqlite3 so tests are
- * fast and self-contained without touching the real migrations infrastructure.
- */
 import SQLite from "better-sqlite3";
 import { Kysely, SqliteDialect, sql } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

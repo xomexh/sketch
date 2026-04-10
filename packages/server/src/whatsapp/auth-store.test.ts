@@ -59,8 +59,6 @@ describe("createDbAuthState", () => {
     await state.keys.set({ "pre-key": { "1": { keyPair: "test" } as never } });
     await state.keys.set({ "pre-key": { "1": null } });
 
-    // Create a fresh auth state to bypass the in-memory cache layer
-    // and verify the key was actually deleted from the database
     const { state: fresh } = await createDbAuthState(db);
     const result = await fresh.keys.get("pre-key", ["1"]);
     expect(result["1"]).toBeUndefined();

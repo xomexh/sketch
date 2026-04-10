@@ -1,13 +1,3 @@
-/**
- * Tests for the tagging module.
- *
- * Focuses on the quarter end-date calculation which had a bug where
- * [3, 6, 9, 12].includes(q * 3) was always true (q*3 is always in that list),
- * causing all quarters to be assigned "30" as the end day.
- *
- * Fixed to use a lookup table: { 3: "31", 6: "30", 9: "30", 12: "31" }
- * (March 31, June 30, September 30, December 31).
- */
 import { describe, expect, it } from "vitest";
 import { tagShortContent } from "./tagging";
 

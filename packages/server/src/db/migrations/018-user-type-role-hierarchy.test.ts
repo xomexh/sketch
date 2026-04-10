@@ -1,12 +1,3 @@
-/**
- * Tests for the 018-user-type-role-hierarchy migration.
- *
- * Uses a fresh blank in-memory SQLite database. The users table is created
- * manually (matching migrations 001 + 016-user-description) before running
- * up() since this migration is an ALTER TABLE on an existing table. Tests verify
- * that type defaults to 'human', role and reports_to default to null, and that
- * agent rows and FK references store correctly. down() removes all three columns.
- */
 import SQLite from "better-sqlite3";
 import { Kysely, SqliteDialect, sql } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

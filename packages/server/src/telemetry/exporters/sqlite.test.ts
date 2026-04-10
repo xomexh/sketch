@@ -94,7 +94,6 @@ describe("SqliteSpanExporter", () => {
       }),
     );
 
-    // Verify attributes JSON contains all span attributes
     const callArgs = repo.insertRun.mock.calls[0][0];
     const parsed = JSON.parse(callArgs.attributes);
     expect(parsed["gen_ai.response.model"]).toBe("claude-sonnet-4-20250514");
@@ -168,7 +167,6 @@ describe("SqliteSpanExporter", () => {
     const repo = makeMockRepo();
     const exporter = new SqliteSpanExporter(repo, makeLogger());
 
-    // Simulate error path: only params-derived attributes, no result fields
     const span = makeAgentRunSpan({
       statusCode: 2,
       attrs: {
@@ -176,7 +174,7 @@ describe("SqliteSpanExporter", () => {
         "sketch.platform": "slack",
         "sketch.context_type": "dm",
         "sketch.user_id": "user-1",
-        "gen_ai.response.model": undefined, // not set on error
+        "gen_ai.response.model": undefined,
       },
     });
 

@@ -121,13 +121,11 @@ describe("createRateLimitedMagicLinkToken()", () => {
   it("returns null when rate limit (5 per 15 min) is reached", async () => {
     const user = await createVerifiedUser("test@example.com");
 
-    // Create 5 tokens (at the limit)
     for (let i = 0; i < 5; i++) {
       const t = await createRateLimitedMagicLinkToken(db, user.id);
       expect(t).not.toBeNull();
     }
 
-    // 6th should be rate-limited
     const rateLimited = await createRateLimitedMagicLinkToken(db, user.id);
     expect(rateLimited).toBeNull();
   });
@@ -136,12 +134,10 @@ describe("createRateLimitedMagicLinkToken()", () => {
     const user1 = await createVerifiedUser("user1@example.com");
     const user2 = await createVerifiedUser("user2@example.com");
 
-    // Fill user2's limit
     for (let i = 0; i < 5; i++) {
       await createRateLimitedMagicLinkToken(db, user2.id);
     }
 
-    // user1 should still be able to create tokens
     const token = await createRateLimitedMagicLinkToken(db, user1.id);
     expect(token).not.toBeNull();
   });
@@ -149,7 +145,6 @@ describe("createRateLimitedMagicLinkToken()", () => {
   it("does not count old tokens toward rate limit", async () => {
     const user = await createVerifiedUser("test@example.com");
 
-    // Insert 5 tokens with old timestamps (>15 min ago)
     for (let i = 0; i < 5; i++) {
       await db
         .insertInto("magic_link_tokens")
@@ -162,7 +157,6 @@ describe("createRateLimitedMagicLinkToken()", () => {
         .execute();
     }
 
-    // Should still be able to create a fresh token
     const token = await createRateLimitedMagicLinkToken(db, user.id);
     expect(token).not.toBeNull();
   });

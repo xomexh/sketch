@@ -1,9 +1,3 @@
-/**
- * Tests for the provider factory and MCP config builder.
- * Validates that createProvider instantiates the correct adapter,
- * buildMcpConfig produces correct HTTP config for both integration
- * providers and plain MCP servers.
- */
 import { describe, expect, it } from "vitest";
 import { CanvasProvider } from "./canvas";
 import { buildMcpConfig, createProvider } from "./factory";

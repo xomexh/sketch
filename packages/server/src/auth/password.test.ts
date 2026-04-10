@@ -6,8 +6,8 @@ describe("Password hashing", () => {
     const hash = await hashPassword("testpassword");
     expect(hash).toContain(":");
     const [salt, key] = hash.split(":");
-    expect(salt).toHaveLength(64); // 32 bytes hex
-    expect(key).toHaveLength(128); // 64 bytes hex
+    expect(salt).toHaveLength(64);
+    expect(key).toHaveLength(128);
   });
 
   it("hashPassword() produces different hashes for same input", async () => {

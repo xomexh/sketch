@@ -139,7 +139,6 @@ function makeBaseParams(overrides?: Partial<Parameters<typeof runAgent>[0]>): Pa
   };
 }
 
-/** Helper to build a rich SDK result message with all telemetry fields */
 function makeRichResultMessage(overrides?: Record<string, unknown>) {
   return {
     type: "result",

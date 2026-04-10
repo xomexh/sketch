@@ -1,10 +1,3 @@
-/**
- * Tests for the Notion connector's retry logic.
- *
- * Verifies that 429 responses are bounded by MAX_RETRIES, that concurrent
- * connector instances do not share rate-limiter state, and that refreshTokens
- * skips refresh when token is still valid.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createNotionConnector } from "./notion";
 
@@ -32,7 +25,6 @@ describe("Notion 429 retry bounded", () => {
       /rate limited after/i,
     );
 
-    // At most 3 fetch calls
     expect(fetchSpy.mock.calls.length).toBeLessThanOrEqual(3);
   });
 
@@ -52,8 +44,6 @@ describe("Notion 429 retry bounded", () => {
 
 describe("Notion concurrent syncs do not share rate-limiter state", () => {
   it("two connector instances have independent requestTimes arrays", () => {
-    // createNotionConnector() uses makeNotionRequests() which creates a new
-    // requestTimes closure per call
     const connectorA = createNotionConnector();
     const connectorB = createNotionConnector();
 

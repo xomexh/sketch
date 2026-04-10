@@ -39,7 +39,6 @@ describe("createDatabase", () => {
   it("sets sqliteVecAvailable flag for SQLite", async () => {
     const config = createTestConfig({ DB_TYPE: "sqlite", SQLITE_PATH: ":memory:" });
     db = await createDatabase(config);
-    // After creating a SQLite DB, sqliteVecAvailable should be set (true if extension loaded, false otherwise)
     const { sqliteVecAvailable } = await import("./index");
     expect(typeof sqliteVecAvailable).toBe("boolean");
   });

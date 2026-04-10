@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ChannelQueue, QueueManager } from "./queue";
 
-/**
- * Helper that creates a delayed work function.
- * Records execution order in the provided array and optionally delays to simulate async work.
- */
 function createWork(order: number[], id: number, delayMs = 0): () => Promise<void> {
   return async () => {
     if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));

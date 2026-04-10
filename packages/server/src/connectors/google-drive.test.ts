@@ -7,16 +7,10 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { fileToSyncedItem, listFolderContents, resolveFolderPath } from "./google-drive";
 
-// Prevent any real HTTP calls. If validation is missing, the fetch mock will be
-// called with the injected query string — which itself is the failure signal.
 vi.mock("node:https", () => ({}));
 
-// Intercept fetch at the global level. A well-implemented fix should throw
-// BEFORE reaching fetch.
 const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("fetch should not be called"));
 
-// Restore fetch after all tests in this file so the spy doesn't leak into
-// other test files running in the same worker pool.
 afterAll(() => {
   fetchSpy.mockRestore();
 });
@@ -48,20 +42,12 @@ describe("listFolderContents — folderId injection guard", () => {
   });
 
   it("accepts a well-formed folderId (alphanumeric with hyphens and underscores)", async () => {
-    // A valid Drive folder ID looks like "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs" —
-    // alphanumeric and safe. The test only checks that the function does NOT
-    // reject the input (it may still throw because fetch is mocked, but the
-    // throw must come from the network mock, not validation).
-    //
-    // We reset the spy to track the call, then confirm fetch was actually
-    // attempted (meaning validation passed).
     fetchSpy.mockReset();
     fetchSpy.mockRejectedValue(new Error("network mock"));
 
     await expect(listFolderContents("access-token", "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs")).rejects.toThrow(
       "network mock",
     );
-    // fetch was called — validation did not block the well-formed ID
     expect(fetchSpy).toHaveBeenCalled();
   });
 });
@@ -96,18 +82,12 @@ describe("fileToSyncedItem — mimeType field", () => {
 
 describe("resolveFolderPath — max depth guard", () => {
   it("stops traversal at 20 levels and returns a partial path", async () => {
-    // Build a chain of 25 folder IDs each pointing to the next parent.
-    // Without the depth guard, this would loop indefinitely (if the chain had no root).
     const folderIds = Array.from({ length: 25 }, (_, i) => `folder-${i}`);
     const folderCache = new Map<string, string>();
 
-    // Mock fetch: each folder returns its parent (next in the chain).
-    // The last folder (folderIds[24]) has no parents, so the chain is actually finite
-    // but longer than the max depth of 20.
     fetchSpy.mockReset();
     fetchSpy.mockImplementation(async (url: string | URL | Request) => {
       const urlStr = url.toString();
-      // Extract the folder ID from the URL (e.g. /files/folder-3?...)
       const match = urlStr.match(/\/files\/(folder-\d+)/);
       if (!match) throw new Error("unexpected URL");
       const folderId = match[1];
@@ -127,10 +107,8 @@ describe("resolveFolderPath — max depth guard", () => {
     const file = { id: "leaf-file", name: "file.txt", mimeType: "text/plain", parents: [folderIds[0]] };
     const path = await resolveFolderPath(file, "My Drive", "access-token", folderCache);
 
-    // The path should exist (not throw) but have at most MAX_FOLDER_DEPTH=20 segments
     expect(typeof path).toBe("string");
     const segments = path.split(" / ");
-    // "My Drive" is always first, then up to 20 folder names
     expect(segments.length).toBeLessThanOrEqual(21);
   });
 });

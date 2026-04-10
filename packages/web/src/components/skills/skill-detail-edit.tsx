@@ -40,7 +40,8 @@ export interface SkillDraft {
 }
 
 interface SkillDetailEditProps {
-  skill: Skill | null; // null = create mode
+  /** null = create mode */
+  skill: Skill | null;
   activeTab: "details" | "permissions";
   onTabChange: (tab: "details" | "permissions") => void;
   onBack: () => void;

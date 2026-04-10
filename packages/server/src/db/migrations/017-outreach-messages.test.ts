@@ -1,11 +1,3 @@
-/**
- * Tests for the 017-outreach-messages migration.
- *
- * Uses a fresh blank in-memory SQLite database. The users table is created manually
- * before running up() because outreach_messages has FK references to users.id.
- * Tests verify that columns and defaults are correct and that both indexes exist
- * and support filtering by status.
- */
 import SQLite from "better-sqlite3";
 import { Kysely, SqliteDialect, sql } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

@@ -281,7 +281,6 @@ describe("019-connectors migration", () => {
       })
       .execute();
 
-    // FTS5 MATCH query should find the inserted file
     const ftsResults = await sql<{ file_name: string }>`
       SELECT file_name FROM indexed_files_fts WHERE indexed_files_fts MATCH 'strategy'
     `.execute(db);

@@ -65,16 +65,13 @@ describe("clearEnrichmentData — batch DELETE via subquery", () => {
   afterEach(async () => {
     try {
       await db.destroy();
-    } catch {
-      // already destroyed
-    }
+    } catch {}
   });
 
   it("removes all chunks for the file in a single operation", async () => {
     const fileId = randomUUID();
     await seedFile(db, fileId, "some content");
 
-    // Insert several document_chunks manually
     const chunkIds = [randomUUID(), randomUUID(), randomUUID()];
     await db
       .insertInto("document_chunks")
@@ -123,21 +120,16 @@ describe("runEnrichment — batch chunk insert", () => {
   afterEach(async () => {
     try {
       await db.destroy();
-    } catch {
-      // already destroyed
-    }
+    } catch {}
   });
 
   it("inserts multiple chunks for a file in a single run", async () => {
     const fileId = randomUUID();
-    // Use text long enough to produce multiple chunks at default maxTokens=500
-    // (500 tokens * 4 chars = 2000 chars per chunk; we'll force small chunks via content length)
     const longContent = Array.from({ length: 30 }, (_, i) => `Paragraph ${i + 1}: ${"word ".repeat(25).trim()}`).join(
       "\n\n",
     );
     await seedFile(db, fileId, longContent);
 
-    // Set embedding_status to pending
     await db.updateTable("indexed_files").set({ embedding_status: "pending" }).where("id", "=", fileId).execute();
 
     const logger = createTestLogger();
@@ -166,10 +158,8 @@ describe("runEnrichment — batch chunk insert", () => {
       .orderBy("chunk_index", "asc")
       .execute();
 
-    // The long content should produce at least 2 chunks
     expect(chunks.length).toBeGreaterThan(1);
 
-    // Chunk indices should be sequential
     for (let i = 0; i < chunks.length; i++) {
       expect(chunks[i].chunk_index).toBe(i);
     }

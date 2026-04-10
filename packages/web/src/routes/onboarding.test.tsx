@@ -38,8 +38,6 @@ describe("CreateAccountStep", () => {
     const user = userEvent.setup();
     renderWithProviders(<CreateAccountStep onComplete={() => {}} />);
 
-    // "user@domain" passes HTML5 type="email" constraint but fails our regex
-    // which requires a dot in the domain part
     await user.type(screen.getByLabelText("Email"), "user@domain");
     await user.type(screen.getByLabelText("Password"), "password123");
     await user.type(screen.getByLabelText("Confirm password"), "password123");
@@ -509,19 +507,16 @@ describe("OnboardingPage navigation and flow", () => {
     const user = userEvent.setup();
     renderWithProviders(<OnboardingPage />);
 
-    // Step 1
     await user.type(screen.getByLabelText("Email"), "admin@test.com");
     await user.type(screen.getByLabelText("Password"), "password123");
     await user.type(screen.getByLabelText("Confirm password"), "password123");
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
-    // Step 2
     await user.type(screen.getByLabelText("Organization Name"), "Acme");
     await user.clear(screen.getByLabelText("Bot Name"));
     await user.type(screen.getByLabelText("Bot Name"), "Sketch");
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
-    // Step 3
     await user.type(screen.getByLabelText("Bot Token"), "xoxb-test-bot-token");
     await user.type(screen.getByLabelText("App-Level Token"), "xapp-test-app-token");
     await user.click(screen.getByRole("button", { name: "Connect" }));
@@ -530,7 +525,6 @@ describe("OnboardingPage navigation and flow", () => {
     });
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
-    // Step 4
     await user.type(screen.getByLabelText("API Key"), "sk-ant-test-key");
     await user.click(screen.getByRole("button", { name: "Connect" }));
     await waitFor(() => {
@@ -538,7 +532,6 @@ describe("OnboardingPage navigation and flow", () => {
     });
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
-    // Completion
     await user.click(screen.getByRole("button", { name: "Go to Dashboard" }));
 
     await waitFor(() => {

@@ -57,7 +57,6 @@ describe("GroupBuffer", () => {
       const drained = buf.drain("group1@g.us");
       drained.push({ senderName: "Rogue", text: "injected", timestamp: 99 });
 
-      // Internal buffer should not be affected
       buf.append("group1@g.us", { senderName: "Bob", text: "next", timestamp: 2 });
       const next = buf.drain("group1@g.us");
       expect(next).toHaveLength(1);

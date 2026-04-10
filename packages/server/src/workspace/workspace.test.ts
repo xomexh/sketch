@@ -1,7 +1,3 @@
-/**
- * Tests for workspace file operations API
- * Covers all endpoints and security edge cases
- */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Kysely } from "kysely";
@@ -98,7 +94,6 @@ describe("Workspace API", () => {
       const app = createApp(db, config);
       const cookie = await getMemberCookie(db, user.id);
 
-      // Create a symlink pointing outside the workspace
       const workspaceDir = join(config.DATA_DIR, "workspaces", user.id);
       await mkdir(workspaceDir, { recursive: true });
       const { symlink } = await import("node:fs/promises");
@@ -136,7 +131,6 @@ describe("Workspace API", () => {
       const app = createApp(db, config);
       const cookie = await getMemberCookie(db, user.id);
 
-      // Create test files
       const workspaceDir = join(config.DATA_DIR, "workspaces", user.id);
       await mkdir(workspaceDir, { recursive: true });
       await writeFile(join(workspaceDir, "test.txt"), "Hello world");
@@ -150,7 +144,6 @@ describe("Workspace API", () => {
       const body = await res.json();
       expect(body.files).toHaveLength(2);
 
-      // Check file metadata
       const textFile = body.files.find((f: { name: string }) => f.name === "test.txt");
       expect(textFile).toBeDefined();
       expect(textFile.isDirectory).toBe(false);
@@ -158,7 +151,6 @@ describe("Workspace API", () => {
       expect(textFile.isEditable).toBe(true);
       expect(textFile.mimeType).toBe("text/plain");
 
-      // Check folder metadata
       const folder = body.files.find((f: { name: string }) => f.name === "subdir");
       expect(folder).toBeDefined();
       expect(folder.isDirectory).toBe(true);
@@ -381,7 +373,6 @@ describe("Workspace API", () => {
       const app = createApp(db, config);
       const cookie = await getMemberCookie(db, user.id);
 
-      // Create a large file (60MB to exceed default 50MB limit)
       const largeContent = new Uint8Array(60 * 1024 * 1024);
       const formData = new FormData();
       formData.append("file", new Blob([largeContent], { type: "application/octet-stream" }), "large.bin");
@@ -415,7 +406,6 @@ describe("Workspace API", () => {
       const body = await res.json();
       expect(body.success).toBe(true);
 
-      // Verify folder was created
       const workspaceDir = join(config.DATA_DIR, "workspaces", user.id);
       const { stat } = await import("node:fs/promises");
       const stats = await stat(join(workspaceDir, "newfolder"));
@@ -436,7 +426,6 @@ describe("Workspace API", () => {
 
       expect(res.status).toBe(201);
 
-      // Verify all folders were created
       const workspaceDir = join(config.DATA_DIR, "workspaces", user.id);
       const { stat } = await import("node:fs/promises");
       const stats = await stat(join(workspaceDir, "parent", "child", "grandchild"));
@@ -485,7 +474,6 @@ describe("Workspace API", () => {
       const body = await res.json();
       expect(body.success).toBe(true);
 
-      // Verify rename worked
       const { access } = await import("node:fs/promises");
       await expect(access(join(workspaceDir, "newname.txt"))).resolves.toBeUndefined();
       await expect(access(join(workspaceDir, "oldname.txt"))).rejects.toThrow();
@@ -572,7 +560,6 @@ describe("Workspace API", () => {
 
       expect(res.status).toBe(200);
 
-      // Verify entire folder was deleted
       const { access } = await import("node:fs/promises");
       await expect(access(join(workspaceDir, "folder"))).rejects.toThrow();
     });
@@ -601,13 +588,10 @@ describe("Workspace API", () => {
       const user2 = await createMember(db);
       const app = createApp(db, config);
 
-      // User1 creates a file
       const workspaceDir1 = join(config.DATA_DIR, "workspaces", user1.id);
       await mkdir(workspaceDir1, { recursive: true });
       await writeFile(join(workspaceDir1, "secret.txt"), "user1 secret");
 
-      // User2 tries to access user1's file via path traversal (even if they knew the ID)
-      // This should be blocked by path validation
       const cookie2 = await getMemberCookie(db, user2.id);
 
       const res = await app.request("/api/workspace/files/content?path=../${user1.id}/secret.txt", {

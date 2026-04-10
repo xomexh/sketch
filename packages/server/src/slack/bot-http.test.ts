@@ -1,7 +1,3 @@
-/**
- * Tests for SlackBot HTTP mode: constructor validation, processHttpRequest signature
- * verification, url_verification challenge, ssl_check, and regular event dispatch.
- */
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createTestLogger } from "../test-utils";

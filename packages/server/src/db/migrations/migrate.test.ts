@@ -85,7 +85,6 @@ describe("runMigrations — full sequence", () => {
 
     expect(result.rows).toHaveLength(1);
 
-    // Verify enrichment_enabled column exists by inserting and reading back
     await db.insertInto("settings").values({ id: "default" }).execute();
     const settings = await db.selectFrom("settings").select(["id", "enrichment_enabled"]).executeTakeFirst();
     expect(settings?.enrichment_enabled).toBe(1);
@@ -169,7 +168,6 @@ describe("runMigrations — full sequence", () => {
       SELECT name FROM kysely_migration ORDER BY name ASC
     `.execute(db);
 
-    // Still exactly 29, not 58
     expect(rows.rows).toHaveLength(29);
   });
 });
@@ -186,13 +184,10 @@ describe("runMigrations — incremental upgrade", () => {
   });
 
   it("applies only 019-027 when 001-018 are already present", async () => {
-    // Simulate a DB that already has 001-018 applied by running the full migration
-    // sequence once, then seeding a user row to represent existing data.
     await runMigrations(db);
 
     await db.insertInto("users").values({ id: "existing-user", name: "Alice" }).execute();
 
-    // Running again should be a no-op (all 29 already applied)
     await runMigrations(db);
 
     const users = await db.selectFrom("users").selectAll().execute();

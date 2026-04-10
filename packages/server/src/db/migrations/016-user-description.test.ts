@@ -1,11 +1,3 @@
-/**
- * Tests for the 016-user-description migration.
- *
- * Uses a fresh blank in-memory SQLite database. The users table is created
- * manually (matching migration 001) before running up() since this migration
- * is an ALTER TABLE on an existing table. Tests verify that the description
- * column is added, stores values correctly, and defaults to null.
- */
 import SQLite from "better-sqlite3";
 import { Kysely, SqliteDialect, sql } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

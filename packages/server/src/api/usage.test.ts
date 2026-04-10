@@ -36,11 +36,9 @@ async function getMemberCookie(db: Kysely<DB>, userId: string): Promise<string> 
   return `sketch_session=${token}`;
 }
 
-/** Seed agent runs and tool calls for a given user within a date range. */
 async function seedUsageData(db: Kysely<DB>, userId: string) {
   const repo = createAgentRunsRepo(db);
 
-  // Run 1: slack, cost 1.50, March 2026
   const run1 = await repo.insertRun({
     trace_id: "trace-1",
     user_id: userId,
@@ -54,7 +52,6 @@ async function seedUsageData(db: Kysely<DB>, userId: string) {
     { agent_run_id: run1, tool_name: "Bash", skill_name: null },
   ]);
 
-  // Run 2: whatsapp, cost 0.75, March 2026
   const run2 = await repo.insertRun({
     trace_id: "trace-2",
     user_id: userId,
@@ -68,7 +65,6 @@ async function seedUsageData(db: Kysely<DB>, userId: string) {
     { agent_run_id: run2, tool_name: "send-email", skill_name: "send-email" },
   ]);
 
-  // Run 3: slack, cost 0.25, March 2026
   const run3 = await repo.insertRun({
     trace_id: "trace-3",
     user_id: userId,
@@ -82,7 +78,6 @@ async function seedUsageData(db: Kysely<DB>, userId: string) {
   return { run1, run2, run3 };
 }
 
-/** Seed an agent run in a different month (February) to test period filtering. */
 async function seedOutOfRangeRun(db: Kysely<DB>, userId: string) {
   const repo = createAgentRunsRepo(db);
   await repo.insertRun({
@@ -125,12 +120,10 @@ describe("Usage API", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      // Period
       expect(body.period.type).toBe("monthly");
       expect(body.period.from).toBe("2026-03-01T00:00:00.000Z");
       expect(body.period.to).toBe("2026-04-01T00:00:00.000Z");
 
-      // Messages
       expect(body.messages.total).toBe(3);
       const platforms = body.messages.by_platform.map((p: { platform: string }) => p.platform).sort();
       expect(platforms).toEqual(["slack", "whatsapp"]);
@@ -145,10 +138,8 @@ describe("Usage API", () => {
       const platformSum = body.messages.by_platform.reduce((sum: number, p: { count: number }) => sum + p.count, 0);
       expect(platformSum).toBe(body.messages.total);
 
-      // Spend
       expect(body.spend.total_cost_usd).toBe(2.5);
 
-      // Skills (canvas x2, send-email x1 = 3 total)
       expect(body.skills.total).toBe(3);
       expect(body.skills.by_skill).toContainEqual({ name: "canvas", count: 2 });
       expect(body.skills.by_skill).toContainEqual({ name: "send-email", count: 1 });
@@ -169,29 +160,26 @@ describe("Usage API", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      // Should have daily_breakdown array
       expect(body.daily_breakdown).toBeDefined();
       expect(Array.isArray(body.daily_breakdown)).toBe(true);
 
-      // Seed data has runs on 2026-03-10, 2026-03-15, 2026-03-20
       expect(body.daily_breakdown.length).toBe(3);
 
       const mar10 = body.daily_breakdown.find((d: { date: string }) => d.date === "2026-03-10");
       expect(mar10).toBeDefined();
       expect(mar10.messages).toBe(1);
-      expect(mar10.skills).toBe(1); // one canvas skill call
+      expect(mar10.skills).toBe(1);
 
       const mar15 = body.daily_breakdown.find((d: { date: string }) => d.date === "2026-03-15");
       expect(mar15).toBeDefined();
       expect(mar15.messages).toBe(1);
-      expect(mar15.skills).toBe(2); // canvas + send-email
+      expect(mar15.skills).toBe(2);
 
       const mar20 = body.daily_breakdown.find((d: { date: string }) => d.date === "2026-03-20");
       expect(mar20).toBeDefined();
       expect(mar20.messages).toBe(1);
-      expect(mar20.skills).toBe(0); // no skill calls
+      expect(mar20.skills).toBe(0);
 
-      // Sum of daily messages should equal total
       const dailyMsgSum = body.daily_breakdown.reduce((sum: number, d: { messages: number }) => sum + d.messages, 0);
       expect(dailyMsgSum).toBe(body.messages.total);
     });
@@ -235,7 +223,6 @@ describe("Usage API", () => {
       const app = createApp(db, config, { logger });
       const cookie = await getMemberCookie(db, member.id);
 
-      // 2026-03-26 is a Thursday
       const res = await app.request("/api/usage/me?period=weekly&date=2026-03-26", {
         headers: { Cookie: cookie },
       });
@@ -243,7 +230,6 @@ describe("Usage API", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.period.type).toBe("weekly");
-      // Monday of that week is March 23
       expect(body.period.from).toBe("2026-03-23T00:00:00.000Z");
       expect(body.period.to).toBe("2026-03-30T00:00:00.000Z");
     });
@@ -310,7 +296,6 @@ describe("Usage API", () => {
       const app = createApp(db, config, { logger });
       const cookie = await getMemberCookie(db, member.id);
 
-      // 2026-03-30 is a Monday — weekly period should be [Mar 30, Apr 6)
       const res = await app.request("/api/usage/me?period=weekly&date=2026-03-30", {
         headers: { Cookie: cookie },
       });
@@ -334,14 +319,12 @@ describe("Usage API", () => {
       const app = createApp(db, config, { logger });
       const cookie = await getMemberCookie(db, member.id);
 
-      // Monthly March should have 3 runs
       const monthlyRes = await app.request("/api/usage/me?period=monthly&date=2026-03-15", {
         headers: { Cookie: cookie },
       });
       const monthly = await monthlyRes.json();
       expect(monthly.messages.total).toBe(3);
 
-      // February monthly should have the 1 out-of-range run
       const febRes = await app.request("/api/usage/me?period=monthly&date=2026-02-15", {
         headers: { Cookie: cookie },
       });
@@ -377,7 +360,6 @@ describe("Usage API", () => {
       const bob = await users.create({ name: "Bot", email: "bot@test.com", type: "agent" });
       await seedUsageData(db, alice.id);
 
-      // Add a run for the agent user
       const repo = createAgentRunsRepo(db);
       await repo.insertRun({
         trace_id: "trace-bot",
@@ -398,15 +380,11 @@ describe("Usage API", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      // Total messages = Alice's 3 + Bot's 1 = 4
       expect(body.messages.total).toBe(4);
 
-      // Has by_user breakdown
       expect(body.by_user).toBeDefined();
       expect(body.by_user.length).toBe(2);
 
-      // by_user + by_group sums match totals (UAT-9)
-      // by_user excludes channel_mention, by_group only includes channel_mention
       const userMsgSum = body.by_user.reduce((s: number, u: { messageCount: number }) => s + u.messageCount, 0);
       const groupMsgSum = (body.by_group ?? []).reduce(
         (s: number, g: { messageCount: number }) => s + g.messageCount,
@@ -415,9 +393,7 @@ describe("Usage API", () => {
       expect(userMsgSum + groupMsgSum).toBe(body.messages.total);
 
       const costSum = body.by_user.reduce((s: number, u: { costUsd: number }) => s + u.costUsd, 0);
-      // costSum may be less than total if channel_mention runs have cost — that's correct
 
-      // Agent user appears with correct type (UAT-10)
       const agentUser = body.by_user.find((u: { userType: string }) => u.userType === "agent");
       expect(agentUser).toBeDefined();
       expect(agentUser.messageCount).toBe(1);
@@ -543,7 +519,6 @@ describe("Usage API", () => {
       const member = await users.create({ name: "FanOut", email: "fanout@test.com" });
 
       const repo = createAgentRunsRepo(db);
-      // 1 run with cost 2.00, 5 tool calls
       const runId = await repo.insertRun({
         trace_id: "trace-fanout",
         user_id: member.id,
@@ -568,11 +543,8 @@ describe("Usage API", () => {
       });
 
       const body = await res.json();
-      // Must be exactly 1 message, not 5
       expect(body.messages.total).toBe(1);
-      // Must be exactly $2.00, not $10.00
       expect(body.spend.total_cost_usd).toBe(2.0);
-      // Skills: skill-a x2, skill-b x1 = 3
       expect(body.skills.total).toBe(3);
     });
 
@@ -631,7 +603,6 @@ describe("Usage API", () => {
       const member = await users.create({ name: "DblCount", email: "dblcount@test.com" });
       const repo = createAgentRunsRepo(db);
 
-      // 2 DM runs
       await repo.insertRun({
         trace_id: "dc-dm-1",
         user_id: member.id,
@@ -649,7 +620,6 @@ describe("Usage API", () => {
         created_at: "2026-03-11T10:00:00.000Z",
       });
 
-      // 1 channel_mention run (should be excluded from /me)
       const channelRunId = await repo.insertRun({
         trace_id: "dc-channel-1",
         user_id: member.id,
@@ -670,14 +640,11 @@ describe("Usage API", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      // Only DM runs counted: 2 messages, $1.50
       expect(body.messages.total).toBe(2);
       expect(body.spend.total_cost_usd).toBe(1.5);
 
-      // Channel skill not counted
       expect(body.skills.total).toBe(0);
 
-      // Daily breakdown excludes channel run
       expect(body.daily_breakdown.length).toBe(2);
     });
 
@@ -686,7 +653,6 @@ describe("Usage API", () => {
       const member = await users.create({ name: "DblAdmin", email: "dbladmin@test.com" });
       const repo = createAgentRunsRepo(db);
 
-      // 1 DM run
       await repo.insertRun({
         trace_id: "da-dm-1",
         user_id: member.id,
@@ -696,7 +662,6 @@ describe("Usage API", () => {
         created_at: "2026-03-10T10:00:00.000Z",
       });
 
-      // 1 channel_mention run with workspace_key
       const channelRunId = await repo.insertRun({
         trace_id: "da-channel-1",
         user_id: member.id,
@@ -708,7 +673,6 @@ describe("Usage API", () => {
       });
       await repo.insertToolCalls([{ agent_run_id: channelRunId, tool_name: "Read", skill_name: null }]);
 
-      // Seed the channel name
       await db
         .insertInto("channels")
         .values({ id: "ch-test", slack_channel_id: "C999TEST", name: "test-channel", type: "public_channel" })
@@ -724,21 +688,17 @@ describe("Usage API", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      // Org total includes everything: 2 messages
       expect(body.messages.total).toBe(2);
 
-      // by_user: only DM run (1 message)
       const user = body.by_user.find((u: { userId: string }) => u.userId === member.id);
       expect(user).toBeDefined();
       expect(user.messageCount).toBe(1);
 
-      // by_group: only channel_mention run (1 message)
       expect(body.by_group).toBeDefined();
       expect(body.by_group.length).toBe(1);
       expect(body.by_group[0].name).toBe("test-channel");
       expect(body.by_group[0].messageCount).toBe(1);
 
-      // by_user_sum + by_group_sum = total
       const userSum = body.by_user.reduce((s: number, u: { messageCount: number }) => s + u.messageCount, 0);
       const groupSum = body.by_group.reduce((s: number, g: { messageCount: number }) => s + g.messageCount, 0);
       expect(userSum + groupSum).toBe(body.messages.total);

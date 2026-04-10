@@ -3,22 +3,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { createServer } from "./bootstrap";
 import { createTestConfig } from "./test-utils";
 
-// Avoid env-var side effects from LLM config
 vi.mock("./agent/llm-env", () => ({
   applyLlmEnvFromSettings: vi.fn(),
 }));
 
-// Avoid pulling in the full Claude SDK at import time
 vi.mock("./agent/runner", () => ({
   runAgent: vi.fn(),
 }));
 
-// Avoid syncing skills from remote repo during tests
 vi.mock("./skills/sync", () => ({
   syncFeaturedSkills: vi.fn(),
 }));
 
-// Avoid managed seed side effects during tests
 vi.mock("./managed-seed", () => ({
   runManagedSeed: vi.fn(),
 }));
@@ -36,7 +32,6 @@ describe("bootstrap", () => {
   });
 
   async function boot(configOverrides: Record<string, unknown> = {}) {
-    // Lazy import so vi.mock hoisting takes effect
     const { createServer } = await import("./bootstrap");
     const config = createTestConfig({ PORT: 0, LOG_LEVEL: "error", ...configOverrides });
     handle = await createServer(config, { connect: false });
@@ -74,6 +69,6 @@ describe("bootstrap", () => {
   it("shutdown resolves without error", async () => {
     const h = await boot();
     await expect(h.shutdown()).resolves.toBeUndefined();
-    handle = null; // prevent double-shutdown in afterEach
+    handle = null;
   });
 });

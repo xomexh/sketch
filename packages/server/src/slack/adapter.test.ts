@@ -4,8 +4,6 @@ import { createTestConfig, flush } from "../test-utils";
 import type { SlackAdapterDeps } from "./adapter";
 import { createConfiguredSlackBot, validateSlackTokens } from "./adapter";
 
-// --- Fixtures ---
-
 function makeUser(overrides: Record<string, unknown> = {}) {
   return {
     id: "u1",
@@ -85,8 +83,6 @@ function makeDeps(overrides: Partial<SlackAdapterDeps> = {}): SlackAdapterDeps {
   };
 }
 
-// --- SlackBot mock via vi.mock with proper class syntax ---
-
 let mockBotInstance: Record<string, ReturnType<typeof vi.fn>> = {};
 
 function freshMockBot() {
@@ -119,7 +115,6 @@ vi.mock("./bot", async (importOriginal) => {
   };
 });
 
-// Stub file download to avoid filesystem access
 vi.mock("../files", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return {
@@ -133,20 +128,17 @@ vi.mock("../files", async (importOriginal) => {
   };
 });
 
-// Stub workspace to avoid filesystem access
 vi.mock("../agent/workspace", () => ({
   ensureWorkspace: vi.fn().mockResolvedValue("/tmp/test-data/workspaces/u1"),
   ensureChannelWorkspace: vi.fn().mockResolvedValue("/tmp/test-data/workspaces/channel-C1"),
   ensureGroupWorkspace: vi.fn().mockResolvedValue("/tmp/test-data/workspaces/wa-group-g1"),
 }));
 
-// Stub session to avoid filesystem access
 vi.mock("../agent/sessions", () => ({
   getSessionId: vi.fn().mockResolvedValue(undefined),
   saveSessionId: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Stub slack API for validateSlackTokens
 vi.mock("./api", () => ({
   slackApiCall: vi.fn().mockResolvedValue({}),
 }));

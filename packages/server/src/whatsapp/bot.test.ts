@@ -134,7 +134,6 @@ describe("WhatsAppBot.phoneNumber", () => {
 
   it("returns null when socket has no user", () => {
     const bot = new WhatsAppBot({ db, logger: createTestLogger() });
-    // Access private sock field via cast to set up the test scenario
     (bot as unknown as { sock: { user: undefined } }).sock = { user: undefined };
     expect(bot.phoneNumber).toBeNull();
   });
@@ -170,17 +169,14 @@ describe("WhatsAppBot.disconnect", () => {
   it("clears credentials from DB", async () => {
     const bot = new WhatsAppBot({ db, logger: createTestLogger() });
 
-    // Seed some creds so there's something to clear
     await db.insertInto("whatsapp_creds").values({ id: "default", creds: "{}" }).execute();
     await db.insertInto("whatsapp_keys").values({ type: "pre-key", key_id: "1", value: "{}" }).execute();
 
-    // Verify creds exist before disconnect
     const before = await db.selectFrom("whatsapp_creds").selectAll().execute();
     expect(before).toHaveLength(1);
 
     await bot.disconnect();
 
-    // Verify creds and keys are cleared
     const credsAfter = await db.selectFrom("whatsapp_creds").selectAll().execute();
     const keysAfter = await db.selectFrom("whatsapp_keys").selectAll().execute();
     expect(credsAfter).toHaveLength(0);
@@ -189,7 +185,6 @@ describe("WhatsAppBot.disconnect", () => {
 
   it("is safe to call when not connected", async () => {
     const bot = new WhatsAppBot({ db, logger: createTestLogger() });
-    // Should not throw
     await bot.disconnect();
     expect(bot.isConnected).toBe(false);
   });
@@ -376,9 +371,8 @@ describe("WhatsAppBot.composing", () => {
     bot.stopComposing("123@s.whatsapp.net");
     expect(sendPresenceUpdate).toHaveBeenCalledWith("paused", "123@s.whatsapp.net");
 
-    // No more composing calls after stop
     vi.advanceTimersByTime(10_000);
-    expect(sendPresenceUpdate).toHaveBeenCalledTimes(1); // only the paused call
+    expect(sendPresenceUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("auto-stops after TTL (3 minutes)", () => {
@@ -387,10 +381,8 @@ describe("WhatsAppBot.composing", () => {
     sendPresenceUpdate.mockClear();
 
     vi.advanceTimersByTime(3 * 60_000);
-    // Should have sent paused via TTL auto-cleanup
     expect(sendPresenceUpdate).toHaveBeenCalledWith("paused", "123@s.whatsapp.net");
 
-    // No more composing after TTL
     sendPresenceUpdate.mockClear();
     vi.advanceTimersByTime(10_000);
     expect(sendPresenceUpdate).not.toHaveBeenCalled();
@@ -398,7 +390,6 @@ describe("WhatsAppBot.composing", () => {
 
   it("startComposing is safe when no socket", () => {
     const bot = new WhatsAppBot({ db, logger: createTestLogger() });
-    // Should not throw
     bot.startComposing("123@s.whatsapp.net");
     bot.stopComposing("123@s.whatsapp.net");
   });
@@ -535,11 +526,9 @@ describe("WhatsAppBot handleGroupMessage LID resolution", () => {
 
     (bot as unknown as { sock: typeof mockSock }).sock = mockSock;
 
-    // Inject a mock resolveLidToPhone to control LID resolution without Baileys
     (bot as unknown as { resolveLidToPhone: (lid: string) => Promise<string | null> }).resolveLidToPhone =
       resolveLidToPhoneImpl;
 
-    // Register the message handler directly (avoids makeWASocket)
     (bot as unknown as { registerMessageHandler: () => void }).registerMessageHandler();
 
     const captured: unknown[] = [];

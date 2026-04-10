@@ -4,8 +4,6 @@ import { createTestConfig, flush } from "../test-utils";
 import type { WhatsAppAdapterDeps } from "./adapter";
 import { wireWhatsAppHandlers } from "./adapter";
 
-// --- Fixtures ---
-
 function makeUser(overrides: Record<string, unknown> = {}) {
   return {
     id: "u1",
@@ -81,14 +79,12 @@ function makeDeps(overrides: Partial<WhatsAppAdapterDeps> = {}): WhatsAppAdapter
   };
 }
 
-// Stub workspace to avoid filesystem access
 vi.mock("../agent/workspace", () => ({
   ensureWorkspace: vi.fn().mockResolvedValue("/tmp/test-data/workspaces/u1"),
   ensureChannelWorkspace: vi.fn().mockResolvedValue("/tmp/test-data/workspaces/channel-C1"),
   ensureGroupWorkspace: vi.fn().mockResolvedValue("/tmp/test-data/workspaces/wa-group-g1"),
 }));
 
-// Stub file download
 vi.mock("../files", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return {
@@ -523,7 +519,6 @@ describe("whatsapp/adapter", () => {
       await flush();
 
       const agentCall = vi.mocked(deps.runAgent).mock.calls[0][0];
-      // Phone must not be set for unregistered users — only registered users get phone in context
       expect(agentCall.userPhone == null).toBe(true);
     });
 
@@ -582,7 +577,6 @@ describe("whatsapp/adapter", () => {
       wireWhatsAppHandlers(mock as never, deps);
       const handler = getHandler();
 
-      // senderJid is a LID-style JID; senderPhone is the already-resolved phone
       await handler({
         type: "group",
         text: "@bot help",
@@ -596,14 +590,12 @@ describe("whatsapp/adapter", () => {
       });
       await flush();
 
-      // Should use senderPhone, not a JID-derived number, for the DB lookup
       expect(deps.repos.users.findByWhatsappNumber).toHaveBeenCalledWith("+1234567890");
       expect(deps.repos.users.findByWhatsappNumber).not.toHaveBeenCalledWith("+86702773280883");
     });
 
     it("group handler falls back to pushName when senderPhone is null", async () => {
       const deps = makeDeps();
-      // Ensure user lookup is not called (senderPhone is null, so no DB lookup possible)
       vi.mocked(deps.repos.users.findByWhatsappNumber).mockResolvedValue(undefined);
       const { mock, getHandler } = createMockWhatsApp();
       wireWhatsAppHandlers(mock as never, deps);
@@ -622,10 +614,8 @@ describe("whatsapp/adapter", () => {
       });
       await flush();
 
-      // When senderPhone is null, skip the DB lookup entirely
       expect(deps.repos.users.findByWhatsappNumber).not.toHaveBeenCalled();
 
-      // The agent should run using pushName as the sender identity
       expect(deps.runAgent).toHaveBeenCalledOnce();
       const agentCall = vi.mocked(deps.runAgent).mock.calls[0][0];
       expect(agentCall.userMessage).toContain("<sender>FallbackName</sender>");

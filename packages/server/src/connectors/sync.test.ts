@@ -15,7 +15,6 @@ import type { DB } from "../db/schema";
 import { createTestDb, createTestLogger } from "../test-utils";
 import { startSyncScheduler } from "./sync";
 
-// Stub the heavy enrichment/sync work to keep tests fast
 vi.mock("./enrichment", () => ({
   runEnrichment: vi.fn().mockResolvedValue({ filesProcessed: 0, filesSkipped: 0, filesFailed: 0, errors: [] }),
   clearEnrichmentData: vi.fn(),
@@ -33,9 +32,7 @@ describe("startSyncScheduler", () => {
     if (db) {
       try {
         await db.destroy();
-      } catch {
-        // already destroyed in the test
-      }
+      } catch {}
       db = null;
     }
   });
@@ -77,8 +74,6 @@ describe("buildOrgContext (via startSyncScheduler enrichment)", () => {
     const handle = startSyncScheduler(db, logger, 60 * 60 * 1000);
     await handle.stop();
 
-    // runEnrichment is called with orgContext from buildOrgContext.
-    // With no org_name in settings (default DB), orgContext should be "".
     const calls = (runEnrichment as ReturnType<typeof vi.fn>).mock.calls;
     if (calls.length > 0) {
       const enrichmentOpts = calls[0][0] as { orgContext?: string };

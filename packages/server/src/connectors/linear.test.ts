@@ -1,10 +1,3 @@
-/**
- * Tests for the Linear connector's retry logic.
- *
- * Verifies that 429 responses are bounded by MAX_RETRIES, that concurrent
- * connector instances do not share rate-limiter state, and that refreshTokens
- * skips refresh when token is still valid.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLinearConnector } from "./linear";
 
@@ -32,7 +25,6 @@ describe("Linear 429 retry bounded", () => {
       /rate limited after/i,
     );
 
-    // At most 3 fetch calls (MAX_RETRIES)
     expect(fetchSpy.mock.calls.length).toBeLessThanOrEqual(3);
   });
 
@@ -56,14 +48,11 @@ describe("Linear concurrent syncs do not share rate-limiter state", () => {
   });
 
   it("two connector instances have independent lastRequestTime", async () => {
-    // Each createLinearConnector() call creates a new closure with its own lastRequestTime
     const connectorA = createLinearConnector();
     const connectorB = createLinearConnector();
 
-    // They are distinct objects
     expect(connectorA).not.toBe(connectorB);
 
-    // Both are independent instances of the same type
     expect(connectorA.type).toBe("linear");
     expect(connectorB.type).toBe("linear");
   });
@@ -147,7 +136,6 @@ describe("Linear refreshTokens expiry check", () => {
       refresh_token: "refresh-token",
       client_id: "client-id",
       client_secret: "client-secret",
-      // no expires_at
     });
 
     expect(result).not.toBeNull();

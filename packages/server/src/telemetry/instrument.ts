@@ -22,6 +22,7 @@ import type { AgentResult } from "../agent/runner";
 import type { ToolCallRecord } from "../agent/runner";
 import type { RunAgentParams } from "../agent/runner";
 
+/** Sets span attributes from the agent run parameters at the start of a run. */
 export function setAgentRunAttributes(span: Span, params: RunAgentParams, runId: string): void {
   span.setAttribute("gen_ai.operation.name", "chat");
   span.setAttribute("gen_ai.provider.name", "anthropic");
@@ -34,6 +35,7 @@ export function setAgentRunAttributes(span: Span, params: RunAgentParams, runId:
   span.setAttribute("sketch.thread_key", params.threadTs ?? "");
 }
 
+/** Sets span attributes from the agent result after a run completes. */
 export function setAgentResultAttributes(span: Span, result: AgentResult): void {
   span.setAttribute("gen_ai.response.model", result.model ?? "");
   span.setAttribute("gen_ai.usage.input_tokens", result.inputTokens);

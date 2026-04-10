@@ -1,14 +1,12 @@
 /**
- * Workspace file operations service
- * Handles all business logic for file browsing, reading, writing, and management.
+ * Workspace file operations service — file browsing, reading, writing, and management.
  *
- * Editability is determined purely from the file extension via getMimeType() — no file content is
- * read for this purpose. A file is considered editable if its MIME type starts with "text/" or is
- * one of the well-known non-text-prefixed editable application/* types below. This avoids reading
- * entire file contents just to determine editability (previously done via istextorbinary).
+ * Editability is determined from the file extension via {@link getMimeType} without reading file
+ * contents. A file is editable if its MIME type starts with "text/" or is one of the known
+ * plaintext "application/" subtypes (JSON, JS, TS, XML, YAML, SQL, shell).
  */
-import { mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, extname, join, resolve, sep } from "node:path";
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, extname, join, sep } from "node:path";
 import { ensureWorkspace } from "../agent/workspace";
 import type { Config } from "../config";
 import {
@@ -20,7 +18,8 @@ import {
 import { isWorkspaceRoot, resolveAndValidatePath, validateFileName, validatePath } from "./validation";
 
 const ONE_MB = 1024 * 1024;
-const MAX_EDITABLE_SIZE = ONE_MB; // 1MB limit for editable files
+/** Maximum file size (1 MB) for text editing — larger files are served as downloads only. */
+const MAX_EDITABLE_SIZE = ONE_MB;
 
 const EDITABLE_APPLICATION_MIME_TYPES = new Set([
   "application/json",
@@ -43,6 +42,10 @@ function isEditableMimeType(mimeType: string | null): boolean {
   return mimeType.startsWith("text/") || EDITABLE_APPLICATION_MIME_TYPES.has(mimeType);
 }
 
+/**
+ * Returns (and creates if absent) the filesystem root for the given scope.
+ * Org scope maps to `CLAUDE_CONFIG_DIR`; user scope maps to `DATA_DIR/workspaces/{userId}`.
+ */
 export async function resolveWorkspaceRoot(config: Config, userId: string, scope: WorkspaceScope): Promise<string> {
   if (scope === "org") {
     await mkdir(config.CLAUDE_CONFIG_DIR, { recursive: true });
@@ -51,8 +54,15 @@ export async function resolveWorkspaceRoot(config: Config, userId: string, scope
   return ensureWorkspace(config, userId);
 }
 
+/**
+ * Creates a {@link IWorkspaceService} that scopes all filesystem operations to
+ * a per-user (or org-shared) workspace directory. Path validation and traversal
+ * prevention are handled by the validation module; this layer handles the
+ * business rules around editability, size limits, and stat-based existence checks.
+ */
 export function createWorkspaceService(config: Config): IWorkspaceService {
   return {
+    /** Returns the absolute workspace root path without creating it. */
     getWorkspacePath(userId: string, scope: WorkspaceScope): string {
       if (scope === "org") {
         return config.CLAUDE_CONFIG_DIR;
@@ -60,10 +70,13 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
       return join(config.DATA_DIR, "workspaces", userId);
     },
 
+    /**
+     * Lists directory contents at `relativePath` within the user's workspace.
+     * Entries that cannot be stat'd (broken symlinks, permission errors) are silently skipped.
+     */
     async listDirectory(userId: string, scope: WorkspaceScope, relativePath: string): Promise<FileMetadata[]> {
       const workspaceRoot = await resolveWorkspaceRoot(config, userId, scope);
 
-      // Validate path
       const validation = await validatePath(workspaceRoot, relativePath);
       if (!validation.valid) {
         throw new WorkspaceError("INVALID_PATH", validation.error ?? "Invalid path", 400);
@@ -74,7 +87,6 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         throw new WorkspaceError("INVALID_PATH", "Could not resolve path", 400);
       }
 
-      // Check if target exists and is a directory
       let stats: ReturnType<typeof stat> extends Promise<infer T> ? T : never;
       try {
         stats = await stat(targetPath);
@@ -86,7 +98,6 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         throw new WorkspaceError("NOT_DIRECTORY", "Path is not a directory", 400);
       }
 
-      // Read directory contents
       const entries = await readdir(targetPath, { withFileTypes: true });
 
       const files: FileMetadata[] = [];
@@ -99,7 +110,6 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         try {
           entryStats = await stat(fullPath);
         } catch {
-          // Skip entries we can't stat (permissions, broken symlinks, etc.)
           continue;
         }
 
@@ -123,7 +133,6 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         });
       }
 
-      // Sort: directories first, then files, both alphabetically
       files.sort((a, b) => {
         if (a.isDirectory && !b.isDirectory) return -1;
         if (!a.isDirectory && b.isDirectory) return 1;
@@ -133,6 +142,11 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
       return files;
     },
 
+    /**
+     * Reads a file and returns its content as a Buffer along with metadata.
+     * `isText` reflects whether the MIME type is editable — callers use this to decide
+     * whether to serve JSON or stream a binary download.
+     */
     async readFile(
       userId: string,
       scope: WorkspaceScope,
@@ -140,7 +154,6 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
     ): Promise<{ content: Buffer; isText: boolean; size: number; mimeType: string | null }> {
       const workspaceRoot = await resolveWorkspaceRoot(config, userId, scope);
 
-      // Validate and resolve path
       const validation = await resolveAndValidatePath(workspaceRoot, relativePath);
       if (!validation.valid) {
         throw new WorkspaceError("INVALID_PATH", validation.error ?? "Invalid path", 400);
@@ -151,7 +164,6 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         throw new WorkspaceError("INVALID_PATH", "Could not resolve path", 400);
       }
 
-      // Check if file exists
       let stats: ReturnType<typeof stat> extends Promise<infer T> ? T : never;
       try {
         stats = await stat(targetPath);
@@ -163,7 +175,6 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         throw new WorkspaceError("IS_DIRECTORY", "Cannot read directory as file", 400);
       }
 
-      // Read file content
       const content = await readFile(targetPath);
       const mimeType = getMimeType(relativePath);
       const isText = isEditableMimeType(mimeType);
@@ -171,10 +182,14 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
       return { content, isText, size: stats.size, mimeType };
     },
 
+    /**
+     * Writes a text file, creating parent directories as needed.
+     * Rejects binary files, files exceeding 1 MB, and invalid filenames.
+     * Writing to a path that does not yet exist creates the file.
+     */
     async writeFile(userId: string, scope: WorkspaceScope, relativePath: string, content: string): Promise<void> {
       const workspaceRoot = await resolveWorkspaceRoot(config, userId, scope);
 
-      // Validate and resolve path
       const validation = await resolveAndValidatePath(workspaceRoot, relativePath);
       if (!validation.valid) {
         throw new WorkspaceError("INVALID_PATH", validation.error ?? "Invalid path", 400);
@@ -185,29 +200,24 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         throw new WorkspaceError("INVALID_PATH", "Could not resolve path", 400);
       }
 
-      // Check if file exists and is not a directory
       try {
         const stats = await stat(targetPath);
         if (stats.isDirectory()) {
           throw new WorkspaceError("IS_DIRECTORY", "Cannot write to a directory", 400);
         }
 
-        // Reject writing to binary files based on extension
         const mimeType = getMimeType(relativePath);
         if (!isEditableMimeType(mimeType)) {
           throw new WorkspaceError("NOT_TEXT_FILE", "Cannot edit binary files", 415);
         }
 
-        // Check size limit for editing
         if (stats.size > MAX_EDITABLE_SIZE) {
           throw new WorkspaceError("FILE_TOO_LARGE", "File too large to edit (max 1MB)", 413);
         }
       } catch (err) {
         if (err instanceof WorkspaceError) throw err;
-        // File doesn't exist - will create new file
       }
 
-      // Validate filename
       const pathParts = relativePath.split(sep);
       const fileName = pathParts[pathParts.length - 1] ?? "";
       const nameValidation = validateFileName(fileName);
@@ -215,25 +225,25 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         throw new WorkspaceError("INVALID_NAME", nameValidation.error ?? "Invalid filename", 400);
       }
 
-      // Ensure parent directory exists
       const parentDir = dirname(targetPath);
       await mkdir(parentDir, { recursive: true });
 
-      // Write file
       await writeFile(targetPath, content, "utf-8");
     },
 
+    /**
+     * Uploads a binary file, creating parent directories as needed.
+     * Size limit is `MAX_UPLOAD_SIZE_MB` from config (default 50 MB).
+     */
     async uploadFile(userId: string, scope: WorkspaceScope, relativePath: string, content: Buffer): Promise<void> {
       const workspaceRoot = await resolveWorkspaceRoot(config, userId, scope);
 
-      // Check upload size limit
       const maxUploadSize = (config as Config & { MAX_UPLOAD_SIZE_MB?: number }).MAX_UPLOAD_SIZE_MB ?? 50;
       const maxSize = maxUploadSize * 1024 * 1024;
       if (content.length > maxSize) {
         throw new WorkspaceError("FILE_TOO_LARGE", `File exceeds maximum size of ${maxUploadSize}MB`, 413);
       }
 
-      // Validate and resolve path
       const validation = await validatePath(workspaceRoot, relativePath);
       if (!validation.valid) {
         throw new WorkspaceError("INVALID_PATH", validation.error ?? "Invalid path", 400);
@@ -244,7 +254,6 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         throw new WorkspaceError("INVALID_PATH", "Could not resolve path", 400);
       }
 
-      // Validate filename
       const pathParts = relativePath.split(sep);
       const fileName = pathParts[pathParts.length - 1] ?? "";
       const nameValidation = validateFileName(fileName);
@@ -252,18 +261,19 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         throw new WorkspaceError("INVALID_NAME", nameValidation.error ?? "Invalid filename", 400);
       }
 
-      // Ensure parent directory exists
       const parentDir = dirname(targetPath);
       await mkdir(parentDir, { recursive: true });
 
-      // Write file
       await writeFile(targetPath, content);
     },
 
+    /**
+     * Creates a folder at `relativePath`, including any missing ancestors.
+     * Validates every path segment name and rejects paths that already exist.
+     */
     async createFolder(userId: string, scope: WorkspaceScope, relativePath: string): Promise<void> {
       const workspaceRoot = await resolveWorkspaceRoot(config, userId, scope);
 
-      // Validate and resolve path
       const validation = await validatePath(workspaceRoot, relativePath);
       if (!validation.valid) {
         throw new WorkspaceError("INVALID_PATH", validation.error ?? "Invalid path", 400);
@@ -274,7 +284,6 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         throw new WorkspaceError("INVALID_PATH", "Could not resolve path", 400);
       }
 
-      // Validate folder name(s)
       const parts = relativePath.split(sep).filter((p) => p && p !== ".");
       for (const part of parts) {
         const nameValidation = validateFileName(part);
@@ -283,7 +292,6 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         }
       }
 
-      // Check if already exists
       try {
         const stats = await stat(targetPath);
         if (stats.isDirectory()) {
@@ -292,17 +300,18 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         throw new WorkspaceError("FILE_EXISTS", "A file with that name already exists", 409);
       } catch (err) {
         if (err instanceof WorkspaceError) throw err;
-        // Doesn't exist - proceed to create
       }
 
-      // Create folder (and parent folders if needed)
       await mkdir(targetPath, { recursive: true });
     },
 
+    /**
+     * Renames or moves a file or folder. The source must exist; the destination must not.
+     * Parent directories of the destination are created automatically.
+     */
     async renameFile(userId: string, scope: WorkspaceScope, oldPath: string, newPath: string): Promise<void> {
       const workspaceRoot = await resolveWorkspaceRoot(config, userId, scope);
 
-      // Validate both paths
       const oldValidation = await resolveAndValidatePath(workspaceRoot, oldPath);
       if (!oldValidation.valid) {
         throw new WorkspaceError("INVALID_PATH", `Old path: ${oldValidation.error ?? "Invalid"}`, 400);
@@ -319,14 +328,12 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         throw new WorkspaceError("INVALID_PATH", "Could not resolve path", 400);
       }
 
-      // Check if source exists
       try {
         await stat(oldFullPath);
       } catch {
         throw new WorkspaceError("NOT_FOUND", "Source file not found", 404);
       }
 
-      // Validate new filename
       const newPathParts = newPath.split(sep);
       const newFileName = newPathParts[newPathParts.length - 1] ?? "";
       const nameValidation = validateFileName(newFileName);
@@ -334,32 +341,27 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         throw new WorkspaceError("INVALID_NAME", nameValidation.error ?? "Invalid filename", 400);
       }
 
-      // Check if destination already exists
       try {
         await stat(newFullPath);
         throw new WorkspaceError("ALREADY_EXISTS", "A file with that name already exists", 409);
       } catch (err) {
         if (err instanceof WorkspaceError) throw err;
-        // Destination doesn't exist - good
       }
 
-      // Ensure parent directory of destination exists
       const parentDir = dirname(newFullPath);
       await mkdir(parentDir, { recursive: true });
 
-      // Perform rename
       await rename(oldFullPath, newFullPath);
     },
 
+    /** Deletes a file or folder recursively. Refuses to delete the workspace root itself. */
     async deleteFile(userId: string, scope: WorkspaceScope, relativePath: string): Promise<void> {
       const workspaceRoot = await resolveWorkspaceRoot(config, userId, scope);
 
-      // Prevent workspace root deletion
       if (isWorkspaceRoot(workspaceRoot, relativePath)) {
         throw new WorkspaceError("CANNOT_DELETE_ROOT", "Cannot delete root workspace", 403);
       }
 
-      // Validate and resolve path
       const validation = await resolveAndValidatePath(workspaceRoot, relativePath);
       if (!validation.valid) {
         throw new WorkspaceError("INVALID_PATH", validation.error ?? "Invalid path", 400);
@@ -370,17 +372,19 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
         throw new WorkspaceError("INVALID_PATH", "Could not resolve path", 400);
       }
 
-      // Check if exists
       try {
         await stat(targetPath);
       } catch {
         throw new WorkspaceError("NOT_FOUND", "File or folder not found", 404);
       }
 
-      // Delete (recursive for directories)
       await rm(targetPath, { recursive: true, force: true });
     },
 
+    /**
+     * Recursively searches for files and folders whose names contain `query` (case-insensitive).
+     * Capped at 100 results and 10 levels of directory depth.
+     */
     async searchFiles(userId: string, scope: WorkspaceScope, query: string): Promise<FileMetadata[]> {
       const workspaceRoot = await resolveWorkspaceRoot(config, userId, scope);
       const results: FileMetadata[] = [];
@@ -427,7 +431,6 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
             });
           }
 
-          // Recursively search subdirectories
           if (isDirectory) {
             await searchRecursive(fullPath, entryRelativePath, depth + 1);
           }
@@ -440,9 +443,7 @@ export function createWorkspaceService(config: Config): IWorkspaceService {
   };
 }
 
-/**
- * Simple MIME type detection based on file extension
- */
+/** Returns the MIME type for a filename based on its extension, or null if unknown. */
 function getMimeType(fileName: string): string | null {
   const ext = extname(fileName).toLowerCase();
   const mimeTypes: Record<string, string> = {

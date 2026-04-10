@@ -1,6 +1,5 @@
 /**
- * Workspace API routes
- * Hono route handlers for /api/workspace/* endpoints
+ * Hono route handlers for `/api/workspace/*` — file and folder CRUD within a user's isolated workspace.
  */
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -10,11 +9,11 @@ import { createWorkspaceService } from "./service";
 import { WorkspaceError, type WorkspaceScope } from "./types";
 import { isWorkspaceRoot } from "./validation";
 
+/** Dependencies injected into the workspace route factory. */
 interface WorkspaceRouteDeps {
   config: Config;
 }
 
-// Validation schemas
 const pathQuerySchema = z.object({
   path: z.string().default(""),
 });
@@ -34,6 +33,7 @@ const folderSchema = z.object({
 
 const scopeSchema = z.enum(["personal", "org"]).default("personal");
 
+/** Maps a WorkspaceError (or generic Error) to the JSON error shape returned by route handlers. */
 function errorResponse(error: WorkspaceError | Error) {
   if (error instanceof WorkspaceError) {
     return {
@@ -51,11 +51,12 @@ function errorResponse(error: WorkspaceError | Error) {
   };
 }
 
+/** Registers all `/api/workspace/*` routes onto a Hono router and returns it. */
 export function workspaceRoutes(deps: WorkspaceRouteDeps) {
   const routes = new Hono();
   const service = createWorkspaceService(deps.config);
 
-  // GET /api/workspace/files - List directory contents
+  /** List directory contents at the given path (defaults to workspace root). */
   routes.get("/files", async (c) => {
     const userId = c.get("sub");
     const scope = scopeSchema.parse(c.req.query("scope") ?? "personal");
@@ -68,7 +69,6 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps) {
     }
 
     try {
-      // Empty path or "./" means root directory
       const path = parsed.data.path || ".";
       const files = await service.listDirectory(userId, scope, path);
       return c.json({ files });
@@ -80,7 +80,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps) {
     }
   });
 
-  // GET /api/workspace/files/search - Search files recursively
+  /** Full-text search across workspace files. Requires a non-empty `q` query param. */
   routes.get("/files/search", async (c) => {
     const userId = c.get("sub");
     const scope = scopeSchema.parse(c.req.query("scope") ?? "personal");
@@ -101,7 +101,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps) {
     }
   });
 
-  // GET /api/workspace/files/content - Get file content (text or binary)
+  /** Read a file. Text files are returned as JSON; binary files (or `?download=true`) are streamed as an attachment. */
   routes.get("/files/content", async (c) => {
     const userId = c.get("sub");
     const scope = scopeSchema.parse(c.req.query("scope") ?? "personal");
@@ -122,7 +122,6 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps) {
       const forceDownload = query.download === "true";
 
       if (result.isText && !forceDownload) {
-        // Return text content as JSON for the editor
         const content = result.content.toString("utf-8");
         return c.json({
           content,
@@ -132,7 +131,6 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps) {
         });
       }
 
-      // Return raw content as download (binary always, text when download=true)
       const filename = parsed.data.path.split("/").pop() || "download";
       c.header("Content-Type", result.mimeType || "application/octet-stream");
       c.header("Content-Disposition", `attachment; filename="${filename}"`);
@@ -145,7 +143,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps) {
     }
   });
 
-  // PUT /api/workspace/files/content - Save edited file (text only)
+  /** Write (create or overwrite) a text file at the given path. */
   routes.put("/files/content", async (c) => {
     const userId = c.get("sub");
     const scope = scopeSchema.parse(c.req.query("scope") ?? "personal");
@@ -175,7 +173,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps) {
     }
   });
 
-  // POST /api/workspace/files - Upload file (multipart)
+  /** Upload a binary file via multipart form-data (`file` field). */
   routes.post("/files", async (c) => {
     const userId = c.get("sub");
     const scope = scopeSchema.parse(c.req.query("scope") ?? "personal");
@@ -209,7 +207,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps) {
     }
   });
 
-  // POST /api/workspace/folders - Create new folder
+  /** Create a folder (and any missing parent directories) at the given path. */
   routes.post("/folders", async (c) => {
     const userId = c.get("sub");
     const scope = scopeSchema.parse(c.req.query("scope") ?? "personal");
@@ -232,7 +230,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps) {
     }
   });
 
-  // PATCH /api/workspace/files/rename - Rename file/folder
+  /** Rename or move a file or folder within the workspace. */
   routes.patch("/files/rename", async (c) => {
     const userId = c.get("sub");
     const scope = scopeSchema.parse(c.req.query("scope") ?? "personal");
@@ -255,7 +253,7 @@ export function workspaceRoutes(deps: WorkspaceRouteDeps) {
     }
   });
 
-  // DELETE /api/workspace/files - Delete file or folder
+  /** Delete a file or folder (recursively) at the given path. */
   routes.delete("/files", async (c) => {
     const userId = c.get("sub");
     const scope = scopeSchema.parse(c.req.query("scope") ?? "personal");

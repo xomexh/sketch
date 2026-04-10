@@ -13,6 +13,7 @@
 import type { Kysely } from "kysely";
 import type { DB } from "../db/schema";
 
+/** Returns the persisted SDK session ID for the given workspace+thread, or `undefined` if none exists. */
 export async function getSessionId(
   db: Kysely<DB>,
   workspaceKey: string,
@@ -27,6 +28,7 @@ export async function getSessionId(
   return row?.session_id;
 }
 
+/** Upserts the SDK session ID for the given workspace+thread key pair. */
 export async function saveSessionId(
   db: Kysely<DB>,
   workspaceKey: string,

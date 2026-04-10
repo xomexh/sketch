@@ -2,8 +2,11 @@ import { randomBytes } from "node:crypto";
 import { type Kysely, sql } from "kysely";
 import type { DB } from "../db/schema";
 
-const TOKEN_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
+/** Magic-link tokens expire after 15 minutes. */
+const TOKEN_EXPIRY_MS = 15 * 60 * 1000;
+/** Maximum number of magic-link requests allowed per user within {@link RATE_WINDOW_MS}. */
 const RATE_LIMIT = 5;
+/** Rolling window for the magic-link send rate limit (15 minutes). */
 const RATE_WINDOW_MS = 15 * 60 * 1000;
 
 /**
@@ -39,19 +42,18 @@ export async function findVerifiedUserByEmail(db: Kysely<DB>, email: string): Pr
 /**
  * Atomically check the rate limit and create a magic link token in a single transaction.
  * Returns the token string if created, or null if rate-limited.
+ * Also cleans up any expired tokens for the user as a side effect.
  * The transaction prevents TOCTOU races where concurrent requests could all pass the
  * count check before any tokens are inserted.
  */
 export async function createRateLimitedMagicLinkToken(db: Kysely<DB>, userId: string): Promise<string | null> {
   return db.transaction().execute(async (tx) => {
-    // Clean up expired tokens for this user
     await tx
       .deleteFrom("magic_link_tokens")
       .where("user_id", "=", userId)
       .where("expires_at", "<", new Date().toISOString())
       .execute();
 
-    // Check rate limit inside the transaction
     const fifteenMinAgo = new Date(Date.now() - RATE_WINDOW_MS).toISOString();
     const { count } = await tx
       .selectFrom("magic_link_tokens")

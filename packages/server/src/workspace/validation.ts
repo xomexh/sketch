@@ -1,13 +1,14 @@
 /**
- * Path validation utilities for workspace file operations
- * Prevents directory traversal attacks and validates file paths.
- * validateFileName delegates to the shared fileNameSchema from @sketch/shared so
- * the same rules apply on both client and server without duplication.
+ * Path and filename validation for workspace file operations.
+ * Guards against directory traversal attacks and symlink escapes.
+ * {@link validateFileName} delegates to `fileNameSchema` from `@sketch/shared`
+ * so client and server enforce identical naming rules.
  */
 import { realpath } from "node:fs/promises";
 import { isAbsolute, normalize, resolve, sep } from "node:path";
 import { fileNameSchema } from "@sketch/shared";
 
+/** Result of a workspace path validation check. */
 interface ValidationResult {
   valid: boolean;
   error?: string;
@@ -15,12 +16,12 @@ interface ValidationResult {
 }
 
 /**
- * Normalizes a path for comparison by resolving it and removing trailing separator
+ * Resolves a path to absolute form and strips any trailing separator,
+ * so that prefix-based containment checks (`startsWith(root + sep)`) work correctly
+ * regardless of how the path was originally constructed.
  */
 function normalizeForComparison(path: string): string {
-  // Resolve to absolute path if not already
   const resolved = isAbsolute(path) ? path : resolve(path);
-  // Remove trailing separator for consistent comparison
   return resolved.endsWith(sep) ? resolved.slice(0, -1) : resolved;
 }
 
@@ -32,29 +33,22 @@ function normalizeForComparison(path: string): string {
  * (or any parent directory) cannot be used to bypass the containment check.
  */
 export async function validatePath(workspaceRoot: string, relativePath: string): Promise<ValidationResult> {
-  // Check for empty path - but allow "." to represent root directory
   if (!relativePath || relativePath.trim() === "") {
     return { valid: false, error: "Path cannot be empty" };
   }
 
-  // Resolve symlinks in the workspace root so the comparison uses canonical paths
   const realWorkspaceRoot = await realpath(workspaceRoot);
 
-  // Handle root directory reference
   if (relativePath === "." || relativePath === "./") {
     return { valid: true, resolvedPath: normalizeForComparison(realWorkspaceRoot) };
   }
 
-  // Reject absolute paths
   if (isAbsolute(relativePath)) {
     return { valid: false, error: "Absolute paths are not allowed" };
   }
 
-  // Normalize the relative path and resolve against workspace root
   const normalizedRelative = normalize(relativePath);
 
-  // Check for path traversal attempts - specifically looking for ".." as a path component
-  // This handles cases like "../file", "../../etc/passwd", "dir/../file", etc.
   const pathParts = normalizedRelative.split(sep).filter((part) => part.length > 0);
   for (const part of pathParts) {
     if (part === "..") {
@@ -62,14 +56,11 @@ export async function validatePath(workspaceRoot: string, relativePath: string):
     }
   }
 
-  // Resolve the full path against the real (symlink-resolved) workspace root
   const resolvedPath = resolve(realWorkspaceRoot, normalizedRelative);
 
-  // Normalize both paths for comparison
   const normalizedWorkspaceRoot = normalizeForComparison(realWorkspaceRoot);
   const normalizedResolvedPath = normalizeForComparison(resolvedPath);
 
-  // Ensure resolved path starts with workspace root (it should be inside or equal to the root)
   if (
     normalizedResolvedPath !== normalizedWorkspaceRoot &&
     !normalizedResolvedPath.startsWith(normalizedWorkspaceRoot + sep)
@@ -80,6 +71,7 @@ export async function validatePath(workspaceRoot: string, relativePath: string):
   return { valid: true, resolvedPath };
 }
 
+/** Result of a filename/folder-name validation check. */
 interface FileNameValidationResult {
   valid: boolean;
   error?: string;
@@ -98,8 +90,10 @@ export function validateFileName(name: string): FileNameValidationResult {
 }
 
 /**
- * Resolves a path and validates it stays within workspace.
- * Also handles symlinks by checking the real path.
+ * Like {@link validatePath}, but additionally resolves the target to its real path via `realpath`
+ * and re-validates containment, catching symlinks that point outside the workspace.
+ * If `realpath` throws (path does not exist yet — valid for create/write operations),
+ * the pre-realpath resolved path is returned as-is.
  */
 export async function resolveAndValidatePath(workspaceRoot: string, relativePath: string): Promise<ValidationResult> {
   const validation = await validatePath(workspaceRoot, relativePath);
@@ -113,10 +107,8 @@ export async function resolveAndValidatePath(workspaceRoot: string, relativePath
   }
 
   try {
-    // Check if path exists and resolve any symlinks
     const realPath = await realpath(resolvedFromValidation);
 
-    // Re-validate after resolving symlinks — use realpath'd workspace root for consistent comparison
     const realRoot = await realpath(workspaceRoot);
     const normalizedWorkspaceRoot = normalizeForComparison(realRoot);
     const normalizedRealPath = normalizeForComparison(realPath);
@@ -130,15 +122,11 @@ export async function resolveAndValidatePath(workspaceRoot: string, relativePath
 
     return { valid: true, resolvedPath: realPath };
   } catch {
-    // Path doesn't exist yet, which is fine for creation operations
-    // Just use the resolved path from the first validation
     return { valid: true, resolvedPath: resolvedFromValidation };
   }
 }
 
-/**
- * Checks if a path is the workspace root or would delete the workspace root
- */
+/** Returns true if `relativePath` refers to the workspace root itself (empty, `.`, or `./`). */
 export function isWorkspaceRoot(workspaceRoot: string, relativePath: string): boolean {
   if (!relativePath || relativePath.trim() === "" || relativePath === "." || relativePath === "./") {
     return true;

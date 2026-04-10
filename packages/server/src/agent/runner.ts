@@ -22,12 +22,20 @@ import { buildSystemContext } from "./prompt";
 import { getSessionId, saveSessionId } from "./sessions";
 import { UploadCollector, createSketchMcpServer } from "./sketch-tools";
 
+/**
+ * Timing record for a single tool call within an agent run.
+ * @remarks
+ * `startedAt` is overridden by the `canUseTool` callback's timestamp, which fires at the true
+ * start of tool execution. `endedAt` uses the next-message-arrival time rather than the next
+ * `canUseTool` or run-end time — this is tighter because the SDK blocks until tool completion
+ * before yielding the next message, so message arrival excludes Claude's subsequent thinking time.
+ */
 export interface ToolCallRecord {
   toolName: string;
   skillName: string | null;
-  /** Epoch ms when tool execution started (from canUseTool, or message arrival fallback) */
+  /** Epoch ms when tool execution started (overridden from canUseTool callback for accuracy). */
   startedAt: number;
-  /** Epoch ms when tool execution ended (next canUseTool call, or run end) */
+  /** Epoch ms when tool execution ended (set from next message arrival time). */
   endedAt: number;
 }
 
@@ -63,12 +71,14 @@ export interface AgentResult {
   toolCalls: ToolCallRecord[];
 }
 
+/** Configuration for an external MCP server reachable over HTTP. */
 export interface McpServerConfig {
   type: "http";
   url: string;
   headers?: Record<string, string>;
 }
 
+/** Parameters accepted by {@link runAgent}. */
 export interface RunAgentParams {
   db: Kysely<DB>;
   workspaceKey: string;
@@ -142,6 +152,15 @@ export function extractAssistantText(message: unknown): string | null {
   return joined.trim() ? joined : null;
 }
 
+/**
+ * Runs a single agent turn using the Claude Agent SDK.
+ *
+ * Resumes the prior SDK session when one exists (unless `sessionMode` is `"fresh"`).
+ * Streams assistant messages to `params.onMessage` as they arrive.
+ * After the run, the new session ID is persisted to the database (unless ephemeral).
+ *
+ * @returns Metrics and metadata about the completed agent run.
+ */
 export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
   const { userMessage, workspaceDir, userName, logger } = params;
   const isFresh = params.sessionMode === "fresh";
@@ -258,8 +277,6 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
   let pendingToolCalls: ToolCallRecord[] = [];
 
   for await (const message of run) {
-    // When a new message arrives, any pending tool calls from the previous
-    // iteration have finished executing (the SDK blocks until tool completion).
     const now = Date.now();
     for (const tc of pendingToolCalls) {
       tc.endedAt = now;
@@ -323,16 +340,11 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
     }
   }
 
-  // Close out any tool calls still pending when the stream ends
   const endNow = Date.now();
   for (const tc of pendingToolCalls) {
     tc.endedAt = endNow;
   }
 
-  // Merge canUseTool timing: override only startedAt with canUseTool's calledAt
-  // (accurate tool execution start). Keep message-arrival endedAt — it captures when
-  // the next message was yielded after tool execution, which is tighter than
-  // next-canUseTool or run-end timing (those include Claude's thinking time).
   let timingIdx = 0;
   for (const tc of toolCalls) {
     if (timingIdx < canUseToolTimings.length && canUseToolTimings[timingIdx].toolName === tc.toolName) {

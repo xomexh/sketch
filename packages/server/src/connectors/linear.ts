@@ -158,6 +158,10 @@ const PRIORITY_LABELS: Record<number, string> = {
   4: "Low",
 };
 
+/**
+ * Maps a Linear issue to the common {@link SyncedItem} shape for storage.
+ * @todo Populate `accessScope` from team membership and issue privacy settings.
+ */
 function issueToSyncedItem(issue: LinearIssue): SyncedItem {
   const hasDescription = issue.description && issue.description.trim().length > 0;
 
@@ -200,10 +204,13 @@ function issueToSyncedItem(issue: LinearIssue): SyncedItem {
     sourceCreatedAt: issue.createdAt,
     sourceUpdatedAt: issue.updatedAt,
     assignees: issue.assignee ? [{ name: issue.assignee.displayName }] : [],
-    // TODO: populate access scope from team membership + privacy
   };
 }
 
+/**
+ * Maps a Linear project to the common {@link SyncedItem} shape for storage.
+ * @todo Populate `accessScope` from team membership and project privacy settings.
+ */
 function projectToSyncedItem(project: LinearProject): SyncedItem {
   const hasDescription = project.description && project.description.trim().length > 0;
 
@@ -232,7 +239,6 @@ function projectToSyncedItem(project: LinearProject): SyncedItem {
     contentHash: contentHash(content),
     sourceCreatedAt: project.createdAt,
     sourceUpdatedAt: project.updatedAt,
-    // TODO: populate access scope from team membership + privacy
   };
 }
 
@@ -325,8 +331,11 @@ query Projects($first: Int!, $after: String, $filter: ProjectFilter) {
 	}
 }`;
 
+/**
+ * Creates a Linear connector instance with its own rate limiter state.
+ * Each call returns an independent instance, so concurrent syncs do not share request timing.
+ */
 export function createLinearConnector(): Connector {
-  // Per-connector instance rate limiter state — not shared across concurrent syncs
   let lastRequestTime = 0;
   const linearRequest = makeLinearRequest(
     () => lastRequestTime,

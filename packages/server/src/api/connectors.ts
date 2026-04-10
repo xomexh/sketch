@@ -91,8 +91,6 @@ const updateScopeSchema = z.object({
 export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, logger: Logger) {
   const routes = new Hono();
 
-  /* ── Static-path routes (must come before /:id) ─────── */
-
   /** List all connectors with file counts. */
   routes.get("/", async (c) => {
     const configs = await connectorRepo.listConfigs();
@@ -127,8 +125,6 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
       return c.json({ error: { code: "VALIDATION_ERROR", message } }, 400);
     }
 
-    // Validate credentials by testing the API connection.
-    // For OAuth, also refresh the token so we store a valid access_token.
     let credentials = { type: parsed.data.authType, ...parsed.data.credentials } as ConnectorCredentials;
     try {
       const connector = getConnector(parsed.data.connectorType);
@@ -154,7 +150,6 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
       createdBy: "admin",
     });
 
-    // Auto-trigger first sync + enrichment in background (non-blocking)
     syncThenEnrich(db, config.id, logger);
 
     return c.json(
@@ -225,7 +220,6 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
       return c.json({ error: { code: "VALIDATION_ERROR", message } }, 400);
     }
 
-    // Try to embed the query for vector search (if Gemini key is configured)
     let queryEmbedding: number[] | undefined;
     try {
       const settings = await db
@@ -238,7 +232,6 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
         queryEmbedding = await embedQuery(parsed.data.query);
       }
     } catch (err) {
-      // Vector search is best-effort — fall back to FTS5 only
       logger.warn({ err }, "Failed to embed search query, falling back to FTS5");
     }
 
@@ -262,7 +255,6 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
 
     const accessDetails = await connectorRepo.getFileAccessDetails(fileId);
 
-    // Get entities linked to this file via entity_mentions
     const mentions = await db
       .selectFrom("entity_mentions")
       .innerJoin("entities", "entities.id", "entity_mentions.entity_id")
@@ -276,7 +268,6 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
       .where("entity_mentions.indexed_file_id", "=", fileId)
       .execute();
 
-    // Dedupe entities (a file may mention same entity in multiple chunks)
     const seenIds = new Set<string>();
     const linkedEntities = mentions
       .filter((m) => {
@@ -313,7 +304,9 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
     return c.json({ sources });
   });
 
-  /** Browse Google Drive shared drives for the folder picker. */
+  /** Browse Google Drive shared drives for the folder picker. 
+   * Fetches root folders for My Drive mode (when no shared drives exist).
+  */
   routes.post("/google-drive/browse", async (c) => {
     const body = await c.req.json();
     const parsed = browseGoogleDriveSchema.safeParse(body);
@@ -334,7 +327,6 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
       const validCreds = await ensureValidToken(oauthCreds);
       const sharedDrives = await listSharedDrives(validCreds.access_token);
 
-      // Also fetch root folders for My Drive mode (when no shared drives exist)
       const rootFolders = sharedDrives.length === 0 ? await listMyDriveFolders(validCreds.access_token) : [];
 
       return c.json({ sharedDrives, rootFolders });
@@ -363,7 +355,6 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
       const credentials = JSON.parse(config.credentials) as OAuthCredentials;
       const validCreds = await ensureValidToken(credentials);
 
-      // Persist refreshed token if it changed
       if (validCreds.access_token !== credentials.access_token) {
         await connectorRepo.updateConfig(config.id, { credentials: JSON.stringify(validCreds) });
       }
@@ -372,8 +363,6 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
       const currentScope = JSON.parse(config.scope_config) as Record<string, unknown>;
       const selectedDriveIds = (currentScope.sharedDrives as string[] | undefined) ?? [];
       const selectedFolderIds = (currentScope.folders as string[] | undefined) ?? [];
-
-      // Always fetch root folders so users can pick shared drives, My Drive folders, or both
       const rootFolders = await listMyDriveFolders(validCreds.access_token);
 
       return c.json({
@@ -424,8 +413,6 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
     }
   });
 
-  /* ── Dynamic :id routes ─────────────────────────────── */
-
   /** Get a single connector. */
   routes.get("/:id", async (c) => {
     const config = await connectorRepo.findConfigById(c.req.param("id"));
@@ -460,7 +447,10 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
     return c.json({ success: true });
   });
 
-  /** Update connector scope config (add/remove drives, folders, etc.). */
+  /**
+   * Update connector scope config (add/remove drives, folders, etc.).
+   * Clears the sync cursor to force a full re-sync with the new scope.
+   */
   routes.patch("/:id/scope", async (c) => {
     const config = await connectorRepo.findConfigById(c.req.param("id"));
     if (!config) {
@@ -474,14 +464,12 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
       return c.json({ error: { code: "VALIDATION_ERROR", message } }, 400);
     }
 
-    // Update scope and clear sync cursor to force a full re-sync
     await connectorRepo.updateConfig(config.id, {
       scopeConfig: JSON.stringify(parsed.data.scopeConfig),
       syncCursor: null,
       errorMessage: null,
     });
 
-    // Auto-trigger re-sync + enrichment in background
     syncThenEnrich(db, config.id, logger);
 
     const updated = await connectorRepo.findConfigById(config.id);
@@ -498,7 +486,10 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
     });
   });
 
-  /** Trigger a manual sync (creates a sync job). */
+  /**
+   * Trigger a manual sync. If the connector is stuck in "syncing", resets the status first
+   * (the previous sync likely crashed without cleaning up).
+   */
   routes.post("/:id/syncs", async (c) => {
     const config = await connectorRepo.findConfigById(c.req.param("id"));
     if (!config) {
@@ -506,12 +497,10 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
     }
 
     if (config.sync_status === "syncing") {
-      // Reset stale "syncing" status — the previous sync likely crashed
       await connectorRepo.updateConfig(config.id, { syncStatus: "active", errorMessage: null });
       logger.warn({ connectorId: config.id }, "Reset stale syncing status via manual trigger");
     }
 
-    // Run sync then enrichment in background
     syncThenEnrich(db, config.id, logger);
 
     return c.json({ sync: { connectorId: config.id, status: "started" } }, 201);
@@ -550,7 +539,10 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
     });
   });
 
-  /** Enrich files with AI-generated summaries and context (creates an enrichment job). */
+  /**
+   * Enrich files with AI-generated summaries and context (creates an enrichment job).
+   * @todo Queue actual LLM enrichment jobs via a background worker instead of returning a stub job ID.
+   */
   routes.post("/:id/enrichments", async (c) => {
     const config = await connectorRepo.findConfigById(c.req.param("id"));
     if (!config) {
@@ -564,9 +556,6 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
       return c.json({ error: { code: "VALIDATION_ERROR", message } }, 400);
     }
 
-    // TODO: Queue LLM enrichment jobs. For now, mark files as enriching
-    // and return a job ID. The actual LLM calls will be implemented when
-    // the enrichment worker is built.
     const jobId = `enrich-${Date.now()}`;
     logger.info({ jobId, connectorId: config.id, fileCount: parsed.data.fileIds.length }, "Enrichment requested");
 
@@ -595,7 +584,6 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
       ? createEmbeddingProvider({ provider: "gemini", apiKey: settings.gemini_api_key })
       : null;
 
-    // Enrich only this specific file
     runEnrichment({
       db,
       logger: logger.child({ component: "enrichment", fileId }),

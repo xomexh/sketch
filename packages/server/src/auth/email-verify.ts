@@ -2,10 +2,14 @@ import { randomBytes } from "node:crypto";
 import type { Kysely } from "kysely";
 import type { DB } from "../db/schema";
 
-const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
+/** Tokens expire after 24 hours; after expiry the user must request a new verification email. */
+const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Creates a new email verification token for the given user+email pair.
+ * Any prior unused tokens for the user are invalidated, and expired rows are deleted.
+ */
 export async function createVerificationToken(db: Kysely<DB>, userId: string, email: string): Promise<string> {
-  // Invalidate all previous unused tokens and clean up expired ones
   await db
     .updateTable("email_verification_tokens")
     .set({ used_at: new Date().toISOString() })
@@ -30,6 +34,12 @@ export async function createVerificationToken(db: Kysely<DB>, userId: string, em
   return token;
 }
 
+/**
+ * Verifies a token and, if valid, marks it as used and sets `email_verified_at` on the user.
+ *
+ * Returns the resolved `{ userId, email }` on success, or `null` when the token is
+ * invalid, expired, already used, or the user's email has changed since the token was issued.
+ */
 export async function verifyEmailToken(
   db: Kysely<DB>,
   token: string,
@@ -44,19 +54,16 @@ export async function verifyEmailToken(
 
   if (!row) return null;
 
-  // Check user's current email still matches the token's email
   const user = await db.selectFrom("users").select("email").where("id", "=", row.user_id).executeTakeFirst();
 
   if (!user || user.email !== row.email) return null;
 
-  // Mark token as used
   await db
     .updateTable("email_verification_tokens")
     .set({ used_at: new Date().toISOString() })
     .where("token", "=", token)
     .execute();
 
-  // Set email_verified_at on user
   await db
     .updateTable("users")
     .set({ email_verified_at: new Date().toISOString() })
@@ -66,6 +73,7 @@ export async function verifyEmailToken(
   return { userId: row.user_id, email: row.email };
 }
 
+/** Returns the number of verification tokens created for the user in the past hour (for rate limiting). */
 export async function countRecentTokens(db: Kysely<DB>, userId: string): Promise<number> {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const result = await db

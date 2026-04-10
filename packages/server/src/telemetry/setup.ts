@@ -16,6 +16,10 @@ import type { createAgentRunsRepo } from "../db/repositories/agent-runs";
 import type { Logger } from "../logger";
 import { SqliteSpanExporter } from "./exporters/sqlite";
 
+/**
+ * Initializes the OpenTelemetry tracer provider with all configured exporters.
+ * Returns a `shutdown()` handle that should be called on process exit.
+ */
 export function initTelemetry(repo: ReturnType<typeof createAgentRunsRepo>, logger: Logger, config: Config) {
   const sqliteExporter = new SqliteSpanExporter(repo, logger);
   const processors = [new BatchSpanProcessor(sqliteExporter)];

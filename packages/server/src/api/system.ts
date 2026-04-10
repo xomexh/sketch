@@ -160,6 +160,10 @@ export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
     return c.json({ ok: true });
   });
 
+  /**
+   * Saves the LLM provider configuration (Anthropic or Bedrock). Validates Anthropic API keys on save.
+   * @todo Bedrock credential verification deferred — no existing verification logic for AWS credentials.
+   */
   routes.put("/llm", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const parsed = llmSchema.safeParse(body);
@@ -180,7 +184,6 @@ export function systemRoutes(settings: SettingsRepo, deps: SystemDeps) {
         modelId: data.modelId,
       });
     } else {
-      // TODO: Bedrock credential verification deferred -- no existing verification logic for AWS credentials
       await settings.update({
         llmProvider: "bedrock",
         awsAccessKeyId: data.accessKeyId,

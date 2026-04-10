@@ -23,6 +23,7 @@ declare module "hono" {
   }
 }
 
+/** Routes that skip auth entirely (login, magic-link verify, health, OAuth callback). */
 const PUBLIC_PATHS = new Set([
   "/api/auth/login",
   "/api/auth/session",
@@ -33,25 +34,42 @@ const PUBLIC_PATHS = new Set([
   "/api/oauth/google/callback",
 ]);
 const SETUP_PATHS_PREFIX = "/api/setup";
+/** Setup bootstrap paths that must be accessible before any admin account exists. */
 const PUBLIC_SETUP_PATHS = new Set(["/api/setup/status", "/api/setup/account"]);
+/** WhatsApp pairing paths accessible during onboarding step 3, before setup is complete. */
 const ONBOARDING_PATHS_PREFIX = "/api/channels/whatsapp";
+/** Cookie name set by the managed (platform) SSO layer. */
 const PLATFORM_COOKIE = "sketch_platform_session";
 
 type SettingsRepo = ReturnType<typeof createSettingsRepository>;
 
+/** Optional options for managed (platform) SSO integration. */
 export interface AuthMiddlewareOpts {
   managedAuthSecret?: string;
   managedUrl?: string;
   findUserByEmail?: (email: string) => Promise<{ id: string } | null>;
 }
 
+/**
+ * Hono middleware that enforces authentication and setup-mode gating.
+ *
+ * Auth priority order:
+ * 1. System routes (`/api/system/*`) — bypass this middleware entirely (they carry their own bearer token).
+ * 2. Public setup bootstrap paths — always allowed, no auth required.
+ * 3. Pre-admin state — only public paths pass; all others get 503 SETUP_REQUIRED.
+ * 4. Post-admin, pre-onboarding — setup and WhatsApp pairing paths are allowed; others get 503.
+ * 5. Managed SSO — if `managedAuthSecret` is configured, the platform cookie is checked first.
+ * 6. Local JWT session cookie (`sketch_session`).
+ * @remarks
+ * If the settings DB is unavailable, public paths are allowed through and all others are blocked.
+ * This is intentional: the DB being down is not a reason to open authenticated routes.
+ */
 export function createAuthMiddleware(settings: SettingsRepo, opts?: AuthMiddlewareOpts) {
   let cachedSecret: string | null = null;
 
   return async (c: Context, next: Next) => {
     const path = c.req.path;
 
-    // System routes have their own bearer token auth — skip JWT middleware entirely.
     if (path.startsWith("/api/system/")) {
       return next();
     }
@@ -60,7 +78,6 @@ export function createAuthMiddleware(settings: SettingsRepo, opts?: AuthMiddlewa
     const isPublicPath = PUBLIC_PATHS.has(path);
     const isPublicSetupPath = PUBLIC_SETUP_PATHS.has(path);
 
-    // Setup bootstrap paths are always accessible.
     if (isPublicSetupPath) {
       return next();
     }
@@ -74,15 +91,10 @@ export function createAuthMiddleware(settings: SettingsRepo, opts?: AuthMiddlewa
       hasAdmin = Boolean(row?.admin_email);
       jwtSecret = row?.jwt_secret ?? null;
       if (jwtSecret) cachedSecret = jwtSecret;
-    } catch {
-      // DB unavailable — let public paths through, block everything else
-    }
+    } catch {}
 
-    // WhatsApp pairing routes are needed during onboarding step 3 — treat
-    // them like setup paths so they're accessible before onboarding completes.
     const isOnboardingPath = path.startsWith(ONBOARDING_PATHS_PREFIX);
 
-    // Setup bootstrap mode (no admin yet): only public paths + setup bootstrap.
     if (!setupComplete && !hasAdmin) {
       if (isPublicPath) {
         return next();
@@ -90,7 +102,6 @@ export function createAuthMiddleware(settings: SettingsRepo, opts?: AuthMiddlewa
       return c.json({ error: { code: "SETUP_REQUIRED", message: "Onboarding not complete" } }, 503);
     }
 
-    // During onboarding after admin exists, allow setup + whatsapp routes (auth still required).
     if (!setupComplete && !isSetupPath && !isOnboardingPath) {
       if (isPublicPath) {
         return next();
@@ -98,12 +109,10 @@ export function createAuthMiddleware(settings: SettingsRepo, opts?: AuthMiddlewa
       return c.json({ error: { code: "SETUP_REQUIRED", message: "Onboarding not complete" } }, 503);
     }
 
-    // Public paths pass through.
     if (isPublicPath) {
       return next();
     }
 
-    // Managed SSO: check platform cookie first when configured.
     if (opts?.managedAuthSecret) {
       const platformToken = getCookie(c, PLATFORM_COOKIE);
       if (platformToken) {
@@ -124,7 +133,6 @@ export function createAuthMiddleware(settings: SettingsRepo, opts?: AuthMiddlewa
       }
     }
 
-    // Local auth: existing sketch_session cookie.
     const secret = jwtSecret ?? cachedSecret;
     if (!secret) {
       return c.json({ error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);

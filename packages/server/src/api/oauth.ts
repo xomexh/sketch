@@ -63,10 +63,12 @@ export function oauthRoutes(
 
   /**
    * GET /google/authorize
-   * Derives the current user from the session, then redirects to Google's OAuth consent screen.
+   *
+   * Resolves the current user from the session JWT, then redirects to Google's OAuth consent screen.
+   * Encodes `userId:nonce` in the `state` param; the nonce is stored in-memory for 10 minutes so
+   * the callback can verify the round-trip and prevent CSRF.
    */
   routes.get("/google/authorize", async (c) => {
-    // Resolve user from session JWT
     const config = await settings.get();
     const token = getCookie(c, SESSION_COOKIE);
     const payload = token && config?.jwt_secret ? await verifyJwt(token, config.jwt_secret) : null;
@@ -95,7 +97,6 @@ export function oauthRoutes(
     const state = `${userId}:${nonce}`;
     pendingStates.set(nonce, { userId, expiresAt: Date.now() + 10 * 60 * 1000 });
 
-    // Build the callback URL from BASE_URL or the request's origin
     const origin = baseUrl ?? new URL(c.req.url).origin;
     const redirectUri = `${origin}/api/oauth/google/callback`;
 
@@ -114,7 +115,11 @@ export function oauthRoutes(
 
   /**
    * GET /google/callback?code=...&state=...
-   * Exchanges auth code for tokens, saves to DB, redirects to frontend.
+   *
+   * Verifies the state nonce, exchanges the auth code for tokens, upserts a
+   * `user_provider_identities` row, creates a `connector_config`, and redirects
+   * to `/files?oauth=success`. The redirect URI must exactly match the one used
+   * in the authorize step, so both derive it from the same `baseUrl` source.
    */
   routes.get("/google/callback", async (c) => {
     const code = c.req.query("code");
@@ -130,7 +135,6 @@ export function oauthRoutes(
       return c.redirect("/files?oauth=error&reason=missing_params");
     }
 
-    // Parse and verify state
     const colonIdx = state.indexOf(":");
     if (colonIdx === -1) {
       return c.redirect("/files?oauth=error&reason=invalid_state");
@@ -151,12 +155,10 @@ export function oauthRoutes(
       return c.redirect("/files?oauth=error&reason=not_configured");
     }
 
-    // Build redirect URI from BASE_URL or request origin (must match authorize step)
     const origin = baseUrl ?? new URL(c.req.url).origin;
     const redirectUri = `${origin}/api/oauth/google/callback`;
 
     try {
-      // Exchange auth code for tokens
       const tokenRes = await fetch(GOOGLE_TOKEN_URL, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -189,7 +191,6 @@ export function oauthRoutes(
 
       const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
 
-      // Fetch Google user info to get email
       const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
       });
@@ -200,7 +201,6 @@ export function oauthRoutes(
       const providerEmail = userInfo.email ?? null;
       const providerUserId = userInfo.email ?? userInfo.id ?? userId;
 
-      // Save to user_provider_identities
       await identities.upsert({
         userId,
         provider: "google_drive",
@@ -211,7 +211,6 @@ export function oauthRoutes(
         tokenExpiresAt: expiresAt,
       });
 
-      // Create a connector_config with this user's tokens (no scope yet — user picks drives/folders next)
       const oauthCreds: OAuthCredentials = {
         type: "oauth",
         access_token: tokenData.access_token,

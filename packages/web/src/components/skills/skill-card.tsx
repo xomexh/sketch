@@ -19,6 +19,7 @@ interface SkillCardProps {
   onDelete: (skill: Skill) => void;
 }
 
+/** @todo Add Enable/Disable toggle to the skill actions dropdown menu. */
 export function SkillCard({ skill, onCardClick, onDuplicate, onDelete }: SkillCardProps) {
   return (
     // biome-ignore lint/a11y/useSemanticElements: div instead of button to avoid nested button hydration error
@@ -54,7 +55,6 @@ export function SkillCard({ skill, onCardClick, onDuplicate, onDelete }: SkillCa
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuItem onClick={() => onDuplicate(skill)}>Duplicate</DropdownMenuItem>
-            {/* TODO: Enable/Disable skill will be implemented later. */}
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onClick={() => onDelete(skill)}>
               Delete

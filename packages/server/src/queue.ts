@@ -13,6 +13,11 @@ export class ChannelQueue {
     this.processNext();
   }
 
+  /**
+   * Runs the next work item. Errors are caught here rather than propagated — callers are
+   * expected to handle errors inside their work function; this catch exists solely to
+   * prevent an unhandled rejection from stalling the queue.
+   */
   private async processNext(): Promise<void> {
     if (this.processing || this.queue.length === 0) return;
     this.processing = true;
@@ -21,8 +26,6 @@ export class ChannelQueue {
     try {
       await work();
     } catch (err) {
-      // Errors should be handled inside the work function.
-      // This catch prevents unhandled promise rejections from blocking the queue.
       console.error("Unhandled error in queue work item:", err);
     } finally {
       this.processing = false;

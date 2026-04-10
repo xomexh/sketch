@@ -23,6 +23,7 @@ import type { createUserRepository } from "../db/repositories/users";
 import type { DB } from "../db/schema";
 import { resolveBaseUrl } from "./shared";
 
+/** Delivers a magic link URL to the user via any configured channels. Returns the list of channels that succeeded. */
 export type MagicLinkSender = (opts: {
   user: Pick<VerifiedUser, "email" | "slack_user_id" | "whatsapp_number">;
   magicLinkUrl: string;
@@ -31,14 +32,17 @@ export type MagicLinkSender = (opts: {
 
 export const SESSION_COOKIE = "sketch_session";
 const PLATFORM_COOKIE = "sketch_platform_session";
-const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
+/** Session cookie max-age in seconds (7 days). */
+const SESSION_MAX_AGE = 7 * 24 * 60 * 60;
 
 type SettingsRepo = ReturnType<typeof createSettingsRepository>;
 
+/** Returns true when the request was made over HTTPS, used to set the Secure cookie flag. */
 function isSecure(c: Context): boolean {
   return new URL(c.req.url).protocol === "https:";
 }
 
+/** Writes the session JWT as an httpOnly cookie with a 7-day max-age. */
 function setSessionCookie(c: Context, token: string, secure: boolean) {
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
@@ -49,6 +53,7 @@ function setSessionCookie(c: Context, token: string, secure: boolean) {
   });
 }
 
+/** Signs a JWT for `sub` and sets the session cookie on the response. */
 export async function createSession(
   c: Context,
   sub: string,
@@ -59,6 +64,7 @@ export async function createSession(
   setSessionCookie(c, token, isSecure(c));
 }
 
+/** Registers all authentication routes: password login, logout, session check, email verification, and magic link. */
 export function authRoutes(
   settings: SettingsRepo,
   db: Kysely<DB>,
@@ -71,6 +77,10 @@ export function authRoutes(
 ) {
   const routes = new Hono();
 
+  /**
+   * Admin password login. Backfills `jwt_secret` for accounts created before the JWT migration
+   * (older accounts have no secret stored; a new one is generated and persisted on first login).
+   */
   routes.post("/login", async (c) => {
     const row = await settings.get();
     if (!row?.admin_email || !row?.admin_password_hash) {
@@ -89,7 +99,6 @@ export function authRoutes(
       return c.json({ error: { code: "UNAUTHORIZED", message: "Invalid credentials" } }, 401);
     }
 
-    // Backfill jwt_secret for accounts created before the JWT migration
     let jwtSecret = row.jwt_secret;
     if (!jwtSecret) {
       jwtSecret = randomBytes(32).toString("hex");
@@ -163,6 +172,7 @@ export function authRoutes(
     return c.json({ authenticated: false });
   });
 
+  /** Validates an email verification token and redirects with a success or error query param. */
   routes.get("/verify-email", async (c) => {
     const token = c.req.query("token");
     if (!token) {
@@ -177,8 +187,10 @@ export function authRoutes(
     return c.redirect("/?verification=success");
   });
 
-  // --- Magic link login ---
-
+  /**
+   * Requests a magic link for the given email. Always returns `{ success: true }` regardless
+   * of whether the email exists, to avoid user enumeration.
+   */
   routes.post("/magic-link", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { email?: string };
     if (!body.email) {
@@ -210,6 +222,7 @@ export function authRoutes(
     return c.json({ success: true, channels });
   });
 
+  /** Validates a magic link token, creates a session, and redirects to the app root. */
   routes.get("/magic-link/verify", async (c) => {
     const token = c.req.query("token");
     if (!token) {

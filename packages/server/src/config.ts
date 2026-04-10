@@ -1,7 +1,11 @@
 /**
- * Validates and exports typed configuration from environment variables.
- * Uses zod for schema validation and dotenv for .env file loading.
- * Fails fast on startup with all errors printed at once.
+ * Typed configuration loaded from environment variables via zod + dotenv.
+ * Fails fast on startup, printing all validation errors at once.
+ *
+ * Key non-obvious fields:
+ * - `BASE_URL` — public-facing origin used for OAuth redirect URIs and email links (e.g. `https://sketch.yourcompany.com`, no trailing slash).
+ * - `POSTHOG_API_KEY` — when set, enables LLM analytics via OpenTelemetry → PostHog.
+ * - `BOOTSTRAP_*` — managed-seed credentials written to the DB on first boot; empty strings are treated as unset.
  */
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -9,52 +13,40 @@ import { z } from "zod";
 import "dotenv/config";
 
 export const configSchema = z.object({
-  // Database
   DB_TYPE: z.enum(["sqlite", "postgres"]).default("sqlite"),
   SQLITE_PATH: z.string().default("./data/sketch.db"),
   DATABASE_URL: z.string().optional(),
 
-  // Slack context
   SLACK_CHANNEL_HISTORY_LIMIT: z.coerce.number().default(5),
   SLACK_THREAD_HISTORY_LIMIT: z.coerce.number().default(50),
 
-  // Files
   MAX_FILE_SIZE_MB: z.coerce.number().default(20),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().default(50),
 
-  // Feature flags
   EXPERIMENTAL_FLAG: z
     .enum(["true", "false", "1", "0"])
     .default("false")
     .transform((v) => v === "true" || v === "1"),
 
-  // Slack mode
   SLACK_MODE: z.enum(["socket", "http"]).default("socket"),
   SLACK_SIGNING_SECRET: z.string().optional(),
 
-  // Security
   ENCRYPTION_KEY: z.string().optional(),
   SYSTEM_SECRET: z.string().optional(),
 
-  // Bootstrap (managed seed)
   BOOTSTRAP_ADMIN_EMAIL: z.preprocess((v) => (v === "" ? undefined : v), z.string().email().optional()),
   BOOTSTRAP_ADMIN_PASSWORD_HASH: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   BOOTSTRAP_SLACK_BOT_TOKEN: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
 
-  // Managed mode
   MANAGED_URL: z.string().optional(),
   MANAGED_AUTH_SECRET: z.string().optional(),
 
-  // PostHog (optional, enables LLM Analytics via OpenTelemetry)
   POSTHOG_API_KEY: z.string().optional(),
   POSTHOG_HOST: z.string().default("https://us.i.posthog.com"),
 
   CLAUDE_CONFIG_DIR: z.string().default(join(homedir(), ".claude")),
   SKETCH_CONFIG_DIR: z.string().default(join(homedir(), ".sketch")),
 
-  // Server
-  // Public-facing base URL (used for OAuth redirect URIs, email links, etc.)
-  // e.g. https://sketch.yourcompany.com — no trailing slash
   BASE_URL: z.string().optional(),
   DATA_DIR: z.string().default("./data"),
   PORT: z.coerce.number().default(3000),
@@ -63,6 +55,12 @@ export const configSchema = z.object({
 
 export type Config = z.infer<typeof configSchema>;
 
+/**
+ * Parses and validates environment variables, then resolves relative paths to absolute.
+ * Relative `DATA_DIR`, `SQLITE_PATH`, `CLAUDE_CONFIG_DIR`, and `SKETCH_CONFIG_DIR` are
+ * resolved against the project root (dirname of `DOTENV_CONFIG_PATH` when set, otherwise
+ * `cwd`), so paths work correctly when pnpm runs this from a sub-package directory.
+ */
 export function loadConfig(): Config {
   const result = configSchema.safeParse(process.env);
   if (!result.success) {
@@ -74,8 +72,6 @@ export function loadConfig(): Config {
   }
   const config = result.data;
 
-  // Resolve relative paths against the project root (dirname of .env file)
-  // so they work regardless of cwd (e.g. when concurrently runs from packages/server/).
   const projectRoot = process.env.DOTENV_CONFIG_PATH ? dirname(process.env.DOTENV_CONFIG_PATH) : process.cwd();
   if (!isAbsolute(config.DATA_DIR)) {
     config.DATA_DIR = resolve(projectRoot, config.DATA_DIR);

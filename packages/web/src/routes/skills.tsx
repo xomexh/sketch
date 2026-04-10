@@ -42,6 +42,10 @@ export const skillsRoute = createRoute({
 type PageMode = "listing" | "view" | "edit" | "create" | "explore-preview";
 type ListingTab = "active" | "explore";
 
+/**
+ * @todo Switch the "Active" tab count to per-user visibility once viewer identity is available,
+ * using `isSkillActiveForUser` and `getSkillSourcesForUser` instead of the org-wide `isSkillEnabled`.
+ */
 export function SkillsPage() {
   const [mode, setMode] = useState<PageMode>("listing");
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
@@ -161,8 +165,6 @@ export function SkillsPage() {
     },
   });
 
-  // TODO: Switch the active tab to per-user visibility once viewer identity is available
-  // by using `isSkillActiveForUser` and `getSkillSourcesForUser`.
   const totalActiveCount = useMemo(() => skills.filter((s) => isSkillEnabled(s.status)).length, [skills]);
 
   const activeSkills = useMemo(() => {

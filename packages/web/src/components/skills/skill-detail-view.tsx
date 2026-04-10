@@ -34,6 +34,7 @@ interface SkillDetailViewProps {
   onAddSkill?: () => void;
 }
 
+/** @todo Add Enable/Disable toggle to the skill actions dropdown menu. */
 export function SkillDetailView({
   skill,
   activeTab,
@@ -100,7 +101,6 @@ export function SkillDetailView({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => onDuplicate(skill)}>Duplicate</DropdownMenuItem>
-                  {/* TODO: Enable/Disable skill will be implemented later. */}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem variant="destructive" onClick={() => onDelete(skill)}>
                     Delete
@@ -207,6 +207,7 @@ function DetailsContent({ skill }: { skill: Skill }) {
   );
 }
 
+/** @todo Render expanded channel details once nested permission data is available. */
 function AdminPermissionsView({
   skill,
   enabled,
@@ -335,7 +336,6 @@ function AdminPermissionsView({
                               </span>
                             )}
                           </div>
-                          {/* TODO: Render expanded channel details once nested permission data is available. */}
                           {expandedChannels.has(ch.id) && null}
                         </div>
                       );

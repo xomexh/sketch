@@ -26,6 +26,7 @@ function isInsideDir(filePath: string, dir: string): boolean {
   return filePath === dir || filePath.startsWith(`${dir}/`);
 }
 
+/** Creates the `canUseTool` callback for the Claude Agent SDK, scoped to `absWorkspace` and `claudeDir`. */
 export function createCanUseTool(absWorkspace: string, logger: Logger, claudeDir: string) {
   const absClaudeDir = resolve(claudeDir);
 
@@ -51,7 +52,6 @@ export function createCanUseTool(absWorkspace: string, logger: Logger, claudeDir
       }
     }
 
-    // Layer 3: bash path validation
     if (toolName === "Bash") {
       const command = (input.command as string) || "";
       const hasAbsolutePath = /(?:^|\s)\/(?!dev\/null|tmp\/)/.test(command);

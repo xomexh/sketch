@@ -1,7 +1,6 @@
 /**
- * Server bootstrap — wires config, DB, repos, platform adapters, and HTTP into a
- * running server. Extracted from index.ts so the full stack can be instantiated
- * from tests with a custom Config and { connect: false }.
+ * Server bootstrap — wires config, DB, repositories, platform adapters, and HTTP into a
+ * running server. Pass `{ connect: false }` to skip platform connections for test harnesses.
  */
 import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
@@ -41,12 +40,16 @@ import { wireWhatsAppHandlers } from "./whatsapp/adapter";
 import { WhatsAppBot } from "./whatsapp/bot";
 import { GroupBuffer } from "./whatsapp/group-buffer";
 
+/** Live handle returned by {@link createServer}, used by tests and signal handlers. */
 export interface ServerHandle {
   config: Config;
+  /** The Hono/Node HTTP server instance. */
   server: ReturnType<typeof serve>;
   db: Kysely<DB>;
   whatsapp: WhatsAppBot;
+  /** Returns the live SlackBot, or null if Slack is not configured or has disconnected. */
   getSlack: () => SlackBot | null;
+  /** Gracefully stops all services in dependency order. */
   shutdown: () => Promise<void>;
 }
 
@@ -55,21 +58,24 @@ export interface CreateServerOptions {
   connect?: boolean;
 }
 
+/**
+ * Wires all server dependencies and returns a live {@link ServerHandle}.
+ * @remarks
+ * `getSlack` is threaded as a closure (`() => slack`) everywhere it is needed so that
+ * the live `SlackBot` reference is always captured — `slack` is reassigned when tokens
+ * are updated or the bot reconnects, so passing the value directly would capture a stale null.
+ */
 export async function createServer(config: Config, options?: CreateServerOptions): Promise<ServerHandle> {
   const connect = options?.connect !== false;
 
-  // 1. Logger
   const logger = createLogger(config);
 
-  // 2. Database
   const db = await createDatabase(config);
   await runMigrations(db);
   logger.info("Database ready");
 
-  // 2.5. Sync featured skills
   await syncFeaturedSkills(config, logger);
 
-  // 3. Repositories
   const users = createUserRepository(db);
   const channels = createChannelRepository(db);
   const settingsRepo = createSettingsRepository(db, config.ENCRYPTION_KEY);
@@ -81,6 +87,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
   const telemetry = initTelemetry(agentRunsRepo, logger, config);
   const tracer = trace.getTracer("sketch");
 
+  /** Wraps {@link runAgent} with an OpenTelemetry span, recording run attributes and tool call child spans. */
   const trackedRunAgent = async (params: RunAgentParams): Promise<AgentResult> => {
     const runId = randomUUID();
     const span = tracer.startSpan("chat sketch");
@@ -99,19 +106,21 @@ export async function createServer(config: Config, options?: CreateServerOptions
     }
   };
 
-  // 4. LLM env from DB
+  /** Reads LLM provider settings from the DB and applies them as environment variables. */
   async function applyLlmEnvFromDb() {
     const settingsRow = await settingsRepo.get();
     applyLlmEnvFromSettings(settingsRow, logger);
   }
   await applyLlmEnvFromDb();
 
-  // 5. Shared helpers
+  /**
+   * Builds the MCP server map for an agent run, keyed by slug.
+   * Integration providers in skill mode are excluded — the agent invokes their CLI via the Skill tool instead.
+   */
   async function buildMcpServers(userEmail: string | null): Promise<Record<string, McpServerConfig>> {
     const allServers = await mcpServersRepo.listAll();
     const servers: Record<string, McpServerConfig> = {};
     for (const s of allServers) {
-      // Skip integration providers in skill mode (agent uses the skill's CLI instead)
       if (s.type != null && s.mode === "skill") continue;
       try {
         servers[s.slug] = buildMcpConfig(s.url, s.credentials, userEmail, s.type);
@@ -122,19 +131,15 @@ export async function createServer(config: Config, options?: CreateServerOptions
     return servers;
   }
 
-  // 6. Queue manager
   const queueManager = new QueueManager();
 
-  // 7. Slack infrastructure
   const threadBuffer = new ThreadBuffer();
   const userCache = new UserCache();
   let slack: SlackBot | null = null;
 
-  // 8. WhatsApp
   const whatsapp = new WhatsAppBot({ db, logger, groupMetadataStore: whatsappGroupsRepo });
   const groupBuffer = new GroupBuffer();
 
-  // 8.5. Task scheduler — getSlack is a lazy getter so the live slack reference is captured correctly
   const scheduler = new TaskScheduler({
     db,
     config,
@@ -153,7 +158,6 @@ export async function createServer(config: Config, options?: CreateServerOptions
   });
   await scheduler.start();
 
-  // 8.6. Connector sync scheduler — recovers stale syncs, runs periodic sync + enrichment
   const syncScheduler = startSyncScheduler(db, logger, 30 * 60 * 1000, {
     llmCall: createLlmCallFn(),
   });
@@ -216,7 +220,6 @@ export async function createServer(config: Config, options?: CreateServerOptions
     outreachRepo,
   });
 
-  // 9. HTTP server
   const app = createApp(db, config, {
     whatsapp,
     getSlack: () => slack,
@@ -243,7 +246,6 @@ export async function createServer(config: Config, options?: CreateServerOptions
   const server = serve({ fetch: app.fetch, port: config.PORT });
   logger.info({ port: config.PORT }, "HTTP server started");
 
-  // 10. Start platforms
   if (connect) {
     const whatsappConnected = await whatsapp.start();
     if (whatsappConnected) {
@@ -257,7 +259,7 @@ export async function createServer(config: Config, options?: CreateServerOptions
     }
   }
 
-  // 11. Shutdown handle
+  /** Gracefully stops all services: telemetry flush, schedulers, platform bots, HTTP server, DB. */
   async function shutdown() {
     logger.info("Shutting down...");
     await telemetry.shutdown();

@@ -45,6 +45,7 @@ import type { TaskScheduler } from "./scheduler/service";
 import type { SlackBot } from "./slack/bot";
 import type { WhatsAppBot } from "./whatsapp/bot";
 
+/** Platform adapters and lifecycle callbacks injected into the HTTP app. All fields are optional for test harness compatibility. */
 interface AppDeps {
   whatsapp?: WhatsAppBot;
   getSlack?: () => SlackBot | null;
@@ -56,6 +57,18 @@ interface AppDeps {
   scheduler?: Pick<TaskScheduler, "pauseTask" | "resumeTask" | "removeTask">;
 }
 
+/**
+ * Builds and returns the Hono application with all API routes, auth middleware, and static serving.
+ * @remarks
+ * **Route registration order matters:**
+ * - `POST /slack/events` is registered before auth middleware so Slack's signature-verified
+ *   webhook requests never hit JWT checks.
+ * - The managed login redirect middleware is registered outside the `existsSync` check so it
+ *   intercepts unauthenticated page loads even when web assets aren't built (e.g. in CI).
+ *
+ * **Static assets:** in production, the web bundle is copied to `dist/public/` next to the
+ * server bundle. In dev (`tsx`), the monorepo path `packages/web/dist` is used as a fallback.
+ */
 export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   const app = new Hono();
   const settings = createSettingsRepository(db, config.ENCRYPTION_KEY);
@@ -64,8 +77,6 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   const mcpServers = createMcpServerRepository(db);
   const logger = deps?.logger ?? (console as unknown as Logger);
 
-  // Slack HTTP events endpoint — must come before auth middleware so it doesn't
-  // require JWT authentication. Only registered when SLACK_MODE=http.
   if (config.SLACK_MODE === "http") {
     app.post("/slack/events", async (c) => {
       const slack = deps?.getSlack?.();
@@ -88,7 +99,6 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
     });
   }
 
-  // Auth middleware on all /api/* routes (with setup mode + auth checks)
   app.use(
     "/api/*",
     createAuthMiddleware(settings, {
@@ -104,6 +114,7 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
     }),
   );
 
+  /** Delivers a magic link to every configured channel (Slack DM, email, WhatsApp) for the user. Returns the list of channels that succeeded. */
   const sendMagicLink: MagicLinkSender = async ({ user, magicLinkUrl, botName }) => {
     const channels: string[] = [];
 
@@ -148,7 +159,6 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
     return channels;
   };
 
-  // API routes
   app.route("/api/health", healthRoutes(db));
   app.route("/api/auth", authRoutes(settings, db, { config, logger, userRepo: users, sendMagicLink }));
   app.route(
@@ -270,16 +280,10 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
     );
   }
 
-  // Static file serving for the SPA (production only — dev uses Vite dev server)
-  // In production, web assets are copied into dist/public/ alongside the server bundle.
-  // In dev (tsx), fall back to the monorepo path.
   const bundledDir = resolve(import.meta.dirname, "public");
   const monorepoDir = resolve(import.meta.dirname, "../../web/dist");
   const webDistDir = existsSync(bundledDir) ? bundledDir : monorepoDir;
 
-  // Managed login redirect: runs before SPA static serving so unauthenticated
-  // requests never load the OSS login page. Must be outside the existsSync
-  // check so it works even when web assets aren't built (e.g. CI).
   if (config.MANAGED_URL) {
     app.use("*", async (c, next) => {
       const path = c.req.path;
@@ -302,11 +306,9 @@ export function createApp(db: Kysely<DB>, config: Config, deps?: AppDeps) {
   }
 
   if (existsSync(webDistDir)) {
-    // Serve static files: Vite-hashed bundles (/assets/) and logo/favicon PNGs (/logos/)
     app.use("/assets/*", serveStatic({ root: webDistDir }));
     app.use("/logos/*", serveStatic({ root: webDistDir }));
 
-    // SPA catch-all: any non-API route returns index.html for client-side routing
     const indexHtml = readFileSync(join(webDistDir, "index.html"), "utf-8");
     app.get("*", (c) => {
       if (c.req.path.startsWith("/api/")) {

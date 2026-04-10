@@ -29,6 +29,10 @@ async function getTemplateBuffer(): Promise<Buffer> {
 /**
  * Creates an in-memory SQLite database with all migrations applied.
  * Each call returns a fresh, isolated database cloned from a cached template.
+ * @remarks
+ * A no-op query is executed immediately after construction to force Kysely's
+ * `RuntimeDriver` initialisation — without it, `destroy()` is a no-op and the
+ * underlying SQLite handle is never closed.
  */
 export async function createTestDb(): Promise<Kysely<DB>> {
   const buf = await getTemplateBuffer();
@@ -37,8 +41,6 @@ export async function createTestDb(): Promise<Kysely<DB>> {
       database: new Database(buf),
     }),
   });
-  // Force driver initialization so destroy() works correctly
-  // (Kysely's RuntimeDriver.destroy() is a no-op if init() was never called).
   await db.selectFrom("users").select("id").limit(0).execute();
   return db;
 }

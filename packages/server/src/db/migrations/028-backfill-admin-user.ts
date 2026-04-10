@@ -4,6 +4,9 @@
  * Reads settings.admin_email, creates a user row if none exists,
  * renames the email-keyed workspace directory to UUID-keyed, and
  * updates chat_sessions.workspace_key from email to UUID.
+ *
+ * If `workspaces/` does not exist yet, the rename step is skipped. `down` cannot safely reverse
+ * directory renames and session key updates.
  */
 import { readdir, rename } from "node:fs/promises";
 import { join } from "node:path";
@@ -50,15 +53,11 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     if (entries.includes(email) && !entries.includes(userId)) {
       await rename(join(workspacesDir, email), join(workspacesDir, userId));
     }
-  } catch {
-    // workspaces dir may not exist yet
-  }
+  } catch {}
 
   await sql`
     UPDATE chat_sessions SET workspace_key = ${userId} WHERE workspace_key = ${email}
   `.execute(db);
 }
 
-export async function down(_db: Kysely<unknown>): Promise<void> {
-  // Cannot safely reverse
-}
+export async function down(_db: Kysely<unknown>): Promise<void> {}

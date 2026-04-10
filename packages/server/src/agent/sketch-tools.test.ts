@@ -56,8 +56,6 @@ describe("createSketchMcpServer", () => {
   it("has a SendFileToChat tool registered", () => {
     const collector = new UploadCollector();
     const server = createSketchMcpServer({ uploadCollector: collector, workspaceDir: tmpDir });
-    // The McpServer instance should have the tool registered
-    // We verify this indirectly by checking the server was created successfully
     expect(server.instance).toBeDefined();
   });
 });
@@ -624,7 +622,6 @@ describe("UploadCollector integration", () => {
     expect(files[0]).toContain("a.pdf");
     expect(files[2]).toContain("c.png");
 
-    // Second drain should be empty
     expect(collector.drain()).toEqual([]);
   });
 });

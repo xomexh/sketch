@@ -14,6 +14,12 @@
  *
  * Migration direction: up() migrates files → DB and removes them. down() drops the table
  * only (no attempt to recreate files — this is a one-way data migration).
+ *
+ * On Postgres the PK uses `serial`; Kysely's `autoIncrement()` would emit invalid syntax.
+ * Data migration: if `workspaces/` is missing, exit early. For each workspace, read
+ * `session.json` (workspace-level) and `sessions/*.json` (thread key = filename without `.json`),
+ * insert rows, delete files; ignore missing/unreadable files. Remove empty `sessions/` directories;
+ * ignore errors if the directory is already gone.
  */
 import { readFile, readdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -24,8 +30,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   const isPostgres = isPg(db);
 
   if (isPostgres) {
-    // Postgres: use serial for auto-incrementing PK (autoIncrement() generates
-    // 'auto_increment' which is not valid Postgres syntax).
     await sql`CREATE TABLE chat_sessions (
       id serial PRIMARY KEY,
       workspace_key text NOT NULL,
@@ -55,14 +59,12 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   try {
     workspaceEntries = await readdir(workspacesDir);
   } catch {
-    // No workspaces directory yet — nothing to migrate.
     return;
   }
 
   for (const workspaceKey of workspaceEntries) {
     const workspaceDir = `${workspacesDir}/${workspaceKey}`;
 
-    // Workspace-level session
     const sessionFile = `${workspaceDir}/session.json`;
     try {
       const raw = await readFile(sessionFile, "utf-8");
@@ -74,11 +76,8 @@ export async function up(db: Kysely<unknown>): Promise<void> {
           .execute();
         await rm(sessionFile);
       }
-    } catch {
-      // File missing or unreadable — skip.
-    }
+    } catch {}
 
-    // Thread-level sessions
     const sessionsDir = `${workspaceDir}/sessions`;
     let threadFiles: string[];
     try {
@@ -89,7 +88,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
 
     for (const fileName of threadFiles) {
       if (!fileName.endsWith(".json")) continue;
-      const threadKey = fileName.slice(0, -5); // strip .json
+      const threadKey = fileName.slice(0, -5);
       const filePath = `${sessionsDir}/${fileName}`;
       try {
         const raw = await readFile(filePath, "utf-8");
@@ -101,20 +100,15 @@ export async function up(db: Kysely<unknown>): Promise<void> {
             .execute();
           await rm(filePath);
         }
-      } catch {
-        // File missing or unreadable — skip.
-      }
+      } catch {}
     }
 
-    // Remove empty sessions/ directory if it exists
     try {
       const remaining = await readdir(sessionsDir);
       if (remaining.length === 0) {
         await rm(sessionsDir, { recursive: true });
       }
-    } catch {
-      // Directory already gone or never existed.
-    }
+    } catch {}
   }
 }
 

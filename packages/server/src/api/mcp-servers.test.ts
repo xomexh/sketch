@@ -104,12 +104,8 @@ describe("MCP Servers API", () => {
   afterEach(async () => {
     try {
       await db.destroy();
-    } catch {
-      // Already destroyed
-    }
+    } catch {}
   });
-
-  // --- GET /api/mcp-servers ---
 
   describe("GET /api/mcp-servers", () => {
     it("returns empty list initially", async () => {
@@ -147,8 +143,6 @@ describe("MCP Servers API", () => {
       expect(body.servers[0].credentials.apiKey).toBe("sk-t****2345");
     });
   });
-
-  // --- POST /api/mcp-servers ---
 
   describe("POST /api/mcp-servers", () => {
     it("creates an integration provider server", async () => {
@@ -243,8 +237,6 @@ describe("MCP Servers API", () => {
     });
   });
 
-  // --- PATCH /api/mcp-servers/:id ---
-
   describe("PATCH /api/mcp-servers/:id", () => {
     it("updates server fields", async () => {
       await seedAdmin(db);
@@ -287,8 +279,6 @@ describe("MCP Servers API", () => {
     });
   });
 
-  // --- DELETE /api/mcp-servers/:id ---
-
   describe("DELETE /api/mcp-servers/:id", () => {
     it("removes a server", async () => {
       await seedAdmin(db);
@@ -328,8 +318,6 @@ describe("MCP Servers API", () => {
     });
   });
 
-  // --- POST /api/mcp-servers/connection-tests ---
-
   describe("POST /api/mcp-servers/connection-tests", () => {
     it("validates input and returns 400 for missing fields", async () => {
       await seedAdmin(db);
@@ -368,8 +356,6 @@ describe("MCP Servers API", () => {
     });
   });
 
-  // --- POST /api/mcp-servers/:id/connection-tests ---
-
   describe("POST /api/mcp-servers/:id/connection-tests", () => {
     it("returns 404 for unknown server", async () => {
       await seedAdmin(db);
@@ -406,8 +392,6 @@ describe("MCP Servers API", () => {
       expect(body.toolCount).toBe(1);
     });
   });
-
-  // --- GET /api/mcp-servers/:id/apps ---
 
   describe("GET /api/mcp-servers/:id/apps", () => {
     it("returns 400 for non-provider server", async () => {
@@ -483,8 +467,6 @@ describe("MCP Servers API", () => {
       expect(mockProvider.listApps).toHaveBeenCalledWith("slack", 10, undefined);
     });
   });
-
-  // --- POST /api/mcp-servers/:id/connections ---
 
   describe("POST /api/mcp-servers/:id/connections", () => {
     it("returns 400 when user has no email", async () => {
@@ -586,8 +568,6 @@ describe("MCP Servers API", () => {
     });
   });
 
-  // --- GET /api/mcp-servers/:id/connections ---
-
   describe("GET /api/mcp-servers/:id/connections", () => {
     it("returns connections for member with email", async () => {
       await seedAdmin(db);
@@ -644,8 +624,6 @@ describe("MCP Servers API", () => {
       expect(res.status).toBe(404);
     });
   });
-
-  // --- DELETE /api/mcp-servers/:id/connections/:connectionId ---
 
   describe("DELETE /api/mcp-servers/:id/connections/:connectionId", () => {
     it("removes connection for member with email", async () => {

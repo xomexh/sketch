@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { extractAssistantText, runAgent } from "./runner";
 
-// Mock the SDK so runAgent can be tested without spawning subprocesses
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn().mockImplementation(() => {
     return (async function* () {
@@ -315,7 +314,6 @@ describe("runAgent", () => {
     vi.mocked(query).mockImplementation((() => {
       return (async function* () {
         yield { type: "system", subtype: "init", session_id: "sess-replay" };
-        // Replayed messages have type "user", not "assistant"
         yield {
           type: "user",
           message: {

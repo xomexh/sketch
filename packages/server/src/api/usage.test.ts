@@ -106,12 +106,8 @@ describe("Usage API", () => {
   afterEach(async () => {
     try {
       await db.destroy();
-    } catch {
-      // already destroyed
-    }
+    } catch {}
   });
-
-  // --- GET /api/usage/me ---
 
   describe("GET /api/usage/me", () => {
     it("returns member usage with correct totals for monthly period", async () => {
@@ -146,7 +142,6 @@ describe("Usage API", () => {
       expect(slackCount).toBe(2);
       expect(whatsappCount).toBe(1);
 
-      // by_platform sums to total (UAT-8)
       const platformSum = body.messages.by_platform.reduce((sum: number, p: { count: number }) => sum + p.count, 0);
       expect(platformSum).toBe(body.messages.total);
 
@@ -375,8 +370,6 @@ describe("Usage API", () => {
     });
   });
 
-  // --- GET /api/usage/summary ---
-
   describe("GET /api/usage/summary", () => {
     it("returns org-wide summary for admin (UAT-3)", async () => {
       const users = createUserRepository(db);
@@ -492,8 +485,6 @@ describe("Usage API", () => {
     });
   });
 
-  // --- Input Validation ---
-
   describe("Input validation", () => {
     it("returns 400 for invalid period param (UAT-14)", async () => {
       const app = createApp(db, config, { logger });
@@ -545,8 +536,6 @@ describe("Usage API", () => {
       expect(res.status).toBe(400);
     });
   });
-
-  // --- Data Integrity ---
 
   describe("Data integrity", () => {
     it("no fan-out: cost is not inflated by tool call count (EC-1)", async () => {
@@ -635,8 +624,6 @@ describe("Usage API", () => {
       expect(body.period.to).toBe("2026-03-01T00:00:00.000Z");
     });
   });
-
-  // --- Double-counting prevention (channel_mention exclusion) ---
 
   describe("Double-counting prevention", () => {
     it("/me excludes channel_mention runs from totals", async () => {
@@ -757,8 +744,6 @@ describe("Usage API", () => {
       expect(userSum + groupSum).toBe(body.messages.total);
     });
   });
-
-  // --- Auth ---
 
   describe("Auth", () => {
     it("returns 401 without authentication", async () => {

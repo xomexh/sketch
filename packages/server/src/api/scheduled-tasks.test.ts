@@ -46,9 +46,7 @@ describe("Scheduled Tasks API", () => {
   afterEach(async () => {
     try {
       await db.destroy();
-    } catch {
-      // already destroyed
-    }
+    } catch {}
   });
 
   it("returns all tasks for admins with resolved labels", async () => {

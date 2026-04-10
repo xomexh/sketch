@@ -42,9 +42,7 @@ describe("Settings API — security", () => {
   afterEach(async () => {
     try {
       await db.destroy();
-    } catch {
-      // already destroyed
-    }
+    } catch {}
   });
 
   describe("GET /api/settings/search — API key masking", () => {
@@ -61,10 +59,8 @@ describe("Settings API — security", () => {
       expect(res.status).toBe(200);
 
       const body = await res.json();
-      // The raw key must not appear anywhere in the response
       expect(body.geminiApiKey).toBeUndefined();
       expect(JSON.stringify(body)).not.toContain("AIza-super-secret-key-12345");
-      // Instead, a boolean flag indicating whether a key is configured
       expect(typeof body.geminiApiKeyConfigured).toBe("boolean");
       expect(body.geminiApiKeyConfigured).toBe(true);
     });

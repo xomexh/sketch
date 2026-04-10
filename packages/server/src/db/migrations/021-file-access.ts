@@ -1,22 +1,21 @@
 /**
  * File access control infrastructure.
  *
- * - access_scopes: scope-level grouping (workspace, space, drive) instead of
- *   per-file × per-user materialized rows
- * - access_scope_members: email-based scope membership
- * - connector_files: junction table for file deduplication across connectors
- * - file_access: email-based per-file access list
- * - Unique index on (source, provider_file_id) for file deduplication
+ * - **access_scopes**: `scope_type` (`workspace`, `space`, `drive`, `folder`) plus `provider_scope_id`;
+ *   connector-scoped uniqueness.
+ * - **access_scope_members**: email-based scope membership.
+ * - **connector_files**: junction between connector configs and indexed files.
+ * - **file_access**: email-based per-file access.
+ * - Unique index on `(source, provider_file_id)` on `indexed_files` for deduplication.
  */
 import { type Kysely, sql } from "kysely";
 
 export async function up(db: Kysely<unknown>): Promise<void> {
-  // ── 1. Create access_scopes table ──────────────────────
   await db.schema
     .createTable("access_scopes")
     .addColumn("id", "text", (col) => col.primaryKey())
     .addColumn("connector_config_id", "text", (col) => col.notNull().references("connector_configs.id"))
-    .addColumn("scope_type", "text", (col) => col.notNull()) // 'workspace' | 'space' | 'drive' | 'folder'
+    .addColumn("scope_type", "text", (col) => col.notNull())
     .addColumn("provider_scope_id", "text", (col) => col.notNull())
     .addColumn("label", "text")
     .execute();
@@ -25,7 +24,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     db,
   );
 
-  // ── 2. Create access_scope_members table ───────────────
   await db.schema
     .createTable("access_scope_members")
     .addColumn("access_scope_id", "text", (col) => col.notNull().references("access_scopes.id").onDelete("cascade"))
@@ -35,7 +33,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`CREATE UNIQUE INDEX idx_scope_members_pk ON access_scope_members(access_scope_id, email)`.execute(db);
   await sql`CREATE INDEX idx_scope_members_email ON access_scope_members(email)`.execute(db);
 
-  // ── 3. Create connector_files junction table ───────────
   await db.schema
     .createTable("connector_files")
     .addColumn("connector_config_id", "text", (col) =>
@@ -49,7 +46,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   );
   await sql`CREATE INDEX idx_connector_files_file ON connector_files(indexed_file_id)`.execute(db);
 
-  // ── 4. Create file_access table (email-based) ──────────
   await db.schema
     .createTable("file_access")
     .addColumn("indexed_file_id", "text", (col) => col.notNull().references("indexed_files.id").onDelete("cascade"))
@@ -59,7 +55,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`CREATE UNIQUE INDEX idx_file_access_pk ON file_access(indexed_file_id, email)`.execute(db);
   await sql`CREATE INDEX idx_file_access_email ON file_access(email)`.execute(db);
 
-  // ── 5. Unique index for file deduplication ─────────────
   await sql`CREATE UNIQUE INDEX idx_indexed_files_source_provider ON indexed_files(source, provider_file_id)`.execute(
     db,
   );

@@ -1,8 +1,16 @@
 /**
  * Connectors and indexed files infrastructure.
  *
- * Creates connector_configs, indexed_files (with enrichment + embedding columns),
- * and FTS5 full-text search with triggers (SQLite only).
+ * **connector_configs**: `connector_type` (e.g. google_drive, clickup, notion, linear), `auth_type`
+ * (oauth, api_key, integration_token), encrypted `credentials` JSON, `scope_config` for folder/space filters,
+ * `sync_status` / `sync_cursor` for incremental sync.
+ *
+ * **indexed_files**: provider file metadata, `file_type`, `content_category` (document vs structured),
+ * `content` / `summary` / `tags` JSON, `source`, `source_path`, `content_hash`, enrichment and embedding columns.
+ * Indexes on connector, provider identity, and archive flag.
+ *
+ * **Postgres**: generated `search_vector` + GIN index. **SQLite**: FTS5 virtual table `indexed_files_fts`
+ * over name, summary, tags, source, source_path, with insert/update/delete triggers.
  */
 import { type Kysely, sql } from "kysely";
 import { isPg } from "../dialect";
@@ -13,12 +21,12 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema
     .createTable("connector_configs")
     .addColumn("id", "text", (col) => col.primaryKey())
-    .addColumn("connector_type", "text", (col) => col.notNull()) // 'google_drive', 'clickup', 'notion', 'linear'
-    .addColumn("auth_type", "text", (col) => col.notNull()) // 'oauth', 'api_key', 'integration_token'
-    .addColumn("credentials", "text", (col) => col.notNull()) // encrypted JSON blob
-    .addColumn("scope_config", "text", (col) => col.notNull().defaultTo("{}")) // JSON: folders, spaces, etc.
-    .addColumn("sync_status", "text", (col) => col.notNull().defaultTo("pending")) // pending, active, syncing, paused, error
-    .addColumn("sync_cursor", "text") // provider-specific sync token
+    .addColumn("connector_type", "text", (col) => col.notNull())
+    .addColumn("auth_type", "text", (col) => col.notNull())
+    .addColumn("credentials", "text", (col) => col.notNull())
+    .addColumn("scope_config", "text", (col) => col.notNull().defaultTo("{}"))
+    .addColumn("sync_status", "text", (col) => col.notNull().defaultTo("pending"))
+    .addColumn("sync_cursor", "text")
     .addColumn("last_synced_at", "text")
     .addColumn("error_message", "text")
     .addColumn("created_by", "text", (col) => col.notNull())
@@ -35,14 +43,14 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("provider_file_id", "text", (col) => col.notNull())
     .addColumn("provider_url", "text")
     .addColumn("file_name", "text", (col) => col.notNull())
-    .addColumn("file_type", "text") // 'document', 'spreadsheet', 'presentation', 'task', 'issue', 'page'
-    .addColumn("content_category", "text", (col) => col.notNull()) // 'document' (full content) or 'structured' (metadata only)
-    .addColumn("content", "text") // full text content for documents
-    .addColumn("summary", "text") // LLM-generated summary
-    .addColumn("tags", "text") // JSON array
-    .addColumn("source", "text", (col) => col.notNull()) // 'google_drive', 'clickup', 'notion', 'linear'
-    .addColumn("source_path", "text") // folder/space path
-    .addColumn("content_hash", "text") // SHA-256 for change detection
+    .addColumn("file_type", "text")
+    .addColumn("content_category", "text", (col) => col.notNull())
+    .addColumn("content", "text")
+    .addColumn("summary", "text")
+    .addColumn("tags", "text")
+    .addColumn("source", "text", (col) => col.notNull())
+    .addColumn("source_path", "text")
+    .addColumn("content_hash", "text")
     .addColumn("is_archived", "integer", (col) => col.notNull().defaultTo(0))
     .addColumn("source_created_at", "text")
     .addColumn("source_updated_at", "text")
@@ -55,7 +63,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("embedding_status", "text", (col) => col.defaultTo("pending"))
     .execute();
 
-  // Indexes for common queries
   await db.schema
     .createIndex("idx_indexed_files_connector")
     .on("indexed_files")
@@ -85,7 +92,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     return;
   }
 
-  // SQLite: FTS5 virtual table for full-text search over file name, summary, tags, source, and source_path
   await sql`
 		CREATE VIRTUAL TABLE indexed_files_fts USING fts5(
 			file_name,
@@ -98,7 +104,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
 		)
 	`.execute(db);
 
-  // Triggers to keep FTS5 in sync with indexed_files
   await sql`
 		CREATE TRIGGER indexed_files_ai AFTER INSERT ON indexed_files BEGIN
 			INSERT INTO indexed_files_fts(rowid, file_name, summary, tags, source, source_path)

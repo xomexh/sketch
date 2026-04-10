@@ -183,7 +183,6 @@ describe("auth middleware - managed SSO", () => {
       managedUrl: MANAGED_URL,
       findUserByEmail,
     });
-    // Local-style JWT: email in sub, no email claim
     const localToken = await signJwt("admin@test.com", "admin", LOCAL_JWT_SECRET);
     const res = await app.request("/api/test", {
       headers: { Cookie: `sketch_session=${localToken}` },

@@ -1,3 +1,7 @@
+/**
+ * Agent run telemetry: `agent_runs` (indexed dashboard columns + OTLP-shaped `attributes` JSON),
+ * and `tool_calls` per run (Postgres `serial` PK, SQLite autoincrement).
+ */
 import { type Kysely, sql } from "kysely";
 import { isPg } from "../dialect";
 
@@ -7,7 +11,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("id", "text", (col) => col.primaryKey())
     .addColumn("trace_id", "text", (col) => col.notNull())
     .addColumn("span_id", "text")
-    // Hot-path columns (indexed, used in dashboard queries)
     .addColumn("user_id", "text")
     .addColumn("platform", "text", (col) => col.notNull())
     .addColumn("context_type", "text", (col) => col.notNull())
@@ -15,7 +18,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("is_error", "integer", (col) => col.notNull().defaultTo(0))
     .addColumn("duration_ms", "integer")
     .addColumn("created_at", "text", (col) => col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`))
-    // All span attributes as OTLP-aligned JSON
     .addColumn("attributes", "text", (col) => col.notNull().defaultTo("{}"))
     .execute();
 

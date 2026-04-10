@@ -12,7 +12,6 @@ import { type Kysely, sql } from "kysely";
 import { isPg } from "../dialect";
 
 export async function up(db: Kysely<unknown>): Promise<void> {
-  // ── 1. document_chunks ─────────────────────────────────────
   await db.schema
     .createTable("document_chunks")
     .addColumn("id", "text", (col) => col.primaryKey())
@@ -25,7 +24,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`CREATE UNIQUE INDEX idx_chunks_file_index ON document_chunks(indexed_file_id, chunk_index)`.execute(db);
   await sql`CREATE INDEX idx_chunks_file ON document_chunks(indexed_file_id)`.execute(db);
 
-  // ── 2. document_timeframes ─────────────────────────────────
   await db.schema
     .createTable("document_timeframes")
     .addColumn("id", "text", (col) => col.primaryKey())

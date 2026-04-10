@@ -58,12 +58,8 @@ describe("Workspace API", () => {
   afterEach(async () => {
     try {
       await db.destroy();
-    } catch {
-      // Already destroyed
-    }
+    } catch {}
   });
-
-  // --- Path Traversal Security ---
 
   describe("Security - Path Traversal", () => {
     it("blocks path traversal attack (../../../etc/passwd)", async () => {
@@ -117,8 +113,6 @@ describe("Workspace API", () => {
       expect(body.error.code).toBe("INVALID_PATH");
     });
   });
-
-  // --- List Directory ---
 
   describe("GET /api/workspace/files", () => {
     it("returns empty array for empty directory", async () => {
@@ -192,8 +186,6 @@ describe("Workspace API", () => {
     });
   });
 
-  // --- Read File ---
-
   describe("GET /api/workspace/files/content", () => {
     it("returns text file content with isText=true", async () => {
       await seedAdmin(db);
@@ -257,7 +249,6 @@ describe("Workspace API", () => {
 
       const workspaceDir = join(config.DATA_DIR, "workspaces", user.id);
       await mkdir(workspaceDir, { recursive: true });
-      // Write a binary file (PNG magic bytes)
       await writeFile(join(workspaceDir, "image.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 
       const res = await app.request("/api/workspace/files/content?path=image.png", {
@@ -268,8 +259,6 @@ describe("Workspace API", () => {
       expect(res.headers.get("content-disposition")).toContain("attachment");
     });
   });
-
-  // --- Write File ---
 
   describe("PUT /api/workspace/files/content", () => {
     it("saves text file content", async () => {
@@ -292,7 +281,6 @@ describe("Workspace API", () => {
       const body = await res.json();
       expect(body.success).toBe(true);
 
-      // Verify content was written
       const { readFile } = await import("node:fs/promises");
       const saved = await readFile(join(workspaceDir, "test.txt"), "utf-8");
       expect(saved).toBe("updated content");
@@ -312,7 +300,6 @@ describe("Workspace API", () => {
 
       expect(res.status).toBe(200);
 
-      // Verify file was created
       const workspaceDir = join(config.DATA_DIR, "workspaces", user.id);
       const { readFile } = await import("node:fs/promises");
       const saved = await readFile(join(workspaceDir, "newfile.txt"), "utf-8");
@@ -327,7 +314,6 @@ describe("Workspace API", () => {
 
       const workspaceDir = join(config.DATA_DIR, "workspaces", user.id);
       await mkdir(workspaceDir, { recursive: true });
-      // Create a binary file
       await writeFile(join(workspaceDir, "binary.dat"), Buffer.from([0x00, 0x01, 0x02, 0x03]));
 
       const res = await app.request("/api/workspace/files/content?path=binary.dat", {
@@ -349,7 +335,6 @@ describe("Workspace API", () => {
 
       const workspaceDir = join(config.DATA_DIR, "workspaces", user.id);
       await mkdir(workspaceDir, { recursive: true });
-      // Create a text file larger than 1MB
       await writeFile(join(workspaceDir, "huge.txt"), "a".repeat(1024 * 1024 + 1));
 
       const res = await app.request("/api/workspace/files/content?path=huge.txt", {
@@ -363,8 +348,6 @@ describe("Workspace API", () => {
       expect(body.error.code).toBe("FILE_TOO_LARGE");
     });
   });
-
-  // --- Upload File ---
 
   describe("POST /api/workspace/files", () => {
     it("uploads file successfully", async () => {
@@ -386,7 +369,6 @@ describe("Workspace API", () => {
       const body = await res.json();
       expect(body.success).toBe(true);
 
-      // Verify file was uploaded
       const workspaceDir = join(config.DATA_DIR, "workspaces", user.id);
       const { readFile } = await import("node:fs/promises");
       const saved = await readFile(join(workspaceDir, "upload.txt"), "utf-8");
@@ -415,8 +397,6 @@ describe("Workspace API", () => {
       expect(body.error.code).toBe("FILE_TOO_LARGE");
     });
   });
-
-  // --- Create Folder ---
 
   describe("POST /api/workspace/folders", () => {
     it("creates new folder", async () => {
@@ -484,8 +464,6 @@ describe("Workspace API", () => {
     });
   });
 
-  // --- Rename File ---
-
   describe("PATCH /api/workspace/files/rename", () => {
     it("renames file successfully", async () => {
       await seedAdmin(db);
@@ -536,8 +514,6 @@ describe("Workspace API", () => {
     });
   });
 
-  // --- Delete File ---
-
   describe("DELETE /api/workspace/files", () => {
     it("deletes file successfully", async () => {
       await seedAdmin(db);
@@ -558,7 +534,6 @@ describe("Workspace API", () => {
       const body = await res.json();
       expect(body.success).toBe(true);
 
-      // Verify file was deleted
       const { access } = await import("node:fs/promises");
       await expect(access(join(workspaceDir, "delete-me.txt"))).rejects.toThrow();
     });
@@ -618,8 +593,6 @@ describe("Workspace API", () => {
       expect(body.error.code).toBe("CANNOT_DELETE_ROOT");
     });
   });
-
-  // --- Workspace Isolation ---
 
   describe("Workspace Isolation", () => {
     it("users cannot access other users' workspaces", async () => {

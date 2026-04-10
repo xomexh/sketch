@@ -35,9 +35,10 @@ window.HTMLElement.prototype.getBoundingClientRect = function getBoundingClientR
   return { x: 0, y: 0, width: 100, height: 20, top: 0, right: 100, bottom: 20, left: 0, toJSON: () => ({}) };
 };
 
-// ── Monaco mock ──────────────────────────────────────────────────────────────
-// Monaco won't load in jsdom. Replace the entire lazy import with a controlled
-// textarea so editing can be simulated.
+/**
+ * Monaco won't load in jsdom. Replace the entire lazy import with a controlled
+ * textarea so editing can be simulated.
+ */
 
 vi.mock("@monaco-editor/react", () => ({
   default: ({
@@ -48,8 +49,6 @@ vi.mock("@monaco-editor/react", () => ({
     onChange?: (v: string) => void;
   }) => <textarea data-testid="monaco-editor" value={value} onChange={(e) => onChange?.(e.target.value)} />,
 }));
-
-// ── Workspace API mock ───────────────────────────────────────────────────────
 
 const mockMutateAsync = vi.fn().mockResolvedValue({});
 
@@ -82,14 +81,10 @@ vi.mock("@/api/workspace", () => ({
   useRenameFile: () => mockUseRenameFile(),
 }));
 
-// ── Mobile hook mock ─────────────────────────────────────────────────────────
-
 const mockIsMobile = vi.fn(() => false);
 vi.mock("@sketch/ui/hooks/use-mobile", () => ({
   useIsMobile: () => mockIsMobile(),
 }));
-
-// ── useQueryClient mock ──────────────────────────────────────────────────────
 
 const mockInvalidateQueries = vi.fn();
 vi.mock("@tanstack/react-query", async () => {
@@ -99,8 +94,6 @@ vi.mock("@tanstack/react-query", async () => {
     useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
   };
 });
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeMutation(overrides: object = {}) {
   return {
@@ -160,8 +153,6 @@ function setupDefaultMocks() {
   mockUseRenameFile.mockReturnValue(makeMutation());
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
-
 describe("WorkspacePage", () => {
   beforeEach(() => {
     setupDefaultMocks();
@@ -173,8 +164,6 @@ describe("WorkspacePage", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
-
-  // ── Rendering ─────────────────────────────────────────────────────────────
 
   it("renders workspace scope switcher and action bar", () => {
     renderWithProviders(<WorkspacePage />);
@@ -216,8 +205,6 @@ describe("WorkspacePage", () => {
     expect(screen.queryByText("No files yet")).not.toBeInTheDocument();
   });
 
-  // ── Folder expand / lazy load ──────────────────────────────────────────────
-
   it("clicking folder expands it and triggers lazy load of children", async () => {
     const user = userEvent.setup();
 
@@ -241,8 +228,6 @@ describe("WorkspacePage", () => {
       expect(screen.getByText("index.ts")).toBeInTheDocument();
     });
   });
-
-  // ── File selection and editor ──────────────────────────────────────────────
 
   it("clicking a file opens it in the editor", async () => {
     const user = userEvent.setup();
@@ -288,8 +273,6 @@ describe("WorkspacePage", () => {
     // Monaco editor should NOT appear while content is loading
     expect(screen.queryByTestId("monaco-editor")).not.toBeInTheDocument();
   });
-
-  // ── Dirty indicator and save ───────────────────────────────────────────────
 
   it("editing file marks it as dirty with visual indicator", async () => {
     const user = userEvent.setup();
@@ -379,8 +362,6 @@ describe("WorkspacePage", () => {
     });
   });
 
-  // ── Binary file ───────────────────────────────────────────────────────────
-
   it("binary file click shows binary view in editor pane (no navigation away)", async () => {
     const user = userEvent.setup();
 
@@ -400,8 +381,6 @@ describe("WorkspacePage", () => {
     });
   });
 
-  // ── Upload ────────────────────────────────────────────────────────────────
-
   it("upload button triggers hidden file input click", async () => {
     const user = userEvent.setup();
     renderWithProviders(<WorkspacePage />);
@@ -419,8 +398,6 @@ describe("WorkspacePage", () => {
 
     expect(clickSpy).toHaveBeenCalled();
   });
-
-  // ── New folder via action bar ──────────────────────────────────────────────
 
   it("new folder via action bar creates folder at root", async () => {
     const user = userEvent.setup();
@@ -445,8 +422,6 @@ describe("WorkspacePage", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ path: "my-folder" }));
     });
   });
-
-  // ── New folder via folder hover menu ──────────────────────────────────────
 
   it("new folder via folder hover menu creates inside that folder", async () => {
     const user = userEvent.setup();
@@ -518,8 +493,6 @@ describe("WorkspacePage", () => {
     });
   });
 
-  // ── Delete ────────────────────────────────────────────────────────────────
-
   it("delete shows confirmation dialog and calls API on confirm", async () => {
     const user = userEvent.setup();
 
@@ -552,8 +525,6 @@ describe("WorkspacePage", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ path: "old.txt" }));
     });
   });
-
-  // ── Rename ────────────────────────────────────────────────────────────────
 
   it("rename opens inline input and confirms on Enter", async () => {
     const user = userEvent.setup();
@@ -616,8 +587,6 @@ describe("WorkspacePage", () => {
     expect(screen.queryByDisplayValue("different")).not.toBeInTheDocument();
   });
 
-  // ── Search debounce ───────────────────────────────────────────────────────
-
   it("search with debounce fires query after 300ms delay", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
 
@@ -642,10 +611,6 @@ describe("WorkspacePage", () => {
 
     vi.useRealTimers();
   });
-
-  // ── Breadcrumb ────────────────────────────────────────────────────────────
-
-  // ── Mobile layout ─────────────────────────────────────────────────────────
 
   it("mobile layout uses flex-col container class", () => {
     mockIsMobile.mockReturnValue(true);
@@ -672,8 +637,6 @@ describe("WorkspacePage", () => {
     expect(headerBtns?.length).toBe(3);
   });
 
-  // ── Error boundary ────────────────────────────────────────────────────────
-
   it("error boundary wraps the editor area — page renders without crash", () => {
     // The EditorErrorBoundary class component wraps Monaco. As long as Monaco
     // does not throw, the page renders normally. This test verifies the boundary
@@ -683,8 +646,6 @@ describe("WorkspacePage", () => {
     renderWithProviders(<WorkspacePage />);
     expect(screen.getByText("Personal")).toBeInTheDocument();
   });
-
-  // ── Empty directory ───────────────────────────────────────────────────────
 
   it("empty directory shows Empty folder message in folder contents", async () => {
     const user = userEvent.setup();

@@ -304,9 +304,9 @@ export function connectorRoutes(connectorRepo: ConnectorRepo, db: Kysely<DB>, lo
     return c.json({ sources });
   });
 
-  /** Browse Google Drive shared drives for the folder picker. 
+  /** Browse Google Drive shared drives for the folder picker.
    * Fetches root folders for My Drive mode (when no shared drives exist).
-  */
+   */
   routes.post("/google-drive/browse", async (c) => {
     const body = await c.req.json();
     const parsed = browseGoogleDriveSchema.safeParse(body);

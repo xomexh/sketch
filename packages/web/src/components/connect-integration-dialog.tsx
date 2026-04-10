@@ -60,7 +60,6 @@ export function ConnectIntegrationDialog({
 }: ConnectIntegrationDialogProps) {
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
 
-  // Google Drive OAuth state
   const [step, setStep] = useState<"credentials" | "drives" | "oauth-config">("credentials");
   const [sharedDrives, setSharedDrives] = useState<SharedDrive[]>([]);
   const [selectedDriveIds, setSelectedDriveIds] = useState<Set<string>>(new Set());
@@ -69,7 +68,6 @@ export function ConnectIntegrationDialog({
 
   const isOAuthRedirect = integration?.oauthRedirect === true;
 
-  // Check if Google OAuth is configured (for OAuth redirect integrations)
   const oauthStatus = useQuery({
     queryKey: ["google-oauth-status"],
     queryFn: () => api.googleOAuth.status(),
@@ -78,7 +76,6 @@ export function ConnectIntegrationDialog({
 
   const isOAuthConfigured = oauthStatus.data?.configured === true;
 
-  // For OAuth redirect: start with oauth-config step if not configured
   useEffect(() => {
     if (open && isOAuthRedirect) {
       if (oauthStatus.isSuccess) {
@@ -215,7 +212,6 @@ export function ConnectIntegrationDialog({
     >
       <DialogContent>
         {step === "oauth-config" ? (
-          /* OAuth redirect: admin configures client_id + client_secret (one-time) */
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2.5">
@@ -290,7 +286,6 @@ export function ConnectIntegrationDialog({
             </DialogFooter>
           </>
         ) : step === "credentials" && isOAuthRedirect ? (
-          /* OAuth redirect: "Connect with Google" button */
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2.5">
@@ -324,7 +319,6 @@ export function ConnectIntegrationDialog({
             </div>
           </>
         ) : step === "credentials" ? (
-          /* Non-OAuth-redirect: manual credential entry */
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2.5">
@@ -399,7 +393,6 @@ export function ConnectIntegrationDialog({
             </DialogFooter>
           </>
         ) : (
-          /* Step 2: Shared drive picker or folder picker (Google Drive only) */
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2.5">

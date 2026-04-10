@@ -58,15 +58,11 @@ export function SkillsFilterBar({
                 "shrink-0 rounded-full px-3.5 py-[5px] text-xs font-medium transition-colors",
                 isSelected
                   ? [
-                      // Light mode (theme-aware)
                       "border border-primary/30 bg-primary/10 text-foreground",
-                      // Dark mode (as in sketch-frontend diff)
                       "dark:border-[rgba(107,125,250,0.4)] dark:bg-[rgba(107,125,250,0.15)] dark:text-white",
                     ].join(" ")
                   : [
-                      // Light mode (theme-aware)
                       "border border-border/60 text-muted-foreground hover:bg-accent",
-                      // Dark mode (as in sketch-frontend diff)
                       "dark:border-[rgba(255,255,255,0.1)] dark:text-[rgba(255,255,255,0.45)] dark:hover:bg-[rgba(255,255,255,0.04)]",
                     ].join(" "),
               )}

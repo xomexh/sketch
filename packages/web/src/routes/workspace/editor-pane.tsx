@@ -22,8 +22,6 @@ const MonacoEditor = lazy(() => import("@monaco-editor/react"));
 const MAX_FILE_SIZE_MB = 1;
 export const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
-// ── Error boundary for Monaco ──────────────────────────────────────────────
-
 class EditorErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean }> {
   constructor(props: { children: React.ReactNode }) {
     super(props);
@@ -47,8 +45,6 @@ class EditorErrorBoundary extends Component<{ children: React.ReactNode }, { has
   }
 }
 
-// ── Loading skeleton ───────────────────────────────────────────────────────
-
 function EditorSkeleton() {
   return (
     <div className="p-4 space-y-2">
@@ -63,8 +59,6 @@ function EditorSkeleton() {
     </div>
   );
 }
-
-// ── Editor pane ────────────────────────────────────────────────────────────
 
 export interface EditorPaneProps {
   isMobile: boolean;

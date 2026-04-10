@@ -9,10 +9,6 @@
  */
 import { useCallback, useEffect, useRef } from "react";
 
-// ---------------------------------------------------------------------------
-// Icon inventory — positions are % of banner width (x) and height (y)
-// ---------------------------------------------------------------------------
-
 interface IconData {
   name: string;
   bg: string;
@@ -40,10 +36,6 @@ const ICONS: IconData[] = [
   { name: "Figma-alt", bg: "#1A1A28", x: 78, y: 73, size: 24, rotation: 14 },
   { name: "HubSpot-alt", bg: "#C94A2C", x: 90, y: 67, size: 26, rotation: -5 },
 ];
-
-// ---------------------------------------------------------------------------
-// Simplified brand SVG icons
-// ---------------------------------------------------------------------------
 
 function BrandSvg({ name, size }: { name: string; size: number }) {
   const s = Math.round(size * 0.55);
@@ -189,10 +181,6 @@ function BrandSvg({ name, size }: { name: string; size: number }) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Main banner component
-// ---------------------------------------------------------------------------
-
 export function ConnectionsBanner({ onConnect }: { onConnect: () => void }) {
   const bannerRef = useRef<HTMLDivElement>(null);
   const orbRef = useRef<HTMLDivElement>(null);
@@ -201,7 +189,6 @@ export function ConnectionsBanner({ onConnect }: { onConnect: () => void }) {
   /** Mutable state for the orb idle drift. */
   const orbT = useRef(0);
 
-  // ------- Orb idle drift (gradient only, no icon animation) -------
   useEffect(() => {
     let frameId: number;
 
@@ -228,7 +215,6 @@ export function ConnectionsBanner({ onConnect }: { onConnect: () => void }) {
     return () => cancelAnimationFrame(frameId);
   }, []);
 
-  // ------- Shared icon updater -------
   const updateIcons = useCallback((mx: number, my: number) => {
     for (let i = 0; i < ICONS.length; i++) {
       const el = iconRefs.current[i];
@@ -240,7 +226,6 @@ export function ConnectionsBanner({ onConnect }: { onConnect: () => void }) {
       const shiftX = (mx - 0.5) * 20 * depth; // ±10px at edges
       const shiftY = (my - 0.5) * 20 * depth;
 
-      // Clamp to ±10px
       const cx = Math.max(-10, Math.min(10, shiftX));
       const cy = Math.max(-10, Math.min(10, shiftY));
 
@@ -256,7 +241,6 @@ export function ConnectionsBanner({ onConnect }: { onConnect: () => void }) {
     }
   }, []);
 
-  // ------- Mouse handlers -------
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const rect = bannerRef.current?.getBoundingClientRect();
@@ -265,7 +249,6 @@ export function ConnectionsBanner({ onConnect }: { onConnect: () => void }) {
       const mx = (e.clientX - rect.left) / rect.width;
       const my = (e.clientY - rect.top) / rect.height;
 
-      // Move the orb to cursor
       bannerRef.current?.setAttribute("data-mouse-active", "");
       if (orbRef.current) {
         const orbX = mx * 100;
@@ -279,7 +262,6 @@ export function ConnectionsBanner({ onConnect }: { onConnect: () => void }) {
         ].join(", ");
       }
 
-      // Shift icons
       updateIcons(mx, my);
     },
     [updateIcons],

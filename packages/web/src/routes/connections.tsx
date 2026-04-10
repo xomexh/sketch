@@ -27,10 +27,6 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { dashboardRoute } from "./dashboard";
 
-// ---------------------------------------------------------------------------
-// Routes
-// ---------------------------------------------------------------------------
-
 export const connectionsRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: "/integrations",
@@ -55,10 +51,6 @@ function ConnectionsCallback() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Tab button
-// ---------------------------------------------------------------------------
-
 type IntegrationsTab = "applications" | "mcps";
 
 function TabButton({ label, isActive, onClick }: { label: string; isActive: boolean; onClick: () => void }) {
@@ -76,10 +68,6 @@ function TabButton({ label, isActive, onClick }: { label: string; isActive: bool
     </button>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
 
 function ConnectionsPage() {
   const queryClient = useQueryClient();

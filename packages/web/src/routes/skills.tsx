@@ -43,18 +43,15 @@ type PageMode = "listing" | "view" | "edit" | "create" | "explore-preview";
 type ListingTab = "active" | "explore";
 
 export function SkillsPage() {
-  // ── Core state ────────────────────────────────────────────
   const [mode, setMode] = useState<PageMode>("listing");
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategories, setActiveCategories] = useState<SkillCategory[]>([]);
   const [activeTab, setActiveTab] = useState<"details" | "permissions">("details");
 
-  // ── Listing tabs ──────────────────────────────────────────
   const [listingTab, setListingTab] = useState<ListingTab>("active");
   const [viewOrigin, setViewOrigin] = useState<ListingTab>("active");
 
-  // ── Dialogs ────────────────────────────────────────────────
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [skillToDelete, setSkillToDelete] = useState<Skill | null>(null);
@@ -164,8 +161,6 @@ export function SkillsPage() {
     },
   });
 
-  // ── Derived data ──────────────────────────────────────────
-
   // TODO: Switch the active tab to per-user visibility once viewer identity is available
   // by using `isSkillActiveForUser` and `getSkillSourcesForUser`.
   const totalActiveCount = useMemo(() => skills.filter((s) => isSkillEnabled(s.status)).length, [skills]);
@@ -195,8 +190,6 @@ export function SkillsPage() {
   }, [skills, activeCategories, searchQuery]);
 
   const selectedSkill = useMemo(() => skills.find((s) => s.id === selectedSkillId) ?? null, [skills, selectedSkillId]);
-
-  // ── Handlers ──────────────────────────────────────────────
 
   const handleCardClick = useCallback(
     (skillId: string) => {
@@ -293,7 +286,6 @@ export function SkillsPage() {
     setActiveCategories([]);
   }, []);
 
-  // ── Loading skeleton ───────────────────────────────────────
   if (skillsQuery.isLoading && skills.length === 0) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-8">
@@ -338,7 +330,6 @@ export function SkillsPage() {
     );
   }
 
-  // ── Explore-preview mode ───────────────────────────────────
   if (mode === "explore-preview" && selectedSkill) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-8">
@@ -363,7 +354,6 @@ export function SkillsPage() {
     );
   }
 
-  // ── View mode ──────────────────────────────────────────────
   if (mode === "view" && selectedSkill) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-8">
@@ -386,7 +376,6 @@ export function SkillsPage() {
     );
   }
 
-  // ── Edit / Create mode ─────────────────────────────────────
   if (mode === "edit" || mode === "create") {
     return (
       <div className="mx-auto max-w-3xl px-6 py-8">
@@ -408,7 +397,6 @@ export function SkillsPage() {
     );
   }
 
-  // ── Listing mode ───────────────────────────────────────────
   const displayedSkills = listingTab === "active" ? activeSkills : exploreSkills;
   const showEmptyState = displayedSkills.length === 0;
   const emptyVariant: "no-skills" | "no-results" | "no-category" =
@@ -458,7 +446,6 @@ export function SkillsPage() {
         })}
       </div>
 
-      {/* Filter bar */}
       <SkillsFilterBar
         activeCategories={activeCategories}
         onCategoryToggle={handleCategoryToggle}

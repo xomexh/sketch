@@ -110,7 +110,6 @@ export function EntityExplorer() {
 
   return (
     <div>
-      {/* Toolbar */}
       <div className="mt-4 flex items-center gap-2">
         <div className="relative min-w-0 flex-1">
           <MagnifyingGlassIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -163,7 +162,6 @@ export function EntityExplorer() {
         )}
       </div>
 
-      {/* Stats */}
       {!isLoading && (
         <p className="mt-3 text-xs text-muted-foreground">
           {total} entit{total === 1 ? "y" : "ies"}

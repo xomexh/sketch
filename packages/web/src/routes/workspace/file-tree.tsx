@@ -27,8 +27,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useFileTreeContext } from "./file-tree-context";
 import { FileIconComponent } from "./utils";
 
-// ── Inline creation input ──────────────────────────────────────────────────
-
 export function InlineCreateInput({
   placeholder,
   onConfirm,
@@ -66,8 +64,6 @@ export function InlineCreateInput({
     </div>
   );
 }
-
-// ── FolderContents ─────────────────────────────────────────────────────────
 
 export function FolderContents({ folderPath, depth }: { folderPath: string; depth: number }) {
   const ctx = useFileTreeContext();
@@ -124,8 +120,6 @@ export function FolderContents({ folderPath, depth }: { folderPath: string; dept
     </>
   );
 }
-
-// ── FileTreeNode ───────────────────────────────────────────────────────────
 
 export function FileTreeNode({
   name,

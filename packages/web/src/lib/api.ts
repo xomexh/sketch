@@ -51,6 +51,11 @@ export interface ScheduledTaskListItem {
   canDelete: boolean;
 }
 
+/**
+ * Base fetch wrapper used by all API methods.
+ * Automatically sets `Content-Type: application/json` for non-FormData bodies,
+ * and throws with the server's error message on non-2xx responses.
+ */
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { ...((options?.headers as Record<string, string>) ?? {}) };
   // Skip Content-Type for FormData — the browser sets it automatically with the correct multipart boundary
@@ -768,7 +773,6 @@ export const api = {
     },
   },
   workspace: {
-    // List directory contents
     async listFiles(scope: WorkspaceScope, path: string): Promise<{ files: FileMetadata[] }> {
       const params = new URLSearchParams();
       params.set("scope", scope);
@@ -776,7 +780,6 @@ export const api = {
       return request<{ files: FileMetadata[] }>(`/api/workspace/files?${params.toString()}`);
     },
 
-    // Get file content (text or metadata for binary)
     async getFileContent(
       scope: WorkspaceScope,
       path: string,
@@ -789,7 +792,6 @@ export const api = {
       );
     },
 
-    // Save file content
     async saveFile(scope: WorkspaceScope, path: string, content: string): Promise<{ success: boolean }> {
       const params = new URLSearchParams();
       params.set("scope", scope);
@@ -800,7 +802,6 @@ export const api = {
       });
     },
 
-    // Upload file
     async uploadFile(scope: WorkspaceScope, path: string, formData: FormData): Promise<{ success: boolean }> {
       const params = new URLSearchParams();
       params.set("scope", scope);
@@ -811,7 +812,6 @@ export const api = {
       });
     },
 
-    // Create folder
     async createFolder(scope: WorkspaceScope, path: string): Promise<{ success: boolean }> {
       return request<{ success: boolean }>(`/api/workspace/folders?scope=${scope}`, {
         method: "POST",
@@ -819,7 +819,7 @@ export const api = {
       });
     },
 
-    // Create empty file
+    /** Creates an empty file by writing an empty string via the same PUT endpoint as `saveFile`. */
     async createFile(scope: WorkspaceScope, path: string): Promise<{ success: boolean }> {
       const params = new URLSearchParams();
       params.set("scope", scope);
@@ -830,7 +830,6 @@ export const api = {
       });
     },
 
-    // Delete file or folder
     async deleteFile(scope: WorkspaceScope, path: string): Promise<{ success: boolean }> {
       const params = new URLSearchParams();
       params.set("scope", scope);
@@ -840,7 +839,6 @@ export const api = {
       });
     },
 
-    // Rename file or folder
     async renameFile(scope: WorkspaceScope, oldPath: string, newPath: string): Promise<{ success: boolean }> {
       return request<{ success: boolean }>(`/api/workspace/files/rename?scope=${scope}`, {
         method: "PATCH",
@@ -848,7 +846,6 @@ export const api = {
       });
     },
 
-    // Search files recursively
     async searchFiles(scope: WorkspaceScope, query: string): Promise<{ files: FileMetadata[] }> {
       const params = new URLSearchParams();
       params.set("scope", scope);
@@ -856,7 +853,11 @@ export const api = {
       return request<{ files: FileMetadata[] }>(`/api/workspace/files/search?${params.toString()}`);
     },
 
-    // Download file (triggers browser download for all file types without navigating away)
+    /**
+     * Triggers a browser file download by injecting a temporary `<a>` element.
+     * Uses `?download=true` to force the server to stream the response as an attachment
+     * regardless of MIME type.
+     */
     downloadFile(scope: WorkspaceScope, path: string): void {
       const params = new URLSearchParams();
       params.set("scope", scope);

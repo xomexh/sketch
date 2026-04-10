@@ -1,6 +1,5 @@
 import { type SkillCategory, skillCategoryValues } from "@sketch/shared";
 
-// ── Types ──────────────────────────────────────────────────
 export type { SkillCategory } from "@sketch/shared";
 
 export interface SkillSource {
@@ -58,8 +57,6 @@ export interface ApiSkill {
   category: SkillCategory;
 }
 
-// ── Category Definitions ───────────────────────────────────
-
 const categoryLabels: Record<SkillCategory, string> = {
   crm: "CRM",
   comms: "Comms",
@@ -111,14 +108,10 @@ export const categoryMeta: Record<SkillCategory, { iconBg: string; iconEmoji: st
   workflows: { iconBg: "bg-orange-500/15", iconEmoji: "🔄" },
 };
 
-// ── Source tag type ───────────────────────────────────────
-
 export interface SkillSourceTag {
   type: "individual" | "channel";
   label: string; // "You" or "#channel-name"
 }
-
-// ── Utilities ──────────────────────────────────────────────
 
 export function fromApiSkill(s: ApiSkill): Skill {
   return {
@@ -195,12 +188,10 @@ export function getSkillSourcesForUser(status: SkillStatusConfig, userId: string
 
   const tags: SkillSourceTag[] = [];
 
-  // Check if user is individually assigned
   if (status.individuals.some((i) => i.id === userId && i.enabled)) {
     tags.push({ type: "individual", label: "You" });
   }
 
-  // Add enabled channels, sorted alphabetically
   const enabledChannels = status.channels.filter((c) => c.enabled).sort((a, b) => a.name.localeCompare(b.name));
 
   for (const ch of enabledChannels) {

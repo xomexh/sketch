@@ -64,7 +64,6 @@ export function SkillDetailView({
     <div>
       <div ref={sentinelRef} className="h-0" />
 
-      {/* Sticky header */}
       <div
         className={cn(
           "sticky top-0 z-20 -mx-6 bg-background px-6 pb-4 pt-8 transition-shadow duration-150",
@@ -161,8 +160,6 @@ export function SkillDetailView({
   );
 }
 
-// ── Details Content ──────────────────────────────────────
-
 function DetailsContent({ skill }: { skill: Skill }) {
   return (
     <div className="space-y-6">
@@ -209,8 +206,6 @@ function DetailsContent({ skill }: { skill: Skill }) {
     </div>
   );
 }
-
-// ── Admin Permissions View ───────────────────────────────
 
 function AdminPermissionsView({
   skill,

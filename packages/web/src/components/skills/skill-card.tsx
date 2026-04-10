@@ -27,9 +27,7 @@ export function SkillCard({ skill, onCardClick, onDuplicate, onDelete }: SkillCa
       tabIndex={0}
       className={cn(
         "cursor-pointer rounded-xl border bg-card p-5 transition-[background-color,border-color] duration-200 ease-in-out flex flex-col text-left w-full",
-        // Light mode (theme-aware)
         "border-border/70 hover:border-primary/25 hover:bg-accent/30",
-        // Dark mode (as in sketch-frontend diff)
         "dark:border-[rgba(255,255,255,0.07)] dark:hover:border-[rgba(255,255,255,0.2)] dark:hover:bg-[rgba(107,125,250,0.03)]",
       )}
       onClick={() => onCardClick(skill.id)}
@@ -65,15 +63,12 @@ export function SkillCard({ skill, onCardClick, onDuplicate, onDelete }: SkillCa
         </DropdownMenu>
       </div>
 
-      {/* Skill name */}
       <p className="mt-3 truncate text-sm font-medium">{skill.name}</p>
 
-      {/* Description */}
       {skill.description && (
         <p className="mt-1 text-xs text-muted-foreground/70 line-clamp-3 leading-relaxed">{skill.description}</p>
       )}
 
-      {/* Spacer */}
       <div className="flex-1" />
 
       {/* Hub source + stats */}

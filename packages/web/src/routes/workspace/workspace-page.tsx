@@ -64,10 +64,8 @@ export function WorkspacePage() {
   const { resolvedTheme } = useTheme();
   const queryClient = useQueryClient();
 
-  // ── Workspace scope ──────────────────────────────────────
   const [workspaceScope, setWorkspaceScope] = useState<WorkspaceScope>("personal");
 
-  // ── Core state ────────────────────────────────────────────
   const [focusedFolder, setFocusedFolder] = useState(".");
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -81,20 +79,16 @@ export function WorkspacePage() {
   const [showTreeOnMobile, setShowTreeOnMobile] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Search state ──────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
 
-  // ── Inline creation state ─────────────────────────────────
   const [isCreatingAtRoot, setIsCreatingAtRoot] = useState<"file" | "folder" | null>(null);
   const [creatingInFolder, setCreatingInFolder] = useState<{ path: string; type: "file" | "folder" } | null>(null);
 
-  // ── Drag-drop state ───────────────────────────────────────
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const dragCounter = useRef(0);
 
-  // ── Accumulated metadata map across all loaded dirs ───────
   const [metadataMap, setMetadataMap] = useState<Map<string, FileMetadata>>(new Map());
 
   const registerMetadata = useCallback((files: FileMetadata[]) => {
@@ -120,13 +114,11 @@ export function WorkspacePage() {
     setMetadataMap(new Map());
   }, [workspaceScope]);
 
-  // ── Debounce search 300ms ─────────────────────────────────
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // ── Queries ───────────────────────────────────────────────
   const rootFilesQuery = useFiles(workspaceScope, ".");
   const fileContentQuery = useFileContent(workspaceScope, selectedFile);
   const searchResultQuery = useSearchFiles(workspaceScope, debouncedSearchQuery);
@@ -149,7 +141,6 @@ export function WorkspacePage() {
     if (searchResultQuery.data?.files) registerMetadata(searchResultQuery.data.files);
   }, [searchResultQuery.data?.files, registerMetadata]);
 
-  // ── Mutations ─────────────────────────────────────────────
   const saveMutation = useSaveFile();
   const uploadMutation = useUploadFile();
   const createFolderMutation = useCreateFolder();
@@ -164,7 +155,6 @@ export function WorkspacePage() {
     }
   }, [fileContentQuery.data?.content]);
 
-  // ── Handlers ─────────────────────────────────────────────
   const toggleFolder = useCallback((path: string) => {
     setExpandedFolders((prev) => {
       const next = new Set(prev);
@@ -329,7 +319,6 @@ export function WorkspacePage() {
     queryClient.invalidateQueries({ queryKey: ["workspace"] });
   }, [queryClient]);
 
-  // ── Drag-drop handlers ─────────────────────────────────────
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -377,7 +366,6 @@ export function WorkspacePage() {
     [focusedFolder, uploadMutation, workspaceScope],
   );
 
-  // ── Resizer handlers ──────────────────────────────────────
   const handleResizerMouseDown = useCallback(() => setIsDragging(true), []);
 
   const handleResizerKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -406,7 +394,6 @@ export function WorkspacePage() {
     };
   }, [isDragging]);
 
-  // ── Derived values ────────────────────────────────────────
   const selectedFileData = useMemo(
     () => (selectedFile ? metadataMap.get(selectedFile) : undefined),
     [selectedFile, metadataMap],
@@ -416,7 +403,6 @@ export function WorkspacePage() {
   const monacoTheme = resolvedTheme === "dark" ? "vs-dark" : "light";
   const treePaneVisible = !isMobile || showTreeOnMobile;
 
-  // ── File tree context value ───────────────────────────────
   const treeContextValue = useMemo(
     () => ({
       scope: workspaceScope,
@@ -464,7 +450,6 @@ export function WorkspacePage() {
     ],
   );
 
-  // ── Tree pane ─────────────────────────────────────────────
   const treePane = (
     <div
       className={cn(
@@ -570,7 +555,6 @@ export function WorkspacePage() {
         <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileInputChange} />
       </div>
 
-      {/* Upload progress */}
       {uploadProgress !== null && (
         <div className="px-3 py-2 border-b border-border">
           <div className="flex items-center justify-between mb-1">
@@ -581,7 +565,6 @@ export function WorkspacePage() {
         </div>
       )}
 
-      {/* Drag-drop overlay */}
       {isDragOver && (
         <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary m-1 rounded flex items-center justify-center pointer-events-none z-10">
           <div className="text-center">
@@ -654,7 +637,6 @@ export function WorkspacePage() {
     </div>
   );
 
-  // ── Layout ────────────────────────────────────────────────
   return (
     <FileTreeContext.Provider value={treeContextValue}>
       <div
